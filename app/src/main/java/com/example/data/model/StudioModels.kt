@@ -123,3 +123,33 @@ data class GeneratedMediaAsset(
     val mimeType: String? = null,
     val textSummary: String? = null
 )
+
+enum class FirestoreConnectionStatus(val labelAr: String) {
+    CONNECTED("متصل بـ Cloud Firestore"),
+    SYNCING("جاري المزامنة الفورية..."),
+    ERROR("خطأ في الاتصال بقاعدة البيانات")
+}
+
+data class FirestoreCollectionInfo(
+    val id: String,
+    val name: String,
+    val titleAr: String,
+    val fullPath: String,
+    val documentCount: Int,
+    val isUpdateAllowed: Boolean,
+    val descriptionAr: String,
+    val schemaFields: List<String>
+)
+
+data class FirestoreDocumentItem(
+    val id: String,
+    val collectionId: String,
+    val fullPath: String,
+    val primaryTitle: String,
+    val secondarySubtitle: String,
+    val fields: Map<String, String>,
+    val rawJson: String,
+    val isUpdateAllowed: Boolean,
+    val timestampLabel: String
+)
+

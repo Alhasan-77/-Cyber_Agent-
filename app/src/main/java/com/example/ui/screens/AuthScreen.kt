@@ -145,7 +145,7 @@ fun onGoogleSignInClicked(
 
     scope.launch {
         try {
-            val result = credentialManager.getCredential(context as Activity, request)
+            val result = credentialManager.getCredential(context, request)
             val credential = result.credential
             if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                 val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
@@ -158,9 +158,11 @@ fun onGoogleSignInClicked(
         } catch (e: GetCredentialCancellationException) {
             Log.w("Auth", "Google Sign-In cancelled or dismissed: ${e.message}", e)
             onAuthCancelled()
+            onAuthError("تم إلغاء نافذة تسجيل الدخول بـ Google أو إغلاقها. يرجى التأكد من تسجيل دخول حساب Google في إعدادات الجهاز/المحاكي ثم المحاولة مجدداً.")
         } catch (e: Exception) {
             Log.e("Auth", "Google Sign-In failed", e)
-            onAuthError(e.localizedMessage ?: "تعذر تسجيل الدخول عبر Google")
+            val detail = e.localizedMessage ?: "تعذر تسجيل الدخول عبر Google"
+            onAuthError("تعذر إتمام تسجيل الدخول بـ Google ($detail). تأكد من إضافة حساب Google في إعدادات الجهاز/المحاكي وتوفر اتصال الإنترنت.")
         }
     }
 }

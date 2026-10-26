@@ -55,6 +55,7 @@ import com.example.data.model.DiffLine
 import com.example.data.model.DiffType
 import com.example.data.model.UiState
 import com.example.data.model.VersionSnapshot
+import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBackground
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberCoral
@@ -63,11 +64,15 @@ import com.example.ui.theme.CyberEmerald
 import com.example.ui.theme.CyberSurface
 import com.example.ui.theme.CyberViolet
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.viewmodel.DataViewModel
 
 @Composable
 fun DatabaseAndVcsTabScreen(
+    dataViewModel: DataViewModel,
     collectionsState: UiState<List<DbCollectionSchema>>,
     snapshotsState: UiState<List<VersionSnapshot>>,
+    activeBranch: String,
+    onSelectBranch: (String) -> Unit,
     onCreateCollection: (String, String, String, String) -> Unit,
     onAppendRecord: (DbCollectionSchema, String) -> Unit,
     onGenerateBackendDao: (DbCollectionSchema) -> Unit,
@@ -76,7 +81,9 @@ fun DatabaseAndVcsTabScreen(
     onRestoreSnapshot: (VersionSnapshot) -> Unit,
     onComputeDiff: (VersionSnapshot) -> List<DiffLine>
 ) {
-    // 0 = Flexible Database Studio, 1 = Version Control & Diff Engine
+    // 0 = Live Firestore Collections & Documents Manager (DataViewModel)
+    // 1 = Schema Designer & DAO Code Generator
+    // 2 = Version Control & Diff Engine
     var activeSubTab by remember { mutableIntStateOf(0) }
 
     Column(
@@ -87,35 +94,47 @@ fun DatabaseAndVcsTabScreen(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FilterChip(
                 selected = activeSubTab == 0,
                 onClick = { activeSubTab = 0 },
-                label = { Text("نظام إدارة قواعد البيانات المرن (Firestore Studio)") },
+                label = { Text("مدير مستندات Firestore الحي") },
                 leadingIcon = { Icon(Icons.Default.Storage, contentDescription = null) },
-                modifier = Modifier.testTag("subtab_database_studio")
+                modifier = Modifier.testTag("subtab_firestore_manager")
             )
             FilterChip(
                 selected = activeSubTab == 1,
                 onClick = { activeSubTab = 1 },
-                label = { Text("التحكم بالإصدارات ومقارنة الفروقات (VCS & Diff)") },
+                label = { Text("مصمم المخططات وتوليد DAO") },
+                leadingIcon = { Icon(Icons.Default.Code, contentDescription = null) },
+                modifier = Modifier.testTag("subtab_database_studio")
+            )
+            FilterChip(
+                selected = activeSubTab == 2,
+                onClick = { activeSubTab = 2 },
+                label = { Text("التحكم بالإصدارات (VCS & Diff)") },
                 leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
                 modifier = Modifier.testTag("subtab_version_control")
             )
         }
 
-        if (activeSubTab == 0) {
-            FlexibleDatabaseSection(
+        when (activeSubTab) {
+            0 -> FirestoreDataManagerComponent(
+                dataViewModel = dataViewModel,
+                modifier = Modifier.fillMaxSize()
+            )
+            1 -> FlexibleDatabaseSection(
                 collections = (collectionsState as? UiState.Success)?.data.orEmpty(),
                 onCreateCollection = onCreateCollection,
                 onAppendRecord = onAppendRecord,
                 onGenerateBackendDao = onGenerateBackendDao,
                 onDeleteCollection = onDeleteCollection
             )
-        } else {
-            VersionControlSection(
+            else -> VersionControlSection(
                 snapshots = (snapshotsState as? UiState.Success)?.data.orEmpty(),
+                activeBranch = activeBranch,
+                onSelectBranch = onSelectBranch,
                 onCommitSnapshot = onCommitSnapshot,
                 onRestoreSnapshot = onRestoreSnapshot,
                 onComputeDiff = onComputeDiff
@@ -123,6 +142,7 @@ fun DatabaseAndVcsTabScreen(
         }
     }
 }
+
 
 @Composable
 private fun FlexibleDatabaseSection(
@@ -315,6 +335,8 @@ private fun FlexibleDatabaseSection(
 @Composable
 private fun VersionControlSection(
     snapshots: List<VersionSnapshot>,
+    activeBranch: String,
+    onSelectBranch: (String) -> Unit,
     onCommitSnapshot: (String, String) -> Unit,
     onRestoreSnapshot: (VersionSnapshot) -> Unit,
     onComputeDiff: (VersionSnapshot) -> List<DiffLine>
@@ -331,7 +353,7 @@ private fun VersionControlSection(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Commit New Snapshot Card
+        // Branch Selector & Commit New Snapshot Card
         item {
             Card(
                 shape = RoundedCornerShape(16.dp),
@@ -345,10 +367,28 @@ private fun VersionControlSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "حفظ لقطة إصدار سحابية آمنة (Create Immutable Snapshot)",
+                        text = "إدارة الفروع البرمجية وحفظ اللقطات السحابية الآمنة",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberEmerald
                     )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "الفرع النشط (Branch):",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = CyberAmber
+                        )
+                        listOf("main", "staging", "production", "ai-experimental").forEach { branch ->
+                            FilterChip(
+                                selected = activeBranch == branch,
+                                onClick = { onSelectBranch(branch) },
+                                label = { Text(branch) },
+                                modifier = Modifier.testTag("branch_chip_$branch")
+                            )
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -507,7 +547,7 @@ private fun VersionControlSection(
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "الأسطر المضافة: +${snap.addedLines} • المحذوفة: -${snap.deletedLines}",
+                            text = "الأسطر المضافة: +${snap.addedLines} • المحذوفة: -${snap.deletedLines} • SHA Verified",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

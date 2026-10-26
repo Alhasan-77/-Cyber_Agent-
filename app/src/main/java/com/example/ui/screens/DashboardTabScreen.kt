@@ -24,10 +24,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VolumeUp
@@ -82,10 +84,13 @@ fun DashboardTabScreen(
     collectionsState: UiState<List<DbCollectionSchema>>,
     buildLogsState: UiState<List<BuildExecutionLog>>,
     selectedProjectId: String?,
+    activeBranch: String,
     onSelectProjectAndOpenIde: (StudioProject) -> Unit,
     onCreateNewProject: (String, String, String) -> Unit,
     onDeleteProject: (String) -> Unit,
-    onReadReportAloud: (String) -> Unit
+    onReadReportAloud: (String) -> Unit,
+    onTriggerCloudDeploy: () -> Unit,
+    onRunSecurityAudit: () -> Unit
 ) {
     var showNewProjectDialog by remember { mutableStateOf(false) }
 
@@ -134,14 +139,17 @@ fun DashboardTabScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "البيئة السحابية متصلة • Cloud Runtime v4.2",
+                                text = "البيئة السحابية متصلة • الفرع: $activeBranch",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = CyberEmerald
                             )
                         }
                     }
 
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -168,6 +176,34 @@ fun DashboardTabScreen(
                                 Icon(Icons.Default.Add, contentDescription = null, tint = CyberBackground)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("مشروع جديد", color = CyberBackground, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Quick Cloud CI/CD & Security Audit Bar
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onRunSecurityAudit,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("run_security_audit_button")
+                            ) {
+                                Icon(Icons.Default.Security, contentDescription = null, tint = CyberCyan)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("فحص أمني للكود", color = CyberCyan)
+                            }
+                            Button(
+                                onClick = onTriggerCloudDeploy,
+                                colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("trigger_cloud_deploy_button")
+                            ) {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = CyberBackground)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("نشر سحابي فوري", color = CyberBackground, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

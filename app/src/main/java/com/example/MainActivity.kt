@@ -6,7 +6,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -74,6 +74,7 @@ import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.CyberEmerald
 import com.example.ui.theme.CyberSurface
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.viewmodel.DataViewModel
 import com.example.ui.viewmodel.StudioViewModel
 import com.example.util.AndroidTtsSpeaker
 import com.example.util.AudioAndMediaHelper
@@ -109,11 +110,21 @@ internal fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
 
 @Composable
 fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
-    val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
-    val user = currentUser
+    val authFlow = remember(auth) { auth.authStateFlow() }
+    val flowUser by authFlow.collectAsStateWithLifecycle(initialValue = auth.currentUser)
+    var currentUser by remember { mutableStateOf(auth.currentUser) }
 
+    DisposableEffect(auth) {
+        val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            currentUser = firebaseAuth.currentUser
+        }
+        auth.addAuthStateListener(listener)
+        onDispose { auth.removeAuthStateListener(listener) }
+    }
+
+    val user = currentUser ?: flowUser
     if (user == null) {
-        AuthScreen(onAuthSuccess = {})
+        AuthScreen(onAuthSuccess = { currentUser = auth.currentUser })
     } else {
         NovaForgeStudioShell(currentUserId = user.uid, userEmail = user.email ?: "Cloud Developer")
     }
@@ -153,9 +164,26 @@ fun NovaForgeStudioShell(
         }
     )
 
+    val dataViewModel: DataViewModel = viewModel(
+        key = "data_$currentUserId",
+        factory = viewModelFactory {
+            initializer {
+                val app = checkNotNull(this[APPLICATION_KEY]) {
+                    "APPLICATION_KEY missing from CreationExtras"
+                }
+                val databaseId = app.getString(R.string.firestore_database_id)
+                val db = FirebaseFirestore.getInstance(databaseId)
+                DataViewModel(
+                    repository = StudioRepository(db),
+                    databaseId = databaseId,
+                    currentUserId = currentUserId
+                )
+            }
+        }
+    )
+
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
-    // Mandatory BackHandler for secondary tabs when custom state switching is used
     BackHandler(enabled = selectedTab != 0) {
         selectedTab = 0
     }
@@ -173,6 +201,8 @@ fun NovaForgeStudioShell(
     val cssBuffer by viewModel.cssBuffer.collectAsStateWithLifecycle()
     val jsBuffer by viewModel.jsBuffer.collectAsStateWithLifecycle()
     val backendBuffer by viewModel.backendBuffer.collectAsStateWithLifecycle()
+    val consoleLogs by viewModel.consoleLogs.collectAsStateWithLifecycle()
+    val activeBranch by viewModel.activeBranch.collectAsStateWithLifecycle()
 
     val statusBanner by viewModel.statusBanner.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
@@ -217,7 +247,7 @@ fun NovaForgeStudioShell(
                             }
                         }
                         Text(
-                            text = userEmail,
+                            text = "$userEmail • branch: $activeBranch",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -326,6 +356,7 @@ fun NovaForgeStudioShell(
                         collectionsState = collectionsState,
                         buildLogsState = buildLogsState,
                         selectedProjectId = selectedProjectId,
+                        activeBranch = activeBranch,
                         onSelectProjectAndOpenIde = { project ->
                             viewModel.selectProject(project)
                             selectedTab = 1
@@ -342,7 +373,9 @@ fun NovaForgeStudioShell(
                                     AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = false)
                                 }
                             }
-                        }
+                        },
+                        onTriggerCloudDeploy = { viewModel.triggerCloudDeploymentPipeline() },
+                        onRunSecurityAudit = { viewModel.runAiSecurityAndPerformanceAudit() }
                     )
                     1 -> IdePreviewTabScreen(
                         projectName = editorName,
@@ -353,15 +386,23 @@ fun NovaForgeStudioShell(
                         jsBuffer = jsBuffer,
                         backendBuffer = backendBuffer,
                         combinedPreviewHtml = viewModel.buildCombinedLivePreviewHtml(),
+                        consoleLogs = consoleLogs,
                         onSelectCodeTab = { viewModel.selectCodeTab(it) },
                         onUpdateCodeBuffer = { viewModel.updateActiveBuffer(it) },
                         onTriggerInlineSuggestion = { viewModel.triggerInlineCodeSuggestion(it) },
                         onGenerateFullStackHighThinking = { viewModel.generateFullStackWithHighThinking(it) },
-                        onSaveAndBuildPreview = { viewModel.saveAndBuildCurrentProject() }
+                        onSaveAndBuildPreview = { viewModel.saveAndBuildCurrentProject() },
+                        onLoadTemplate = { viewModel.loadStarterTemplate(it) },
+                        onRunSecurityAudit = { viewModel.runAiSecurityAndPerformanceAudit() },
+                        onAppendConsoleLog = { viewModel.appendConsoleLog(it) },
+                        onClearConsoleLogs = { viewModel.clearConsoleLogs() }
                     )
                     2 -> DatabaseAndVcsTabScreen(
+                        dataViewModel = dataViewModel,
                         collectionsState = collectionsState,
                         snapshotsState = snapshotsState,
+                        activeBranch = activeBranch,
+                        onSelectBranch = { viewModel.setActiveBranch(it) },
                         onCreateCollection = { name, fields, sample, idx ->
                             viewModel.createDatabaseCollection(name, fields, sample, idx)
                         },

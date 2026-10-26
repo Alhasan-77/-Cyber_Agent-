@@ -374,4 +374,171 @@ class StudioRepository(private val db: FirebaseFirestore) {
             throw e
         }
     }
+
+    suspend fun deleteSnapshot(snapshotId: String): Result<Unit> = runCatching {
+        val uid = requireUserId()
+        val docRef = db.collection("users").document(uid).collection("snapshots").document(snapshotId)
+        try {
+            docRef.delete().await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, docRef.path)
+            throw e
+        }
+    }
+
+    suspend fun deleteBuildLog(logId: String): Result<Unit> = runCatching {
+        val uid = requireUserId()
+        val docRef = db.collection("users").document(uid).collection("logs").document(logId)
+        try {
+            docRef.delete().await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, docRef.path)
+            throw e
+        }
+    }
+
+    suspend fun checkConnectionLatency(): Result<Long> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid/collections"
+        val startMs = System.currentTimeMillis()
+        try {
+            db.collection("users").document(uid).collection("collections")
+                .whereEqualTo("userId", uid)
+                .limit(1)
+                .get()
+                .await()
+            (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.LIST, path)
+            throw e
+        }
+    }
+
+    suspend fun getCollectionSchemas(): Result<List<DbCollectionSchema>> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid/collections"
+        try {
+            val snapshot = db.collection("users").document(uid).collection("collections")
+                .whereEqualTo("userId", uid)
+                .get()
+                .await()
+            snapshot.toObjects(
+                DbCollectionSchema::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.LIST, path)
+            throw e
+        }
+    }
+
+    suspend fun getCollectionSchemaById(collectionId: String): Result<DbCollectionSchema?> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid/collections/$collectionId"
+        try {
+            val doc = db.collection("users").document(uid)
+                .collection("collections").document(collectionId)
+                .get()
+                .await()
+            doc.toObject(
+                DbCollectionSchema::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.GET, path)
+            throw e
+        }
+    }
+
+    suspend fun getSnapshots(): Result<List<VersionSnapshot>> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid/snapshots"
+        try {
+            val snapshot = db.collection("users").document(uid).collection("snapshots")
+                .whereEqualTo("userId", uid)
+                .get()
+                .await()
+            snapshot.toObjects(
+                VersionSnapshot::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.LIST, path)
+            throw e
+        }
+    }
+
+    suspend fun getSnapshotById(snapshotId: String): Result<VersionSnapshot?> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid/snapshots/$snapshotId"
+        try {
+            val doc = db.collection("users").document(uid)
+                .collection("snapshots").document(snapshotId)
+                .get()
+                .await()
+            doc.toObject(
+                VersionSnapshot::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.GET, path)
+            throw e
+        }
+    }
+
+    suspend fun getBuildLogs(): Result<List<BuildExecutionLog>> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid/logs"
+        try {
+            val snapshot = db.collection("users").document(uid).collection("logs")
+                .whereEqualTo("userId", uid)
+                .get()
+                .await()
+            snapshot.toObjects(
+                BuildExecutionLog::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.LIST, path)
+            throw e
+        }
+    }
+
+    suspend fun getBuildLogById(logId: String): Result<BuildExecutionLog?> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid/logs/$logId"
+        try {
+            val doc = db.collection("users").document(uid)
+                .collection("logs").document(logId)
+                .get()
+                .await()
+            doc.toObject(
+                BuildExecutionLog::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.GET, path)
+            throw e
+        }
+    }
 }
+
+
