@@ -1,0 +1,161 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 4.1: Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Entity 1: StudioProject validation helper
+    function isValidStudioProject(data) {
+      return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.language is string && data.language.size() >= 1 && data.language.size() <= 50 &&
+             data.htmlCode is string && data.htmlCode.size() <= 50000 &&
+             data.cssCode is string && data.cssCode.size() <= 50000 &&
+             data.jsCode is string && data.jsCode.size() <= 50000 &&
+             data.backendCode is string && data.backendCode.size() <= 50000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // Entity 2: VersionSnapshot validation helper
+    function isValidVersionSnapshot(data) {
+      return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.projectId is string && isValidId(data.projectId) &&
+             data.commitMessage is string && data.commitMessage.size() >= 1 && data.commitMessage.size() <= 300 &&
+             data.versionTag is string && data.versionTag.size() >= 1 && data.versionTag.size() <= 40 &&
+             data.htmlCode is string && data.htmlCode.size() <= 50000 &&
+             data.cssCode is string && data.cssCode.size() <= 50000 &&
+             data.jsCode is string && data.jsCode.size() <= 50000 &&
+             data.backendCode is string && data.backendCode.size() <= 50000 &&
+             data.addedLines is int && data.addedLines >= 0 && data.addedLines <= 100000 &&
+             data.deletedLines is int && data.deletedLines >= 0 && data.deletedLines <= 100000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    // Entity 3: DbCollectionSchema validation helper
+    function isValidDbCollectionSchema(data) {
+      return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.projectId is string && isValidId(data.projectId) &&
+             data.collectionName is string && data.collectionName.size() >= 1 && data.collectionName.size() <= 80 &&
+             data.fieldsSpec is string && data.fieldsSpec.size() >= 1 && data.fieldsSpec.size() <= 5000 &&
+             data.sampleRecordsJson is string && data.sampleRecordsJson.size() <= 20000 &&
+             data.indexConfig is string && data.indexConfig.size() <= 500 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // Entity 4: BuildExecutionLog validation helper
+    function isValidBuildExecutionLog(data) {
+      return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.projectId is string && isValidId(data.projectId) &&
+             data.stage is string && data.stage.size() >= 1 && data.stage.size() <= 60 &&
+             data.status is string && (data.status in ['SUCCESS', 'WARNING', 'ERROR', 'RUNNING']) &&
+             data.durationMs is int && data.durationMs >= 0 && data.durationMs <= 3600000 &&
+             data.reportSummary is string && data.reportSummary.size() >= 1 && data.reportSummary.size() <= 10000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    match /users/{userId}/projects/{projectId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(projectId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(projectId) &&
+                       incoming().keys().hasAll(['userId', 'name', 'description', 'language', 'htmlCode', 'cssCode', 'jsCode', 'backendCode', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'name', 'description', 'language', 'htmlCode', 'cssCode', 'jsCode', 'backendCode', 'createdAt', 'updatedAt']) &&
+                       isValidStudioProject(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidStudioProject(incoming()) &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(projectId) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'language', 'htmlCode', 'cssCode', 'jsCode', 'backendCode', 'updatedAt']);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(projectId) && existing().userId == request.auth.uid;
+    }
+
+    match /users/{userId}/snapshots/{snapshotId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(snapshotId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(snapshotId) &&
+                       incoming().keys().hasAll(['userId', 'projectId', 'commitMessage', 'versionTag', 'htmlCode', 'cssCode', 'jsCode', 'backendCode', 'addedLines', 'deletedLines', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'projectId', 'commitMessage', 'versionTag', 'htmlCode', 'cssCode', 'jsCode', 'backendCode', 'addedLines', 'deletedLines', 'createdAt']) &&
+                       isValidVersionSnapshot(incoming());
+
+      // Version snapshots are immutable commits; only creation and deletion by owner are permitted
+      allow update: if false;
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(snapshotId) && existing().userId == request.auth.uid;
+    }
+
+    match /users/{userId}/collections/{collectionId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(collectionId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(collectionId) &&
+                       incoming().keys().hasAll(['userId', 'projectId', 'collectionName', 'fieldsSpec', 'sampleRecordsJson', 'indexConfig', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'projectId', 'collectionName', 'fieldsSpec', 'sampleRecordsJson', 'indexConfig', 'createdAt', 'updatedAt']) &&
+                       isValidDbCollectionSchema(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidDbCollectionSchema(incoming()) &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(collectionId) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().projectId == existing().projectId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['collectionName', 'fieldsSpec', 'sampleRecordsJson', 'indexConfig', 'updatedAt']);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(collectionId) && existing().userId == request.auth.uid;
+    }
+
+    match /users/{userId}/logs/{logId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(logId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(logId) &&
+                       incoming().keys().hasAll(['userId', 'projectId', 'stage', 'status', 'durationMs', 'reportSummary', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'projectId', 'stage', 'status', 'durationMs', 'reportSummary', 'createdAt']) &&
+                       isValidBuildExecutionLog(incoming());
+
+      allow update: if false;
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(logId) && existing().userId == request.auth.uid;
+    }
+  }
+}

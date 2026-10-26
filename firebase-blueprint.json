@@ -1,0 +1,245 @@
+{
+  "entities": {
+    "StudioProject": {
+      "title": "StudioProject",
+      "description": "A full-stack project in NovaForge AI Studio with multi-language source files and cloud settings.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the authenticated project owner."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name of the project."
+        },
+        "description": {
+          "type": "string",
+          "description": "Project summary and architectural overview."
+        },
+        "language": {
+          "type": "string",
+          "description": "Primary stack/language (e.g., Full-Stack Web, Python + FastAPI, Kotlin + Compose, Node.js + SQL)."
+        },
+        "htmlCode": {
+          "type": "string",
+          "description": "Frontend markup / UI layout source code."
+        },
+        "cssCode": {
+          "type": "string",
+          "description": "Stylesheet and theme tokens source code."
+        },
+        "jsCode": {
+          "type": "string",
+          "description": "Interactive frontend logic source code."
+        },
+        "backendCode": {
+          "type": "string",
+          "description": "Backend API / server / bioinformatics pipeline source code."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when project was created (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when project was last updated (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "name",
+        "description",
+        "language",
+        "htmlCode",
+        "cssCode",
+        "jsCode",
+        "backendCode",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "VersionSnapshot": {
+      "title": "VersionSnapshot",
+      "description": "An immutable cloud version control snapshot (commit) of a project's full-stack codebase.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the authenticated owner."
+        },
+        "projectId": {
+          "type": "string",
+          "description": "The ID of the parent StudioProject."
+        },
+        "commitMessage": {
+          "type": "string",
+          "description": "Commit message describing the snapshot changes."
+        },
+        "versionTag": {
+          "type": "string",
+          "description": "Semantic version tag (e.g., v1.0.0)."
+        },
+        "htmlCode": {
+          "type": "string",
+          "description": "Snapshot of HTML code."
+        },
+        "cssCode": {
+          "type": "string",
+          "description": "Snapshot of CSS code."
+        },
+        "jsCode": {
+          "type": "string",
+          "description": "Snapshot of JS code."
+        },
+        "backendCode": {
+          "type": "string",
+          "description": "Snapshot of backend code."
+        },
+        "addedLines": {
+          "type": "integer",
+          "description": "Number of added lines compared to previous version."
+        },
+        "deletedLines": {
+          "type": "integer",
+          "description": "Number of deleted lines compared to previous version."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when snapshot was committed (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "projectId",
+        "commitMessage",
+        "versionTag",
+        "htmlCode",
+        "cssCode",
+        "jsCode",
+        "backendCode",
+        "addedLines",
+        "deletedLines",
+        "createdAt"
+      ]
+    },
+    "DbCollectionSchema": {
+      "title": "DbCollectionSchema",
+      "description": "A user-defined flexible database table/collection schema and JSON dataset managed in the Database Studio.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the authenticated owner."
+        },
+        "projectId": {
+          "type": "string",
+          "description": "The ID of the associated project."
+        },
+        "collectionName": {
+          "type": "string",
+          "description": "Name of the collection or table."
+        },
+        "fieldsSpec": {
+          "type": "string",
+          "description": "Comma-separated schema definition of fields and types."
+        },
+        "sampleRecordsJson": {
+          "type": "string",
+          "description": "Structured records stored in this collection for visual querying."
+        },
+        "indexConfig": {
+          "type": "string",
+          "description": "Indexing and security rule configuration notes."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "userId",
+        "projectId",
+        "collectionName",
+        "fieldsSpec",
+        "sampleRecordsJson",
+        "indexConfig",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BuildExecutionLog": {
+      "title": "BuildExecutionLog",
+      "description": "Real-time code monitoring, build telemetry, and detailed audit report entry.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the authenticated owner."
+        },
+        "projectId": {
+          "type": "string",
+          "description": "The ID of the associated project."
+        },
+        "stage": {
+          "type": "string",
+          "description": "Build or analysis stage name."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["SUCCESS", "WARNING", "ERROR", "RUNNING"],
+          "description": "Execution status."
+        },
+        "durationMs": {
+          "type": "integer",
+          "description": "Execution duration in milliseconds."
+        },
+        "reportSummary": {
+          "type": "string",
+          "description": "Detailed diagnostic report and code telemetry output."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the build execution."
+        }
+      },
+      "required": [
+        "userId",
+        "projectId",
+        "stage",
+        "status",
+        "durationMs",
+        "reportSummary",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/projects/{projectId}": {
+      "schema": "StudioProject",
+      "description": "Per-user full-stack projects."
+    },
+    "/users/{userId}/snapshots/{snapshotId}": {
+      "schema": "VersionSnapshot",
+      "description": "Per-user version control snapshots and commit history."
+    },
+    "/users/{userId}/collections/{collectionId}": {
+      "schema": "DbCollectionSchema",
+      "description": "Per-user flexible database schemas and queryable records."
+    },
+    "/users/{userId}/logs/{logId}": {
+      "schema": "BuildExecutionLog",
+      "description": "Per-user real-time build monitoring logs and detailed reports."
+    }
+  }
+}

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="640dp"
+    android:height="360dp"
+    android:viewportWidth="640"
+    android:viewportHeight="360">
+    <path android:pathData="M0,0h640v360h-640z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="640"
+                android:endY="360"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#0B0F17" />
+                <item android:offset="0.5" android:color="#131B2E" />
+                <item android:offset="1.0" android:color="#1F1638" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Cyber Grid Lines -->
+    <path
+        android:strokeColor="#1F00E5FF"
+        android:strokeWidth="1.5"
+        android:pathData="M0,60 L640,60 M0,120 L640,120 M0,180 L640,180 M0,240 L640,240 M0,300 L640,300 M80,0 L80,360 M160,0 L160,360 M240,0 L240,360 M320,0 L320,360 M400,0 L400,360 M480,0 L480,360 M560,0 L560,360" />
+    <!-- Glowing Neural / Full-Stack Nodes -->
+    <path
+        android:fillColor="#2600E5FF"
+        android:pathData="M80,90 h180 v110 h-180 z" />
+    <path
+        android:fillColor="#337C4DFF"
+        android:pathData="M300,70 h240 v140 h-240 z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M110,120 h90 v10 h-90 z M110,145 h130 v8 h-130 z M110,165 h70 v8 h-70 z" />
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M330,105 h140 v10 h-140 z M330,130 h180 v8 h-180 z M330,155 h110 v8 h-110 z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M520,260 L535,295 L570,310 L535,325 L520,360 L505,325 L470,310 L505,295 Z" />
+</vector>

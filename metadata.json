@@ -1,0 +1,6 @@
+{
+  "name": "NovaForge",
+  "description": "Full-stack AI development studio with live WebView preview, flexible Firestore database management, cloud version control, multimodal media generation, and bioscience computing lab.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

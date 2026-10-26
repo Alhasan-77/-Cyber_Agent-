@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">NovaForge</string>
+    <string name="studio_subtitle">منصة التطوير السحابية المتكاملة بالذكاء الاصطناعي Full-Stack</string>
+    <string name="sign_in_google">تسجيل الدخول عبر Google</string>
+    <string name="sign_out">تسجيل الخروج</string>
+    <string name="tab_dashboard">لوحة التحكم</string>
+    <string name="tab_ide">المحرر والمعاينة</string>
+    <string name="tab_db_vcs">البيانات والإصدارات</string>
+    <string name="tab_ai_media">الذكاء والوسائط</string>
+    <string name="tab_bioscience">العلوم الحيوية</string>
+    <string name="security_warning_notice">تحذير أمني: تم تضمين مفاتيح API في ملف APK الخاص بهذا النموذج الأولي. يرجى عدم مشاركة ملف APK علناً.</string>
+</resources>
