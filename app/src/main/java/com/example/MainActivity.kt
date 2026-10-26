@@ -57,11 +57,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.data.model.UiState
 import com.example.data.remote.GeminiAiRepository
 import com.example.data.repository.StudioRepository
+import com.example.ui.components.ErrorBoundary
+import com.example.ui.components.ErrorBoundaryDiagnosticScreen
+import com.example.ui.components.GlobalExceptionHandler
 import com.example.ui.screens.AiAndMediaStudioTabScreen
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.BioscienceLabTabScreen
@@ -90,11 +95,19 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        GlobalExceptionHandler.install()
         super.onCreate(savedInstanceState)
+        GlobalExceptionHandler.verifyStartupInitialization(this)
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
-                AppNavigation()
+                ErrorBoundary(
+                    onRetryInitialization = {
+                        GlobalExceptionHandler.verifyStartupInitialization(this@MainActivity)
+                    }
+                ) {
+                    AppNavigation()
+                }
             }
         }
     }
@@ -109,22 +122,43 @@ internal fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
 }
 
 @Composable
-fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
-    val authFlow = remember(auth) { auth.authStateFlow() }
-    val flowUser by authFlow.collectAsStateWithLifecycle(initialValue = auth.currentUser)
-    var currentUser by remember { mutableStateOf(auth.currentUser) }
+fun AppNavigation(auth: FirebaseAuth? = null) {
+    var authInitRetryTick by remember { mutableIntStateOf(0) }
+    val resolvedAuthResult = remember(auth, authInitRetryTick) {
+        runCatching { auth ?: Firebase.auth }
+    }
 
-    DisposableEffect(auth) {
+    val resolvedAuth = resolvedAuthResult.getOrNull()
+    val authInitException = resolvedAuthResult.exceptionOrNull()
+
+    if (authInitException != null || resolvedAuth == null) {
+        val throwable = authInitException
+            ?: IllegalStateException("تعذر الوصول إلى خدمة المصادقة السحابية FirebaseAuth")
+        LaunchedEffect(throwable) {
+            GlobalExceptionHandler.reportError(
+                phase = "FirebaseAuth Initialization",
+                throwable = throwable,
+                isFatal = true
+            )
+        }
+        return
+    }
+
+    val authFlow = remember(resolvedAuth) { resolvedAuth.authStateFlow() }
+    val flowUser by authFlow.collectAsStateWithLifecycle(initialValue = resolvedAuth.currentUser)
+    var currentUser by remember(resolvedAuth) { mutableStateOf(resolvedAuth.currentUser) }
+
+    DisposableEffect(resolvedAuth) {
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
             currentUser = firebaseAuth.currentUser
         }
-        auth.addAuthStateListener(listener)
-        onDispose { auth.removeAuthStateListener(listener) }
+        resolvedAuth.addAuthStateListener(listener)
+        onDispose { resolvedAuth.removeAuthStateListener(listener) }
     }
 
     val user = currentUser ?: flowUser
     if (user == null) {
-        AuthScreen(onAuthSuccess = { currentUser = auth.currentUser })
+        AuthScreen(onAuthSuccess = { currentUser = resolvedAuth.currentUser })
     } else {
         NovaForgeStudioShell(currentUserId = user.uid, userEmail = user.email ?: "Cloud Developer")
     }
@@ -138,11 +172,21 @@ fun NovaForgeStudioShell(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val ttsSpeaker = remember { AndroidTtsSpeaker(context) }
+    val ttsSpeaker = remember {
+        runCatching { AndroidTtsSpeaker(context) }
+            .onFailure { e ->
+                GlobalExceptionHandler.reportError(
+                    phase = "TTS Audio Engine Initialization",
+                    throwable = e,
+                    isFatal = false
+                )
+            }
+            .getOrNull()
+    }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(ttsSpeaker) {
         onDispose {
-            ttsSpeaker.shutdown()
+            ttsSpeaker?.shutdown()
         }
     }
 
@@ -150,16 +194,25 @@ fun NovaForgeStudioShell(
         key = currentUserId,
         factory = viewModelFactory {
             initializer {
-                val app = checkNotNull(this[APPLICATION_KEY]) {
-                    "APPLICATION_KEY missing from CreationExtras"
+                try {
+                    val app = checkNotNull(this[APPLICATION_KEY]) {
+                        "APPLICATION_KEY missing from CreationExtras"
+                    }
+                    val databaseId = app.getString(R.string.firestore_database_id)
+                    val db = FirebaseFirestore.getInstance(databaseId)
+                    StudioViewModel(
+                        repository = StudioRepository(db),
+                        aiRepository = GeminiAiRepository(),
+                        currentUserId = currentUserId
+                    )
+                } catch (e: Throwable) {
+                    GlobalExceptionHandler.reportError(
+                        phase = "StudioViewModel Initialization",
+                        throwable = e,
+                        isFatal = true
+                    )
+                    throw e
                 }
-                val databaseId = app.getString(R.string.firestore_database_id)
-                val db = FirebaseFirestore.getInstance(databaseId)
-                StudioViewModel(
-                    repository = StudioRepository(db),
-                    aiRepository = GeminiAiRepository(),
-                    currentUserId = currentUserId
-                )
             }
         }
     )
@@ -168,16 +221,25 @@ fun NovaForgeStudioShell(
         key = "data_$currentUserId",
         factory = viewModelFactory {
             initializer {
-                val app = checkNotNull(this[APPLICATION_KEY]) {
-                    "APPLICATION_KEY missing from CreationExtras"
+                try {
+                    val app = checkNotNull(this[APPLICATION_KEY]) {
+                        "APPLICATION_KEY missing from CreationExtras"
+                    }
+                    val databaseId = app.getString(R.string.firestore_database_id)
+                    val db = FirebaseFirestore.getInstance(databaseId)
+                    DataViewModel(
+                        repository = StudioRepository(db),
+                        databaseId = databaseId,
+                        currentUserId = currentUserId
+                    )
+                } catch (e: Throwable) {
+                    GlobalExceptionHandler.reportError(
+                        phase = "DataViewModel Initialization",
+                        throwable = e,
+                        isFatal = true
+                    )
+                    throw e
                 }
-                val databaseId = app.getString(R.string.firestore_database_id)
-                val db = FirebaseFirestore.getInstance(databaseId)
-                DataViewModel(
-                    repository = StudioRepository(db),
-                    databaseId = databaseId,
-                    currentUserId = currentUserId
-                )
             }
         }
     )
@@ -193,6 +255,17 @@ fun NovaForgeStudioShell(
     val collectionsState by viewModel.collectionsState.collectAsStateWithLifecycle()
     val buildLogsState by viewModel.buildLogsState.collectAsStateWithLifecycle()
     val selectedProjectId by viewModel.selectedProjectId.collectAsStateWithLifecycle()
+
+    LaunchedEffect(projectsState) {
+        val state = projectsState
+        if (state is UiState.Error) {
+            GlobalExceptionHandler.reportError(
+                phase = "Firestore Projects Stream",
+                throwable = IllegalStateException(state.message),
+                isFatal = false
+            )
+        }
+    }
 
     val activeCodeTab by viewModel.activeCodeTab.collectAsStateWithLifecycle()
     val editorName by viewModel.editorName.collectAsStateWithLifecycle()
@@ -367,7 +440,7 @@ fun NovaForgeStudioShell(
                         },
                         onDeleteProject = { id -> viewModel.deleteProject(id) },
                         onReadReportAloud = { reportText ->
-                            ttsSpeaker.speak(reportText)
+                            ttsSpeaker?.speak(reportText)
                             viewModel.synthesizeSpeechFromText(reportText, "Kore") { audioB64 ->
                                 scope.launch {
                                     AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = false)
@@ -446,7 +519,7 @@ fun NovaForgeStudioShell(
                             viewModel.analyzeUploadedMedia(prompt, b64, mime, isVideo)
                         },
                         onSynthesizeSpeech = { text, voice ->
-                            ttsSpeaker.speak(text)
+                            ttsSpeaker?.speak(text)
                             viewModel.synthesizeSpeechFromText(text, voice) { audioB64 ->
                                 scope.launch {
                                     AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = false)
@@ -458,7 +531,7 @@ fun NovaForgeStudioShell(
                         },
                         onSendLiveVoiceTurn = { text, b64 ->
                             viewModel.sendLiveVoiceTurn(text, b64) { reply ->
-                                ttsSpeaker.speak(reply)
+                                ttsSpeaker?.speak(reply)
                             }
                         },
                         onGenerateMusic = { prompt, isPro ->
@@ -468,7 +541,7 @@ fun NovaForgeStudioShell(
                                 }
                             }
                         },
-                        onSpeakText = { text -> ttsSpeaker.speak(text) }
+                        onSpeakText = { text -> ttsSpeaker?.speak(text) }
                     )
                     4 -> BioscienceLabTabScreen(
                         bioscienceOutput = bioscienceOutput,

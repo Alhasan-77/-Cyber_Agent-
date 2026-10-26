@@ -63,7 +63,9 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.NoCredentialException
 import com.example.R
+import com.example.ui.components.GlobalExceptionHandler
 import com.example.ui.theme.CyberBackground
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberCyan
@@ -85,17 +87,32 @@ fun attemptAutoSignIn(
     context: Context,
     credentialManager: CredentialManager,
     onAuthSuccess: () -> Unit,
-    onUnauthenticated: () -> Unit,
+    onUnauthenticated: (String?) -> Unit,
     scope: CoroutineScope
 ) {
-    if (Firebase.auth.currentUser != null) {
+    val currentUserResult = runCatching { Firebase.auth.currentUser }
+    currentUserResult.onFailure { e ->
+        GlobalExceptionHandler.reportError(
+            phase = "AutoSignIn Firebase.auth Check",
+            throwable = e,
+            isFatal = false
+        )
+        onUnauthenticated("تعذر تهيئة FirebaseAuth أثناء التحقق التلقائي: ${e.localizedMessage}")
+        return
+    }
+    if (currentUserResult.getOrNull() != null) {
         onAuthSuccess()
         return
     }
     val clientId = try {
         context.getString(R.string.default_web_client_id)
     } catch (e: Exception) {
-        onUnauthenticated()
+        GlobalExceptionHandler.reportError(
+            phase = "AutoSignIn WebClientId Lookup",
+            throwable = e,
+            isFatal = false
+        )
+        onUnauthenticated("إعداد Google Sign-In غير مكتمل: المورد default_web_client_id غير موجود.")
         return
     }
 
@@ -117,10 +134,23 @@ fun attemptAutoSignIn(
                 Firebase.auth.signInWithCredential(authCredential).await()
                 onAuthSuccess()
             } else {
-                onUnauthenticated()
+                onUnauthenticated("نوع بيانات الاعتماد المستلمة غير مدعوم (${credential.type}).")
             }
+        } catch (e: NoCredentialException) {
+            // Expected when the user has not previously authorized an account for auto-sign-in
+            Log.i("Auth", "No pre-authorized credential found for auto sign-in; awaiting user tap.")
+            onUnauthenticated(null)
+        } catch (e: GetCredentialCancellationException) {
+            Log.i("Auth", "Auto sign-in dismissed by user.")
+            onUnauthenticated(null)
         } catch (e: Exception) {
-            onUnauthenticated()
+            Log.w("Auth", "Auto sign-in initialization warning: ${e.message}", e)
+            GlobalExceptionHandler.reportError(
+                phase = "AutoSignIn CredentialManager",
+                throwable = e,
+                isFatal = false
+            )
+            onUnauthenticated("تنبيه أثناء التحقق التلقائي من الجلسة: ${e.localizedMessage ?: e::class.java.simpleName}")
         }
     }
 }
@@ -136,6 +166,11 @@ fun onGoogleSignInClicked(
     val clientId = try {
         context.getString(R.string.default_web_client_id)
     } catch (e: Exception) {
+        GlobalExceptionHandler.reportError(
+            phase = "GoogleSignIn WebClientId Lookup",
+            throwable = e,
+            isFatal = false
+        )
         onAuthError("إعداد Google Sign-In غير مكتمل: default_web_client_id غير موجود")
         return
     }
@@ -161,6 +196,11 @@ fun onGoogleSignInClicked(
             onAuthError("تم إلغاء نافذة تسجيل الدخول بـ Google أو إغلاقها. يرجى التأكد من تسجيل دخول حساب Google في إعدادات الجهاز/المحاكي ثم المحاولة مجدداً.")
         } catch (e: Exception) {
             Log.e("Auth", "Google Sign-In failed", e)
+            GlobalExceptionHandler.reportError(
+                phase = "Interactive Google Sign-In",
+                throwable = e,
+                isFatal = false
+            )
             val detail = e.localizedMessage ?: "تعذر تسجيل الدخول عبر Google"
             onAuthError("تعذر إتمام تسجيل الدخول بـ Google ($detail). تأكد من إضافة حساب Google في إعدادات الجهاز/المحاكي وتوفر اتصال الإنترنت.")
         }
@@ -179,6 +219,11 @@ fun signOutUser(
             credentialManager.clearCredentialState(ClearCredentialStateRequest())
         } catch (e: Exception) {
             Log.e("Auth", "Failed to clear credential state", e)
+            GlobalExceptionHandler.reportError(
+                phase = "SignOut Credential Cleanup",
+                throwable = e,
+                isFatal = false
+            )
         } finally {
             onSignOutComplete()
         }
@@ -200,7 +245,11 @@ fun AuthScreen(
             context = context,
             credentialManager = credentialManager,
             onAuthSuccess = onAuthSuccess,
-            onUnauthenticated = {},
+            onUnauthenticated = { diagnosticWarning ->
+                if (!diagnosticWarning.isNullOrBlank()) {
+                    errorMessage = diagnosticWarning
+                }
+            },
             scope = scope
         )
     }
