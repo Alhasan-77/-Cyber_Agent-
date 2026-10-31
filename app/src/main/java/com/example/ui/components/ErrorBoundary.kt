@@ -326,7 +326,7 @@ object GlobalExceptionHandler : Thread.UncaughtExceptionHandler {
 
         val suggestion = when {
             detectedService == "Gemini" ->
-                "تحقق من اتصال الإنترنت، وتفعيل Firebase AI Logic (App Check)، أو إعداد GEMINI_API_KEY في لوحة Secrets."
+                "تحقق من اتصال الإنترنت، وتفعيل خدمة Firebase AI Logic (App Check) ومشروع Firebase المتصل."
             message.contains("default_web_client_id", ignoreCase = true) ||
                 message.contains("Credential", ignoreCase = true) ->
                 "تحقق من إعداد حساب Google في الجهاز/المحاكي ومن تطابق بصمة شهادة SHA-1/SHA-256 في google-services.json."

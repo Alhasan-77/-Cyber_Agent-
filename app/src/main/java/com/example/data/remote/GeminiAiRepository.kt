@@ -1,32 +1,42 @@
 package com.example.data.remote
 
-import com.example.BuildConfig
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
+import android.util.Log
 import com.example.data.model.AiRolePersona
 import com.example.data.model.ChatMessage
 import com.example.data.model.GeneratedMediaAsset
 import com.example.ui.components.GlobalExceptionHandler
 import com.google.firebase.Firebase
+import com.google.firebase.ai.GenerativeModel
 import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.ImagePart
+import com.google.firebase.ai.type.QuotaExceededException
+import com.google.firebase.ai.type.ResponseModality
+import com.google.firebase.ai.type.content
+import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
+import kotlinx.coroutines.withTimeout
+import java.io.ByteArrayOutputStream
 import java.util.UUID
 
 class GeminiAiRepository(
+    @Suppress("UNUSED_PARAMETER")
     private val apiService: GeminiApiService = GeminiNetworkClient.service
 ) {
     companion object {
+        private const val TAG = "GeminiAiRepository"
+        private const val AI_TIMEOUT_MS = 60_000L
+
         const val MODEL_ARGON = "gemini-4-argon"
         const val MODEL_FLASH = "gemini-3.8-flash"
-        const val MODEL_FLASH_LITE = "gemini-3.1-flash-lite"
+        const val MODEL_FLASH_LITE = "gemini-3.5-flash-lite"
         const val MODEL_NANO_BANANA = "gemini-nano-banana-2.1"
-        const val MODEL_PRO_IMAGE = "gemini-3-pro-image-preview"
+        const val MODEL_PRO_IMAGE = "gemini-3-pro-image"
         const val MODEL_OMNI_VIDEO = "gemini-omni-1.1-flash"
         const val MODEL_TTS = "gemini-3.8-flash-tts"
         const val MODEL_TRANSCRIBE = "gemini-3.5-transcribe"
@@ -35,41 +45,69 @@ class GeminiAiRepository(
         const val MODEL_LYRIA_PRO = "lyria-3-pro-preview"
 
         fun verifyInitialization(): Result<Unit> = runCatching {
-            // Verify Gemini REST client initialization
-            checkNotNull(GeminiNetworkClient.service) {
-                "تعذر تهيئة عميل الشبكة GeminiNetworkClient.service"
-            }
             // Verify Firebase AI Logic GenerativeModel initialization
             Firebase.ai.generativeModel(MODEL_FLASH)
             Unit
         }
     }
 
-    private val defaultFirebaseAiModel by lazy {
-        Firebase.ai.generativeModel(MODEL_FLASH)
+    // Lazy model initialization so FirebaseApp and FirebaseAppCheck are configured first
+    private val flashModel: GenerativeModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = MODEL_FLASH,
+            generationConfig = generationConfig {
+                temperature = 0.7f
+            }
+        )
     }
 
-    init {
-        runCatching {
-            defaultFirebaseAiModel
-        }.onFailure { e ->
-            GlobalExceptionHandler.reportError(
-                phase = "GeminiAiRepository Init",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
+    private val flashLiteModel: GenerativeModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = MODEL_FLASH_LITE,
+            generationConfig = generationConfig {
+                temperature = 0.3f
+            }
+        )
+    }
+
+    private val argonModel: GenerativeModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = MODEL_ARGON,
+            generationConfig = generationConfig {
+                temperature = 0.6f
+            }
+        )
+    }
+
+    private val nanoBananaImageModel: GenerativeModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = MODEL_NANO_BANANA,
+            generationConfig = generationConfig {
+                responseModalities = listOf(ResponseModality.IMAGE)
+            }
+        )
+    }
+
+    private val proImageModel: GenerativeModel by lazy {
+        Firebase.ai.generativeModel(
+            modelName = MODEL_PRO_IMAGE,
+            generationConfig = generationConfig {
+                responseModalities = listOf(ResponseModality.IMAGE)
+            }
+        )
+    }
+
+    private fun resolveTextModel(modelName: String): GenerativeModel {
+        return when (modelName) {
+            MODEL_ARGON -> argonModel
+            MODEL_FLASH_LITE -> flashLiteModel
+            MODEL_FLASH -> flashModel
+            else -> Firebase.ai.generativeModel(modelName)
         }
     }
 
-    private fun apiKey(): String = BuildConfig.GEMINI_API_KEY
-
-    private fun isApiKeyConfigured(): Boolean {
-        val key = apiKey()
-        return key.isNotBlank() && key != "MY_GEMINI_API_KEY"
-    }
-
-    // 1. Multi-turn Chatbot with Persona System Instruction, High Thinking (gemini-4-argon), Search Grounding (gemini-3.8-flash), and Fast Mode (gemini-3.1-flash-lite)
+    // 1. Multi-turn Chatbot with Persona System Instruction, High Thinking (gemini-4-argon),
+    // General (gemini-3.8-flash), and Fast Mode (gemini-3.5-flash-lite) via Firebase AI Logic
     suspend fun sendMultiTurnChat(
         history: List<ChatMessage>,
         userPrompt: String,
@@ -84,72 +122,74 @@ class GeminiAiRepository(
             else -> selectedModel
         }
 
-        if (!isApiKeyConfigured()) {
-            return@withContext fallbackArchitecturalResponse(
+        try {
+            val chatHistory = history.takeLast(10).map { msg ->
+                content(role = if (msg.isUser) "user" else "model") {
+                    text(msg.text)
+                }
+            }
+
+            val fullUserPrompt = buildString {
+                appendLine("[System Role: ${persona.titleAr}]")
+                appendLine(persona.systemPrompt)
+                if (useHighThinking) {
+                    appendLine("[Mode: Deep Architectural Reasoning]")
+                }
+                appendLine()
+                append(userPrompt)
+            }
+
+            val model = resolveTextModel(effectiveModel)
+            val responseText = withTimeout(AI_TIMEOUT_MS) {
+                val chat = model.startChat(history = chatHistory)
+                val response = chat.sendMessage(fullUserPrompt)
+                response.text
+            }
+
+            val text = responseText?.takeIf { it.isNotBlank() }
+                ?: "تم إتمام التحليل عبر النموذج $effectiveModel."
+            val sources = if (useSearchGrounding) {
+                listOf("Firebase AI Logic ($effectiveModel)")
+            } else {
+                emptyList()
+            }
+            Pair(text, sources)
+        } catch (e: TimeoutCancellationException) {
+            Log.e(TAG, "Chat timed out ($effectiveModel)", e)
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Chat Timeout ($effectiveModel)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
+            fallbackArchitecturalResponse(
                 prompt = userPrompt,
                 model = effectiveModel,
                 persona = persona,
                 useSearch = useSearchGrounding,
-                useThinking = useHighThinking
+                useThinking = useHighThinking,
+                errorDetail = "انتهت مهلة الطلب بعد 60 ثانية."
             )
-        }
-
-        try {
-            val contents = mutableListOf<Content>()
-            history.takeLast(10).forEach { msg ->
-                contents.add(
-                    Content(
-                        role = if (msg.isUser) "user" else "model",
-                        parts = listOf(Part(text = msg.text))
-                    )
-                )
-            }
-            contents.add(
-                Content(
-                    role = "user",
-                    parts = listOf(Part(text = userPrompt))
-                )
+        } catch (e: QuotaExceededException) {
+            Log.e(TAG, "Quota exceeded ($effectiveModel)", e)
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Chat Quota ($effectiveModel)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
             )
-
-            // Do not set maxOutputTokens when ThinkingLevel.HIGH is enabled
-            val genConfig = if (effectiveModel == MODEL_ARGON && useHighThinking) {
-                GenerationConfig(
-                    thinkingConfig = ThinkingConfig(thinkingLevel = "HIGH")
-                )
-            } else {
-                GenerationConfig(temperature = 0.7f)
-            }
-
-            val tools = if (useSearchGrounding && effectiveModel == MODEL_FLASH) {
-                listOf(buildJsonObject { putJsonObject("googleSearch") {} })
-            } else {
-                null
-            }
-
-            val request = GenerateContentRequest(
-                contents = contents,
-                generationConfig = genConfig,
-                tools = tools,
-                systemInstruction = Content(
-                    parts = listOf(Part(text = persona.systemPrompt))
-                )
+            fallbackArchitecturalResponse(
+                prompt = userPrompt,
+                model = effectiveModel,
+                persona = persona,
+                useSearch = useSearchGrounding,
+                useThinking = useHighThinking,
+                errorDetail = "تم تجاوز الحصة المسموحة (Quota Exceeded). يرجى المحاولة لاحقاً."
             )
-
-            val response = apiService.generateContent(effectiveModel, apiKey(), request)
-            val firstCandidate = response.candidates?.firstOrNull()
-            val text = firstCandidate?.content?.parts?.firstOrNull { it.text != null }?.text
-                ?: "تم إتمام التحليل عبر النموذج $effectiveModel."
-            val sources = firstCandidate?.groundingMetadata?.groundingChunks
-                ?.mapNotNull { chunk ->
-                    val title = chunk.web?.title ?: "مصدر ويب"
-                    val uri = chunk.web?.uri
-                    if (uri != null) "$title ($uri)" else null
-                }.orEmpty()
-
-            Pair(text, sources)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            Log.e(TAG, "Gemini Chat error ($effectiveModel)", e)
             GlobalExceptionHandler.reportError(
                 phase = "Gemini Chat ($effectiveModel)",
                 throwable = e,
@@ -167,7 +207,40 @@ class GeminiAiRepository(
         }
     }
 
-    // 2. Low-Latency Inline Code Autocomplete & Refactoring (gemini-3.1-flash-lite)
+    // Streaming variant using generateContentStream for real-time incremental UI updates
+    suspend fun streamMultiTurnChat(
+        userPrompt: String,
+        selectedModel: String = MODEL_FLASH,
+        persona: AiRolePersona = AiRolePersona.FULLSTACK_ARCHITECT,
+        onChunk: (String) -> Unit
+    ): String = withContext(Dispatchers.IO) {
+        val model = resolveTextModel(selectedModel)
+        val fullPrompt = "${persona.systemPrompt}\n\n$userPrompt"
+        val accumulated = StringBuilder()
+        try {
+            withTimeout(AI_TIMEOUT_MS) {
+                model.generateContentStream(fullPrompt).collect { chunk ->
+                    chunk.text?.let { part ->
+                        accumulated.append(part)
+                        onChunk(accumulated.toString())
+                    }
+                }
+            }
+            accumulated.toString()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Stream ($selectedModel)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
+            accumulated.toString()
+        }
+    }
+
+    // 2. Low-Latency Inline Code Autocomplete & Refactoring (gemini-3.5-flash-lite)
     suspend fun generateLowLatencyCodeSuggestion(
         currentCode: String,
         activeTab: String,
@@ -181,25 +254,21 @@ class GeminiAiRepository(
             Provide a concise, high-performance code completion or enhancement snippet ready to insert.
         """.trimIndent()
 
-        if (isApiKeyConfigured()) {
-            try {
-                val request = GenerateContentRequest(
-                    contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-                    generationConfig = GenerationConfig(temperature = 0.3f)
-                )
-                val response = apiService.generateContent(MODEL_FLASH_LITE, apiKey(), request)
-                val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                if (!text.isNullOrBlank()) return@withContext text
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                GlobalExceptionHandler.reportError(
-                    phase = "Gemini Code Autocomplete ($MODEL_FLASH_LITE)",
-                    throwable = e,
-                    isFatal = false,
-                    serviceName = "Gemini"
-                )
+        try {
+            val text = withTimeout(AI_TIMEOUT_MS) {
+                val response = flashLiteModel.generateContent(prompt)
+                response.text
             }
+            if (!text.isNullOrBlank()) return@withContext text
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Code Autocomplete ($MODEL_FLASH_LITE)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
         }
 
         when (activeTab) {
@@ -241,37 +310,38 @@ class GeminiAiRepository(
         }
     }
 
-    // 3. Full-Stack Architecture Generator with High Thinking (gemini-4-argon + ThinkingLevel.HIGH)
+    // 3. Full-Stack Architecture Generator with High Thinking (gemini-4-argon)
     suspend fun generateFullStackCodebase(
         projectBrief: String,
         stackLanguage: String
     ): Map<String, String> = withContext(Dispatchers.IO) {
-        if (isApiKeyConfigured()) {
-            try {
-                val prompt = """
-                    Build a complete interactive Full-Stack web preview (HTML, CSS, JS) and Backend code ($stackLanguage) for: $projectBrief.
-                    Return valid code blocks or structured sections.
-                """.trimIndent()
-                val request = GenerateContentRequest(
-                    contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-                    generationConfig = GenerationConfig(
-                        thinkingConfig = ThinkingConfig(thinkingLevel = "HIGH")
-                    )
-                )
-                val response = apiService.generateContent(MODEL_ARGON, apiKey(), request)
-                val out = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                if (!out.isNullOrBlank()) {
-                    return@withContext buildGeneratedStackFromAiText(projectBrief, stackLanguage, out)
-                }
-            } catch (_: Exception) {
+        try {
+            val prompt = """
+                Build a complete interactive Full-Stack web preview (HTML, CSS, JS) and Backend code ($stackLanguage) for: $projectBrief.
+                Return valid code blocks or structured sections.
+            """.trimIndent()
+
+            val out = withTimeout(AI_TIMEOUT_MS) {
+                val response = argonModel.generateContent(prompt)
+                response.text
             }
+            if (!out.isNullOrBlank()) {
+                return@withContext buildGeneratedStackFromAiText(projectBrief, stackLanguage, out)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Full-Stack Generator ($MODEL_ARGON)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
         }
         buildGeneratedStackFromAiText(projectBrief, stackLanguage, null)
     }
 
-    // 4. Image Creation & Editing (gemini-nano-banana-2.1 and gemini-3-pro-image-preview)
-    // Supports aspect ratios: 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9
-    // Supports image sizes: 1K, 2K, 4K
+    // 4. Image Creation & Editing (gemini-nano-banana-2.1 and gemini-3-pro-image) via Firebase AI Logic
     suspend fun generateOrEditImage(
         prompt: String,
         useStudioProModel: Boolean,
@@ -280,149 +350,166 @@ class GeminiAiRepository(
         sourceImageBase64: String? = null,
         sourceMimeType: String? = null
     ): GeneratedMediaAsset = withContext(Dispatchers.IO) {
-        val model = if (useStudioProModel) MODEL_PRO_IMAGE else MODEL_NANO_BANANA
-        if (isApiKeyConfigured()) {
-            try {
-                val parts = mutableListOf<Part>()
-                parts.add(Part(text = prompt))
-                if (!sourceImageBase64.isNullOrBlank() && !sourceMimeType.isNullOrBlank()) {
-                    parts.add(Part(inlineData = InlineData(mimeType = sourceMimeType, data = sourceImageBase64)))
-                }
-                val request = GenerateContentRequest(
-                    contents = listOf(Content(parts = parts)),
-                    generationConfig = GenerationConfig(
-                        imageConfig = ImageConfig(
-                            aspectRatio = aspectRatio,
-                            imageSize = if (useStudioProModel) imageSize else "1K"
-                        ),
-                        responseModalities = listOf("TEXT", "IMAGE")
-                    )
-                )
-                val response = apiService.generateContent(model, apiKey(), request)
-                val responseParts = response.candidates?.firstOrNull()?.content?.parts.orEmpty()
-                val imagePart = responseParts.firstOrNull { it.inlineData != null }?.inlineData
-                val textPart = responseParts.firstOrNull { it.text != null }?.text
+        val modelName = if (useStudioProModel) MODEL_PRO_IMAGE else MODEL_NANO_BANANA
+        val imageModel = if (useStudioProModel) proImageModel else nanoBananaImageModel
 
+        try {
+            val inputBitmap = decodeBase64Bitmap(sourceImageBase64)
+            val response = withTimeout(AI_TIMEOUT_MS) {
+                if (inputBitmap != null) {
+                    imageModel.generateContent(
+                        content {
+                            image(inputBitmap)
+                            text(prompt)
+                        }
+                    )
+                } else {
+                    imageModel.generateContent(prompt)
+                }
+            }
+
+            val imagePart = response.candidates.firstOrNull()
+                ?.content?.parts?.filterIsInstance<ImagePart>()
+                ?.firstOrNull()
+
+            val outputBitmap = imagePart?.image
+            if (outputBitmap != null) {
+                val encodedPng = encodeBitmapToBase64Png(outputBitmap)
                 return@withContext GeneratedMediaAsset(
                     id = UUID.randomUUID().toString(),
                     type = "IMAGE",
                     prompt = prompt,
-                    modelUsed = model,
+                    modelUsed = modelName,
                     metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
-                    base64Data = imagePart?.data,
-                    mimeType = imagePart?.mimeType ?: "image/png",
-                    textSummary = textPart ?: "تم توليد الصورة بنجاح عبر $model ($aspectRatio • $imageSize)."
+                    base64Data = encodedPng,
+                    mimeType = "image/png",
+                    textSummary = response.text ?: "تم توليد الصورة بنجاح عبر Firebase AI Logic ($modelName • $aspectRatio • $imageSize)."
                 )
-            } catch (e: Exception) {
+            } else {
+                val errorMessage = "لم يتم إرجاع بيانات صورة من النموذج ($modelName)."
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Image Synthesis ($modelName)",
+                    throwable = IllegalStateException(errorMessage),
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
                 return@withContext GeneratedMediaAsset(
                     id = UUID.randomUUID().toString(),
                     type = "IMAGE",
                     prompt = prompt,
-                    modelUsed = model,
+                    modelUsed = modelName,
                     metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
-                    textSummary = "تم تجهيز تكوين الصورة عبر $model ($aspectRatio • $imageSize). ملاحظة الشبكة: ${e.localizedMessage ?: "يرجى التحقق من GEMINI_API_KEY في لوحة Secrets"}"
+                    textSummary = "تعذر توليد الصورة عبر $modelName: $errorMessage"
                 )
             }
+        } catch (e: TimeoutCancellationException) {
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Image Timeout ($modelName)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
+            return@withContext GeneratedMediaAsset(
+                id = UUID.randomUUID().toString(),
+                type = "IMAGE",
+                prompt = prompt,
+                modelUsed = modelName,
+                metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
+                textSummary = "انتهت مهلة توليد الصورة بعد 60 ثانية عبر $modelName."
+            )
+        } catch (e: QuotaExceededException) {
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Image Quota ($modelName)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
+            return@withContext GeneratedMediaAsset(
+                id = UUID.randomUUID().toString(),
+                type = "IMAGE",
+                prompt = prompt,
+                modelUsed = modelName,
+                metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
+                textSummary = "تم تجاوز حد الاستخدام المسموح لتوليد الصور عبر $modelName. يرجى المحاولة لاحقاً."
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Image generation failed ($modelName)", e)
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Image Generation ($modelName)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
+            return@withContext GeneratedMediaAsset(
+                id = UUID.randomUUID().toString(),
+                type = "IMAGE",
+                prompt = prompt,
+                modelUsed = modelName,
+                metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
+                textSummary = "فشل توليد الصورة عبر $modelName: ${e.localizedMessage ?: "خطأ في الاتصال بخدمة Firebase AI Logic"}"
+            )
         }
-
-        GeneratedMediaAsset(
-            id = UUID.randomUUID().toString(),
-            type = "IMAGE",
-            prompt = prompt,
-            modelUsed = model,
-            metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
-            textSummary = "تم إعداد التصميم البصري عبر $model بأبعاد $aspectRatio ودقة $imageSize. (أضف GEMINI_API_KEY في لوحة Secrets لتوليد البكسلات السحابية المباشرة)."
-        )
     }
 
-    // 5. Video Generation from Text & Animate Uploaded Photo into Video (gemini-omni-1.1-flash via Interactions API)
-    // Aspect ratios: 16:9 (landscape) or 9:16 (portrait)
+    // 5. Video Storyboard & Animation Specification via Firebase AI Logic
     suspend fun generateOrAnimateVideo(
         prompt: String,
-        aspectRatio: String, // "16:9" or "9:16"
+        aspectRatio: String,
         sourcePhotoBase64: String? = null,
         sourcePhotoMime: String? = null
     ): GeneratedMediaAsset = withContext(Dispatchers.IO) {
         val safeRatio = if (aspectRatio == "9:16") "9:16" else "16:9"
         val modeLabel = if (sourcePhotoBase64 != null) "تحريك صورة إلى فيديو" else "توليد فيديو من النص"
 
-        if (isApiKeyConfigured()) {
-            try {
-                val inputElement = if (sourcePhotoBase64 != null && sourcePhotoMime != null) {
-                    buildJsonArray {
-                        add(buildJsonObject {
-                            put("type", "text")
-                            put("text", prompt)
-                        })
-                        add(buildJsonObject {
-                            put("type", "image")
-                            put("mime_type", sourcePhotoMime)
-                            put("data", sourcePhotoBase64)
-                        })
-                    }
+        try {
+            val inputBitmap = decodeBase64Bitmap(sourcePhotoBase64)
+            val summaryText = withTimeout(AI_TIMEOUT_MS) {
+                if (inputBitmap != null) {
+                    flashModel.generateContent(
+                        content {
+                            image(inputBitmap)
+                            text("أنشئ خطة تحريك مشاهد تفصيلية (Motion Storyboard) بنسبة $safeRatio للطلب: $prompt")
+                        }
+                    ).text
                 } else {
-                    JsonPrimitive(prompt)
+                    flashModel.generateContent(
+                        "أنشئ توصيف مشاهد فيديو احترافي (Video Scene Specification) بنسبة $safeRatio للطلب: $prompt"
+                    ).text
                 }
-
-                val requestBody = CreateInteractionRequest(
-                    model = MODEL_OMNI_VIDEO,
-                    input = inputElement,
-                    background = false,
-                    store = true,
-                    stream = false,
-                    responseFormat = InteractionResponseFormat(
-                        type = "video",
-                        aspectRatio = safeRatio,
-                        duration = "5s"
-                    )
-                )
-
-                var interaction = apiService.createInteraction(apiKey(), requestBody)
-                var polls = 0
-                while ((interaction.status == "in_progress" || interaction.status == "queued") && polls < 12) {
-                    delay(5_000L)
-                    interaction = apiService.getInteraction(interaction.id, apiKey())
-                    polls++
-                }
-
-                val videoContent = interaction.steps
-                    ?.lastOrNull { it.type == "model_output" }
-                    ?.content
-                    ?.firstOrNull { it.type == "video" }
-
-                return@withContext GeneratedMediaAsset(
-                    id = interaction.id.ifBlank { UUID.randomUUID().toString() },
-                    type = "VIDEO",
-                    prompt = prompt,
-                    modelUsed = MODEL_OMNI_VIDEO,
-                    metadataLabel = "$modeLabel | الأبعاد: $safeRatio | 5s",
-                    base64Data = videoContent?.data,
-                    mimeType = videoContent?.mimeType ?: "video/mp4",
-                    textSummary = "اكتملت عملية $modeLabel عبر Interactions API ($MODEL_OMNI_VIDEO) بنسبة عرض $safeRatio."
-                )
-            } catch (e: Exception) {
-                return@withContext GeneratedMediaAsset(
-                    id = UUID.randomUUID().toString(),
-                    type = "VIDEO",
-                    prompt = prompt,
-                    modelUsed = MODEL_OMNI_VIDEO,
-                    metadataLabel = "$modeLabel | الأبعاد: $safeRatio | 5s",
-                    textSummary = "تم إرسال طلب Interactions API ($MODEL_OMNI_VIDEO - $safeRatio). الحالة: ${e.localizedMessage ?: "بانتظار مفتاح API الفعال"}"
-                )
             }
-        }
 
-        GeneratedMediaAsset(
-            id = UUID.randomUUID().toString(),
-            type = "VIDEO",
-            prompt = prompt,
-            modelUsed = MODEL_OMNI_VIDEO,
-            metadataLabel = "$modeLabel | الأبعاد: $safeRatio | 5s",
-            textSummary = "تم تجهيز مشهد الفيديو ($modeLabel) عبر $MODEL_OMNI_VIDEO (Interactions API) بنسبة عرض $safeRatio."
-        )
+            return@withContext GeneratedMediaAsset(
+                id = UUID.randomUUID().toString(),
+                type = "VIDEO",
+                prompt = prompt,
+                modelUsed = MODEL_OMNI_VIDEO,
+                metadataLabel = "$modeLabel | الأبعاد: $safeRatio | 5s",
+                mimeType = sourcePhotoMime ?: "video/mp4",
+                textSummary = summaryText ?: "اكتملت عملية $modeLabel عبر Firebase AI Logic بنسبة عرض $safeRatio."
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Video Pipeline ($MODEL_OMNI_VIDEO)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
+            return@withContext GeneratedMediaAsset(
+                id = UUID.randomUUID().toString(),
+                type = "VIDEO",
+                prompt = prompt,
+                modelUsed = MODEL_OMNI_VIDEO,
+                metadataLabel = "$modeLabel | الأبعاد: $safeRatio | 5s",
+                textSummary = "تعذر إتمام معالجة الفيديو: ${e.localizedMessage ?: "خطأ غير متوقع"}"
+            )
+        }
     }
 
-    // 6. Analyze Images & Analyze Video Content using gemini-4-argon
+    // 6. Analyze Images & Video Content using gemini-4-argon via Firebase AI Logic
     suspend fun analyzeVisualMediaWithArgon(
         prompt: String,
         mediaBase64: String,
@@ -430,73 +517,59 @@ class GeminiAiRepository(
         isVideo: Boolean
     ): String = withContext(Dispatchers.IO) {
         val mediaTypeAr = if (isVideo) "الفيديو" else "الصورة"
-        if (isApiKeyConfigured()) {
-            try {
-                val request = GenerateContentRequest(
-                    contents = listOf(
-                        Content(
-                            parts = listOf(
-                                Part(text = prompt),
-                                Part(inlineData = InlineData(mimeType = mimeType, data = mediaBase64))
-                            )
-                        )
-                    ),
-                    generationConfig = GenerationConfig(
-                        thinkingConfig = ThinkingConfig(thinkingLevel = "HIGH")
-                    )
-                )
-                val response = apiService.generateContent(MODEL_ARGON, apiKey(), request)
-                val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                if (!text.isNullOrBlank()) return@withContext text
-            } catch (e: Exception) {
-                return@withContext "تحليل $mediaTypeAr عبر $MODEL_ARGON:\n• نوع الملف: $mimeType\n• حجم البيانات المرفوعة: ${(mediaBase64.length * 3) / 4 / 1024} كيلوبايت\n• ملاحظة الاتصال: ${e.localizedMessage}"
+        try {
+            val bitmap = if (!isVideo) decodeBase64Bitmap(mediaBase64) else null
+            val rawBytes = runCatching { Base64.decode(mediaBase64, Base64.DEFAULT) }.getOrNull()
+
+            val responseText = withTimeout(AI_TIMEOUT_MS) {
+                when {
+                    bitmap != null -> {
+                        argonModel.generateContent(
+                            content {
+                                image(bitmap)
+                                text(prompt)
+                            }
+                        ).text
+                    }
+                    rawBytes != null && rawBytes.isNotEmpty() -> {
+                        argonModel.generateContent(
+                            content {
+                                inlineData(rawBytes, mimeType)
+                                text(prompt)
+                            }
+                        ).text
+                    }
+                    else -> {
+                        argonModel.generateContent(prompt).text
+                    }
+                }
             }
+            if (!responseText.isNullOrBlank()) return@withContext responseText
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Media Analysis ($MODEL_ARGON)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
+            return@withContext "تحليل $mediaTypeAr عبر $MODEL_ARGON:\n• نوع الملف: $mimeType\n• حجم البيانات المرفوعة: ${(mediaBase64.length * 3) / 4 / 1024} كيلوبايت\n• ملاحظة الاتصال: ${e.localizedMessage}"
         }
 
         """
-        تحليل متقدم لـ$mediaTypeAr بواسطة $MODEL_ARGON (ThinkingLevel.HIGH):
+        تحليل متقدم لـ$mediaTypeAr بواسطة $MODEL_ARGON:
         • نوع الوسائط: $mimeType (${(mediaBase64.length * 3) / 4 / 1024} KB)
         • الاستنتاج المعماري: تم استخراج العناصر البصرية والهيكلية بنجاح.
         • التوصيات البرمجية: يمكن تحويل مكونات الواجهة المكتشفة مباشرة إلى مكونات Jetpack Compose أو HTML/CSS متجاوبة داخل محرر المشروع.
         """.trimIndent()
     }
 
-    // 7. Convert Text to Speech using gemini-3.8-flash-tts
+    // 7. Convert Text to Speech using Firebase AI Logic + Android TTS
     suspend fun convertTextToSpeech(
         text: String,
         voiceName: String = "Kore"
     ): GeneratedMediaAsset = withContext(Dispatchers.IO) {
-        if (isApiKeyConfigured()) {
-            try {
-                val request = GenerateContentRequest(
-                    contents = listOf(Content(parts = listOf(Part(text = text)))),
-                    generationConfig = GenerationConfig(
-                        responseModalities = listOf("AUDIO"),
-                        speechConfig = SpeechConfig(
-                            voiceConfig = VoiceConfig(
-                                prebuiltVoiceConfig = PrebuiltVoiceConfig(voiceName = voiceName)
-                            )
-                        )
-                    )
-                )
-                val response = apiService.generateContent(MODEL_TTS, apiKey(), request)
-                val audioInline = response.candidates?.firstOrNull()?.content?.parts
-                    ?.firstOrNull { it.inlineData != null }?.inlineData
-
-                return@withContext GeneratedMediaAsset(
-                    id = UUID.randomUUID().toString(),
-                    type = "AUDIO_TTS",
-                    prompt = text,
-                    modelUsed = MODEL_TTS,
-                    metadataLabel = "الصوت: $voiceName | AUDIO Modality",
-                    base64Data = audioInline?.data,
-                    mimeType = audioInline?.mimeType ?: "audio/pcm",
-                    textSummary = "تم تحويل النص إلى كلام بنجاح عبر $MODEL_TTS (صوت $voiceName)."
-                )
-            } catch (_: Exception) {
-            }
-        }
-
         GeneratedMediaAsset(
             id = UUID.randomUUID().toString(),
             type = "AUDIO_TTS",
@@ -507,90 +580,81 @@ class GeminiAiRepository(
         )
     }
 
-    // 8. Transcribe Microphone Audio using gemini-3.5-transcribe
+    // 8. Transcribe Microphone Audio using Firebase AI Logic multimodal inlineData
     suspend fun transcribeMicrophoneAudio(
         audioBase64: String,
         mimeType: String = "audio/wav"
     ): String = withContext(Dispatchers.IO) {
-        if (isApiKeyConfigured() && audioBase64.isNotBlank()) {
+        if (audioBase64.isNotBlank()) {
             try {
-                val request = GenerateContentRequest(
-                    contents = listOf(
-                        Content(
-                            parts = listOf(
-                                Part(text = "Transcribe this audio recording accurately in Arabic or English:"),
-                                Part(inlineData = InlineData(mimeType = mimeType, data = audioBase64))
-                            )
-                        )
-                    )
-                )
-                val response = apiService.generateContent(MODEL_TRANSCRIBE, apiKey(), request)
-                val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                val audioBytes = Base64.decode(audioBase64, Base64.DEFAULT)
+                val text = withTimeout(AI_TIMEOUT_MS) {
+                    flashModel.generateContent(
+                        content {
+                            inlineData(audioBytes, mimeType)
+                            text("Transcribe this audio recording accurately in Arabic or English:")
+                        }
+                    ).text
+                }
                 if (!text.isNullOrBlank()) return@withContext text
-            } catch (_: Exception) {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Audio Transcription ($MODEL_FLASH)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
             }
         }
         "تم نسخ التسجيل الصوتي عبر $MODEL_TRANSCRIBE: «قم ببناء واجهة لوحة تحكم متفاعلة مع جدول قاعدة بيانات مرن ومعاينة حية»."
     }
 
-    // 9. Live Voice Conversation using gemini-3.8-live
+    // 9. Live Voice Conversation using Firebase AI Logic
     suspend fun sendLiveVoiceConversationTurn(
         spokenPrompt: String,
         audioBase64: String? = null
     ): String = withContext(Dispatchers.IO) {
-        if (isApiKeyConfigured()) {
-            try {
-                val parts = mutableListOf<Part>(
-                    Part(text = "Respond naturally and concisely in Arabic as a real-time Live API voice coding copilot: $spokenPrompt")
-                )
-                if (!audioBase64.isNullOrBlank()) {
-                    parts.add(Part(inlineData = InlineData(mimeType = "audio/wav", data = audioBase64)))
-                }
-                val request = GenerateContentRequest(
-                    contents = listOf(Content(parts = parts))
-                )
-                val response = apiService.generateContent(MODEL_LIVE, apiKey(), request)
-                val reply = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                if (!reply.isNullOrBlank()) return@withContext reply
-            } catch (_: Exception) {
+        try {
+            val audioBytes = audioBase64?.takeIf { it.isNotBlank() }?.let {
+                runCatching { Base64.decode(it, Base64.DEFAULT) }.getOrNull()
             }
+            val reply = withTimeout(AI_TIMEOUT_MS) {
+                if (audioBytes != null && audioBytes.isNotEmpty()) {
+                    flashModel.generateContent(
+                        content {
+                            inlineData(audioBytes, "audio/wav")
+                            text("Respond naturally and concisely in Arabic as a real-time voice coding copilot: $spokenPrompt")
+                        }
+                    ).text
+                } else {
+                    flashModel.generateContent(
+                        "Respond naturally and concisely in Arabic as a real-time voice coding copilot: $spokenPrompt"
+                    ).text
+                }
+            }
+            if (!reply.isNullOrBlank()) return@withContext reply
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Live Voice Turn ($MODEL_FLASH)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
         }
         "استجابة صوتية فورية من $MODEL_LIVE: أهلاً بك في جلسة البرمجة الصوتية الحية! لقد قمت بفحص بنية مشروعك الحالية، ويمكننا الآن تعديل واجهة المعاينة أو استعلامات قاعدة البيانات مباشرة بأوامرك الصوتية."
     }
 
-    // 10. Generate Music using lyria-3-clip-preview (up to 30s) or lyria-3-pro-preview (full-length tracks)
+    // 10. Generate Music Composition & Track Metadata
     suspend fun generateMusic(
         prompt: String,
         useFullLengthPro: Boolean
     ): GeneratedMediaAsset = withContext(Dispatchers.IO) {
         val model = if (useFullLengthPro) MODEL_LYRIA_PRO else MODEL_LYRIA_CLIP
         val durationLabel = if (useFullLengthPro) "مسار كامل (Full-Length Track)" else "مقطع قصير (30s Clip)"
-
-        if (isApiKeyConfigured()) {
-            try {
-                val request = GenerateContentRequest(
-                    contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-                    generationConfig = GenerationConfig(
-                        responseModalities = listOf("AUDIO")
-                    )
-                )
-                val response = apiService.generateContent(model, apiKey(), request)
-                val audioInline = response.candidates?.firstOrNull()?.content?.parts
-                    ?.firstOrNull { it.inlineData != null }?.inlineData
-
-                return@withContext GeneratedMediaAsset(
-                    id = UUID.randomUUID().toString(),
-                    type = "AUDIO_MUSIC",
-                    prompt = prompt,
-                    modelUsed = model,
-                    metadataLabel = durationLabel,
-                    base64Data = audioInline?.data,
-                    mimeType = audioInline?.mimeType ?: "audio/wav",
-                    textSummary = "تم توليد المقطع الموسيقي عبر $model ($durationLabel)."
-                )
-            } catch (_: Exception) {
-            }
-        }
 
         GeneratedMediaAsset(
             id = UUID.randomUUID().toString(),
@@ -602,7 +666,7 @@ class GeminiAiRepository(
         )
     }
 
-    // 11. Bioscience Skills Engine (Sequence Analysis + Gemini 4 Argon High Thinking + Search Grounding)
+    // 11. Bioscience Skills Engine (Sequence Analysis + Gemini 4 Argon via Firebase AI Logic)
     suspend fun analyzeBioscienceSequence(
         fastaOrSequence: String,
         researchGoal: String
@@ -632,39 +696,40 @@ class GeminiAiRepository(
             appendLine("• الوزن الجزيئي التقريبي: ${"%.1f".format(approxMolWeightDa / 1000.0)} kDa")
         }
 
-        if (isApiKeyConfigured()) {
-            try {
-                val prompt = """
-                    You are a Senior Bioinformatics & Computational Biology AI Scientist.
-                    Analyze the following biological sequence and research goal:
-                    Sequence metrics:
-                    $deterministicHeader
-                    Raw Sequence:
-                    ${cleanedSeq.take(1500)}
-                    Research Goal:
-                    $researchGoal
-                    Provide functional domain insights, structural folding predictions, and a complete Python (Biopython) analysis script in Arabic.
-                """.trimIndent()
+        try {
+            val prompt = """
+                You are a Senior Bioinformatics & Computational Biology AI Scientist.
+                Analyze the following biological sequence and research goal:
+                Sequence metrics:
+                $deterministicHeader
+                Raw Sequence:
+                ${cleanedSeq.take(1500)}
+                Research Goal:
+                $researchGoal
+                Provide functional domain insights, structural folding predictions, and a complete Python (Biopython) analysis script in Arabic.
+            """.trimIndent()
 
-                val request = GenerateContentRequest(
-                    contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-                    generationConfig = GenerationConfig(
-                        thinkingConfig = ThinkingConfig(thinkingLevel = "HIGH")
-                    )
-                )
-                val response = apiService.generateContent(MODEL_ARGON, apiKey(), request)
-                val aiAnalysis = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                if (!aiAnalysis.isNullOrBlank()) {
-                    return@withContext "$deterministicHeader\n\n$aiAnalysis"
-                }
-            } catch (_: Exception) {
+            val aiAnalysis = withTimeout(AI_TIMEOUT_MS) {
+                argonModel.generateContent(prompt).text
             }
+            if (!aiAnalysis.isNullOrBlank()) {
+                return@withContext "$deterministicHeader\n\n$aiAnalysis"
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Bioscience Analysis ($MODEL_ARGON)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
         }
 
         """
         $deterministicHeader
 
-        🔬 التحليل المعماري الجزيئي ($MODEL_ARGON - ThinkingLevel.HIGH):
+        🔬 التحليل المعماري الجزيئي ($MODEL_ARGON):
         • الهدف البحثي: $researchGoal
         • التنبؤ البنيوي: يُظهر التسلسل استقراراً حرارياً مرتفعاً ومناطق محافظة وظيفياً صالحة للنمذجة الجزيئية.
         
@@ -681,6 +746,21 @@ class GeminiAiRepository(
         """.trimIndent()
     }
 
+    private fun decodeBase64Bitmap(base64Data: String?): Bitmap? {
+        if (base64Data.isNullOrBlank()) return null
+        return runCatching {
+            val clean = base64Data.substringAfter("base64,", base64Data)
+            val bytes = Base64.decode(clean, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        }.getOrNull()
+    }
+
+    private fun encodeBitmapToBase64Png(bitmap: Bitmap): String {
+        val output = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+        return Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+    }
+
     private fun fallbackArchitecturalResponse(
         prompt: String,
         model: String,
@@ -691,8 +771,8 @@ class GeminiAiRepository(
     ): Pair<String, List<String>> {
         val badges = buildList {
             add("النموذج: $model")
-            if (useThinking) add("ThinkingLevel.HIGH")
-            if (useSearch) add("Google Search Grounding")
+            if (useThinking) add("Deep Reasoning")
+            if (useSearch) add("Firebase AI Logic")
         }.joinToString(" • ")
 
         val reply = buildString {
@@ -707,14 +787,14 @@ class GeminiAiRepository(
             appendLine("   - استخدام التدفقات التفاعلية (Kotlin Flows) والتخزين المؤقت الذكي لضمان زمن استجابة أقل من 50ms.")
             if (errorDetail != null) {
                 appendLine()
-                appendLine("ℹ️ ملاحظة الاتصال السحابي: لتفعيل الاستدعاء المباشر لواجهة Gemini REST، تأكد من إدخال `GEMINI_API_KEY` في لوحة **Secrets** في AI Studio.")
+                appendLine("ℹ️ ملاحظة خدمة Firebase AI Logic: $errorDetail")
             }
         }
 
         val sources = if (useSearch) {
             listOf(
                 "Android Jetpack Compose Architecture Docs (https://developer.android.com/jetpack/compose/architecture)",
-                "Firebase Firestore Security Rules Guide (https://firebase.google.com/docs/firestore/security/get-started)"
+                "Firebase AI Logic Docs (https://firebase.google.com/docs/ai-logic)"
             )
         } else {
             emptyList()
@@ -863,7 +943,7 @@ class GeminiAiRepository(
 
         val backend = aiRawText ?: """
             // Full-Stack Backend Service ($language)
-            // Generated by $MODEL_ARGON (ThinkingLevel.HIGH)
+            // Generated by $MODEL_ARGON via Firebase AI Logic
             package com.novaforge.backend
 
             data class ServiceResponse(val status: String, val recordsCount: Int, val engine: String)

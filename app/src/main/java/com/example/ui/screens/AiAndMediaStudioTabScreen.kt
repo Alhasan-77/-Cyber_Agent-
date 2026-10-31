@@ -233,7 +233,7 @@ private fun MultiTurnChatbotSection(
                     listOf(
                         GeminiAiRepository.MODEL_ARGON to "Complex (gemini-4-argon)",
                         GeminiAiRepository.MODEL_FLASH to "General (gemini-3.8-flash)",
-                        GeminiAiRepository.MODEL_FLASH_LITE to "Fast (gemini-3.1-flash-lite)"
+                        GeminiAiRepository.MODEL_FLASH_LITE to "Fast (gemini-3.5-flash-lite)"
                     ).forEach { (modelId, label) ->
                         FilterChip(
                             selected = selectedChatModel == modelId,
@@ -452,7 +452,7 @@ private fun VisualMediaStudioSection(
                         FilterChip(
                             selected = useStudioProImage,
                             onClick = { useStudioProImage = true },
-                            label = { Text("gemini-3-pro-image-preview (جودة استوديو)") },
+                            label = { Text("gemini-3-pro-image (جودة استوديو)") },
                             modifier = Modifier.testTag("model_pro_image")
                         )
                     }

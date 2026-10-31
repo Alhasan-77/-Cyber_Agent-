@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">NovaForge</string>
+    <string name="studio_title">NovaForge AI Studio</string>
     <string name="studio_subtitle">منصة التطوير السحابية المتكاملة بالذكاء الاصطناعي Full-Stack</string>
     <string name="sign_in_google">تسجيل الدخول عبر Google</string>
     <string name="sign_out">تسجيل الخروج</string>
@@ -8,5 +9,9 @@
     <string name="tab_db_vcs">البيانات والإصدارات</string>
     <string name="tab_ai_media">الذكاء والوسائط</string>
     <string name="tab_bioscience">العلوم الحيوية</string>
+    <string name="action_skills">Skills</string>
+    <string name="skills_action_button_format">🧠 Skills • %1$d مهارة</string>
+    <string name="skills_action_content_description">Skills • ذاكرة المهارات والأدوات</string>
+    <string name="dismiss_banner">إغلاق</string>
     <string name="security_warning_notice">تحذير أمني: تم تضمين مفاتيح API في ملف APK الخاص بهذا النموذج الأولي. يرجى عدم مشاركة ملف APK علناً.</string>
 </resources>
