@@ -15,6 +15,9 @@ import com.example.data.model.UiState
 import com.example.data.model.VersionSnapshot
 import com.example.data.remote.GeminiAiRepository
 import com.example.data.repository.StudioRepository
+import com.example.data.skills.ExtractedSkillItem
+import com.example.data.skills.SkillsMemoryCatalog
+import com.example.data.skills.SkillsMemoryEngine
 import com.google.firebase.Timestamp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,6 +69,11 @@ class StudioViewModel(
 
     val collectionsState: StateFlow<UiState<List<DbCollectionSchema>>> = repository.observeCollections()
         .map<List<DbCollectionSchema>, UiState<List<DbCollectionSchema>>> { list ->
+            val skillsDoc = list.find { it.collectionName == SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME }
+            if (skillsDoc != null) {
+                _isSkillsSyncedToFirestore.value = true
+                restorePinnedSkillsFromFirestoreDoc(skillsDoc)
+            }
             UiState.Success(list.sortedByDescending { it.updatedAt ?: it.createdAt ?: Timestamp(0, 0) })
         }
         .catch { e ->
@@ -171,6 +179,163 @@ class StudioViewModel(
     // Bioscience Lab state
     private val _bioscienceOutput = MutableStateFlow<String?>(null)
     val bioscienceOutput: StateFlow<String?> = _bioscienceOutput.asStateFlow()
+
+    // Skills & Tools Memory Hub state
+    private val _skillsCatalog = MutableStateFlow(
+        SkillsMemoryCatalog(
+            archiveName = "skills-main_b7d3bd06.zip",
+            totalArchiveFiles = 184,
+            totalSkills = 25,
+            mcpServerUrl = "https://mcp.expo.dev/mcp",
+            skills = emptyList(),
+            globalToolsAndConfigs = emptyList(),
+            allFilePaths = emptyList()
+        )
+    )
+    val skillsCatalog: StateFlow<SkillsMemoryCatalog> = _skillsCatalog.asStateFlow()
+
+    private val _pinnedSkillIds = MutableStateFlow(
+        setOf("expo-overview", "expo-ui", "expo-design-system", "expo-router", "expo-module", "eas-workflows")
+    )
+    val pinnedSkillIds: StateFlow<Set<String>> = _pinnedSkillIds.asStateFlow()
+
+    private val _autoInjectSkillsEnabled = MutableStateFlow(true)
+    val autoInjectSkillsEnabled: StateFlow<Boolean> = _autoInjectSkillsEnabled.asStateFlow()
+
+    private val _lastAppliedSkillIds = MutableStateFlow<List<String>>(
+        listOf("expo-overview", "expo-ui", "expo-design-system")
+    )
+    val lastAppliedSkillIds: StateFlow<List<String>> = _lastAppliedSkillIds.asStateFlow()
+
+    private val _isSkillsSyncedToFirestore = MutableStateFlow(false)
+    val isSkillsSyncedToFirestore: StateFlow<Boolean> = _isSkillsSyncedToFirestore.asStateFlow()
+
+    private var hasInitializedSkillsCatalog = false
+
+    fun initializeSkillsMemory(catalog: SkillsMemoryCatalog) {
+        if (hasInitializedSkillsCatalog && _skillsCatalog.value.skills.isNotEmpty()) return
+        hasInitializedSkillsCatalog = true
+        _skillsCatalog.value = catalog
+        val defaultPinned = catalog.skills.filter { it.isPinnedByDefault }.map { it.id }.toSet()
+        if (defaultPinned.isNotEmpty() && !_isSkillsSyncedToFirestore.value) {
+            _pinnedSkillIds.value = defaultPinned
+        }
+        appendConsoleLog("[Skills Memory Hub] Loaded ${catalog.totalSkills} skills & ${catalog.totalArchiveFiles} files into active studio memory.")
+        // Auto-sync to Firestore if not yet persisted
+        viewModelScope.launch {
+            delay(800L)
+            if (!_isSkillsSyncedToFirestore.value) {
+                syncSkillsMemoryToFirestore(silent = true)
+            }
+        }
+    }
+
+    fun toggleAutoInjectSkills(enabled: Boolean) {
+        _autoInjectSkillsEnabled.value = enabled
+        _statusBanner.value = if (enabled) {
+            "⚡ تم تفعيل الاستدعاء التلقائي للمهارات الـ 25 في المحرر والمساعد الذكي"
+        } else {
+            "تم إيقاف الحقن التلقائي للمهارات"
+        }
+    }
+
+    fun togglePinSkillInMemory(skillId: String) {
+        val current = _pinnedSkillIds.value.toMutableSet()
+        val added = if (skillId in current) {
+            current.remove(skillId)
+            false
+        } else {
+            current.add(skillId)
+            true
+        }
+        _pinnedSkillIds.value = current
+        _statusBanner.value = if (added) {
+            "📌 تم تثبيت المهارة «$skillId» في الذاكرة الدائمة"
+        } else {
+            "تم إلغاء تثبيت المهارة «$skillId» من الذاكرة الدائمة"
+        }
+        syncSkillsMemoryToFirestore(silent = true)
+    }
+
+    fun syncSkillsMemoryToFirestore(silent: Boolean = false) {
+        viewModelScope.launch {
+            val catalog = _skillsCatalog.value
+            if (catalog.skills.isEmpty()) return@launch
+            val pinned = _pinnedSkillIds.value
+            val projectId = _selectedProjectId.value ?: "proj_skills_memory"
+            val fieldsSpec = "skillId:string, titleAr:string, category:string, isPinned:boolean, referencesCount:int, scriptsCount:int | Pinned=${pinned.joinToString(",")}"
+            val recordsJson = SkillsMemoryEngine.buildFirestoreRegistryJson(pinned, catalog)
+            val existingList = (collectionsState.value as? UiState.Success)?.data.orEmpty()
+            val existingDoc = existingList.find { it.collectionName == SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME }
+
+            val result = if (existingDoc != null && existingDoc.createdAt != null) {
+                repository.updateCollectionSchema(
+                    existingDoc.copy(
+                        fieldsSpec = fieldsSpec.take(5000),
+                        sampleRecordsJson = recordsJson.take(20000),
+                        indexConfig = "MCP:${catalog.mcpServerUrl} | TotalSkills:${catalog.totalSkills} | Files:${catalog.totalArchiveFiles}"
+                    )
+                )
+            } else {
+                repository.createCollectionSchema(
+                    projectId = projectId,
+                    collectionName = SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME,
+                    fieldsSpec = fieldsSpec.take(5000),
+                    sampleRecordsJson = recordsJson.take(20000),
+                    indexConfig = "MCP:${catalog.mcpServerUrl} | TotalSkills:${catalog.totalSkills} | Files:${catalog.totalArchiveFiles}"
+                ).map { }
+            }
+
+            result.onSuccess {
+                _isSkillsSyncedToFirestore.value = true
+                if (!silent) {
+                    _statusBanner.value = "☁️ تم حفظ ومزامنة كافة المهارات الـ 25 والأدوات في قاعدة بيانات Cloud Firestore بنجاح!"
+                }
+                appendConsoleLog("[Firestore Memory Sync] Synced 25 skills & ${pinned.size} pinned items to '${SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME}'.")
+            }
+        }
+    }
+
+    private fun restorePinnedSkillsFromFirestoreDoc(doc: DbCollectionSchema) {
+        val marker = "Pinned="
+        val idx = doc.fieldsSpec.indexOf(marker)
+        if (idx >= 0) {
+            val csv = doc.fieldsSpec.substring(idx + marker.length).trim()
+            val parsed = csv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+            if (parsed.isNotEmpty()) {
+                _pinnedSkillIds.value = parsed
+            }
+        }
+    }
+
+    fun injectSkillCodeIntoEditor(code: String, targetTab: String, label: String) {
+        val cleanTab = if (targetTab in listOf("HTML", "CSS", "JS", "Backend")) targetTab else "Backend"
+        when (cleanTab) {
+            "HTML" -> _htmlBuffer.value = _htmlBuffer.value + "\n\n" + code
+            "CSS" -> _cssBuffer.value = _cssBuffer.value + "\n\n" + code
+            "JS" -> _jsBuffer.value = _jsBuffer.value + "\n\n" + code
+            else -> _backendBuffer.value = _backendBuffer.value + "\n\n" + code
+        }
+        _activeCodeTab.value = cleanTab
+        appendConsoleLog("[Skills Memory Hub] Injected '$label' into $cleanTab editor buffer.")
+        _statusBanner.value = "💻 تم حقن «$label» في تبويب $cleanTab بمحرر الكود!"
+    }
+
+    private fun buildAutoSkillContextForPrompt(queryOrCode: String): Pair<String, List<String>> {
+        if (!_autoInjectSkillsEnabled.value) return "" to emptyList()
+        val catalog = _skillsCatalog.value
+        val matched = SkillsMemoryEngine.matchRelevantSkills(
+            queryOrCode = queryOrCode,
+            pinnedSkillIds = _pinnedSkillIds.value,
+            allSkills = catalog.skills,
+            maxMatched = 4
+        )
+        if (matched.isEmpty()) return "" to emptyList()
+        val ids = matched.map { it.id }
+        _lastAppliedSkillIds.value = ids
+        val block = SkillsMemoryEngine.buildSkillsContextBlock(matched, catalog.mcpServerUrl)
+        return block to ids
+    }
 
     fun clearStatusBanner() {
         _statusBanner.value = null
@@ -512,14 +677,21 @@ class StudioViewModel(
                 "JS" -> _jsBuffer.value
                 else -> _backendBuffer.value
             }
+            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt("$instruction\n$currentContent")
+            val enrichedInstruction = if (skillsBlock.isNotBlank()) {
+                "$instruction\n\n$skillsBlock"
+            } else {
+                instruction
+            }
             val snippet = aiRepository.generateLowLatencyCodeSuggestion(
                 currentCode = currentContent,
                 activeTab = currentTab,
-                instruction = instruction
+                instruction = enrichedInstruction
             )
             updateActiveBuffer(currentContent + "\n\n" + snippet)
-            appendConsoleLog("[AI Copilot] Injected low-latency snippet into $currentTab via ${GeminiAiRepository.MODEL_FLASH_LITE}")
-            _statusBanner.value = "⚡ تم إدراج اقتراح برمجي فوري عبر ${GeminiAiRepository.MODEL_FLASH_LITE}"
+            val skillsNote = if (appliedIds.isNotEmpty()) " [Skills: ${appliedIds.joinToString(", ")}]" else ""
+            appendConsoleLog("[AI Copilot] Injected low-latency snippet into $currentTab via ${GeminiAiRepository.MODEL_FLASH_LITE}$skillsNote")
+            _statusBanner.value = "⚡ تم إدراج اقتراح برمجي فوري مدعوم بذاكرة المهارات (${appliedIds.take(2).joinToString(", ")})"
             _isBusy.value = false
         }
     }
@@ -527,14 +699,20 @@ class StudioViewModel(
     fun generateFullStackWithHighThinking(prompt: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            appendConsoleLog("[High Thinking] Synthesizing full-stack architecture via ${GeminiAiRepository.MODEL_ARGON}...")
-            val generated = aiRepository.generateFullStackCodebase(prompt, _editorLanguage.value)
+            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
+            val enrichedPrompt = if (skillsBlock.isNotBlank()) {
+                "$prompt\n\n$skillsBlock"
+            } else {
+                prompt
+            }
+            appendConsoleLog("[High Thinking] Synthesizing full-stack architecture via ${GeminiAiRepository.MODEL_ARGON} with skills ${appliedIds.joinToString(", ")}...")
+            val generated = aiRepository.generateFullStackCodebase(enrichedPrompt, _editorLanguage.value)
             _htmlBuffer.value = generated["html"] ?: _htmlBuffer.value
             _cssBuffer.value = generated["css"] ?: _cssBuffer.value
             _jsBuffer.value = generated["js"] ?: _jsBuffer.value
             _backendBuffer.value = generated["backend"] ?: _backendBuffer.value
             saveAndBuildCurrentProject()
-            _statusBanner.value = "🧠 تم توليد البنية الكاملة بوضع التفكير العالي (${GeminiAiRepository.MODEL_ARGON})"
+            _statusBanner.value = "🧠 تم توليد البنية الكاملة بوضع التفكير العالي مع تطبيق المهارات (${appliedIds.take(3).joinToString(", ")})"
             _isBusy.value = false
         }
     }
@@ -695,9 +873,15 @@ class StudioViewModel(
 
         viewModelScope.launch {
             _isBusy.value = true
+            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
+            val enrichedPrompt = if (skillsBlock.isNotBlank()) {
+                "$prompt\n\n$skillsBlock"
+            } else {
+                prompt
+            }
             val (replyText, sources) = aiRepository.sendMultiTurnChat(
                 history = currentHistory,
-                userPrompt = prompt,
+                userPrompt = enrichedPrompt,
                 selectedModel = _selectedChatModel.value,
                 persona = _selectedPersona.value,
                 useSearchGrounding = _useSearchGrounding.value,
@@ -708,17 +892,32 @@ class StudioViewModel(
                 _useSearchGrounding.value -> GeminiAiRepository.MODEL_FLASH
                 else -> _selectedChatModel.value
             }
+            val skillSources = appliedIds.map { "SkillMemory:$it" }
             val aiMsg = ChatMessage(
                 id = UUID.randomUUID().toString(),
                 isUser = false,
                 text = replyText,
                 modelUsed = effectiveModel,
                 timestampLabel = currentTimeLabel(),
-                groundingSources = sources
+                groundingSources = (skillSources + sources).distinct()
             )
             _chatMessages.value = _chatMessages.value + aiMsg
             _isBusy.value = false
         }
+    }
+
+    fun applySkillInAiChat(skill: ExtractedSkillItem) {
+        val prompt = buildString {
+            appendLine("قم بتطبيق مهارة «${skill.id} — ${skill.titleAr}» (${skill.category}) وتوليد كود تطبيقي متكامل يتبع جميع قواعدها ومراجعها:")
+            appendLine("• الوصف: ${skill.descriptionEn}")
+            if (skill.packages.isNotEmpty()) {
+                appendLine("• الحزم المعتمدة: ${skill.packages.joinToString(", ")}")
+            }
+            if (skill.references.isNotEmpty()) {
+                appendLine("• المراجع الفرعية المدمجة: ${skill.references.joinToString(", ") { it.fileName }}")
+            }
+        }
+        sendChatMessage(prompt)
     }
 
     fun generateImageAsset(

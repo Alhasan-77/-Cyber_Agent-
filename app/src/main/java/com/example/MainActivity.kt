@@ -1,6 +1,9 @@
 package com.example
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -24,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.CircularProgressIndicator
@@ -64,6 +68,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.data.model.UiState
 import com.example.data.remote.GeminiAiRepository
 import com.example.data.repository.StudioRepository
+import com.example.data.skills.SkillsMemoryEngine
 import com.example.ui.components.ErrorBoundary
 import com.example.ui.components.ErrorBoundaryDiagnosticScreen
 import com.example.ui.components.GlobalExceptionHandler
@@ -73,6 +78,7 @@ import com.example.ui.screens.BioscienceLabTabScreen
 import com.example.ui.screens.DashboardTabScreen
 import com.example.ui.screens.DatabaseAndVcsTabScreen
 import com.example.ui.screens.IdePreviewTabScreen
+import com.example.ui.screens.SkillsMemoryHubTabScreen
 import com.example.ui.screens.signOutUser
 import com.example.ui.theme.CyberBackground
 import com.example.ui.theme.CyberCyan
@@ -84,6 +90,10 @@ import com.example.ui.viewmodel.StudioViewModel
 import com.example.util.AndroidTtsSpeaker
 import com.example.util.AudioAndMediaHelper
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import com.google.firebase.appcheck.recaptcha.RecaptchaAppCheckProviderFactory
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
@@ -93,16 +103,86 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 
+private const val TAG = "AppCheckInit"
+private const val DEBUG_TOKEN_EXTRA = "FIREBASE_APPCHECK_DEBUG_TOKEN"
+private const val DEBUG_STORE_PREFIX = "com.google.firebase.appcheck.debug.store."
+private const val DEBUG_SECRET_KEY = "com.google.firebase.appcheck.debug.DEBUG_SECRET"
+private const val RECAPTCHA_SITE_KEY_RES = "recaptcha_site_key"
+
+fun configureAppCheck(context: Context, intent: Intent?) {
+    try {
+        if (FirebaseApp.getApps(context).isEmpty()) {
+            FirebaseApp.initializeApp(context)
+        }
+
+        if (BuildConfig.DEBUG) {
+            val debugToken = intent?.getStringExtra(DEBUG_TOKEN_EXTRA)
+            if (!debugToken.isNullOrEmpty()) {
+                val persistenceKey = FirebaseApp.getInstance().persistenceKey
+                val prefs = context.getSharedPreferences(
+                    "$DEBUG_STORE_PREFIX$persistenceKey",
+                    Context.MODE_PRIVATE
+                )
+                prefs.edit()
+                    .putString(DEBUG_SECRET_KEY, debugToken)
+                    .commit()
+                Log.d(TAG, "App Check debug secret configured successfully.")
+            } else {
+                Log.w(TAG, "No debug token found in Intent extra.")
+            }
+
+            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                DebugAppCheckProviderFactory.getInstance()
+            )
+            Log.d(TAG, "DebugAppCheckProviderFactory installed.")
+        } else {
+            val resId = context.resources.getIdentifier(RECAPTCHA_SITE_KEY_RES, "string", context.packageName)
+            if (resId != 0) {
+                val siteKey = context.getString(resId)
+                if (siteKey.isNotBlank()) {
+                    FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                        RecaptchaAppCheckProviderFactory.getInstance(siteKey)
+                    )
+                    Log.d(TAG, "RecaptchaAppCheckProviderFactory installed.")
+                } else {
+                    Log.e(TAG, "recaptcha_site_key resource string is blank.")
+                }
+            } else {
+                Log.e(TAG, "recaptcha_site_key string resource not found in package.")
+            }
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to initialize Firebase App Check", e)
+        GlobalExceptionHandler.reportError(
+            phase = "Firebase App Check Initialization",
+            throwable = e,
+            isFatal = false,
+            serviceName = "Firebase"
+        )
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         GlobalExceptionHandler.install()
         super.onCreate(savedInstanceState)
+        runCatching {
+            configureAppCheck(this, intent)
+        }.onFailure { throwable ->
+            GlobalExceptionHandler.reportError(
+                phase = "App Check Startup",
+                throwable = throwable,
+                isFatal = false,
+                serviceName = "Firebase"
+            )
+        }
         GlobalExceptionHandler.verifyStartupInitialization(this)
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
                 ErrorBoundary(
                     onRetryInitialization = {
+                        configureAppCheck(this@MainActivity, intent)
                         GlobalExceptionHandler.verifyStartupInitialization(this@MainActivity)
                     }
                 ) {
@@ -123,8 +203,7 @@ internal fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
 
 @Composable
 fun AppNavigation(auth: FirebaseAuth? = null) {
-    var authInitRetryTick by remember { mutableIntStateOf(0) }
-    val resolvedAuthResult = remember(auth, authInitRetryTick) {
+    val resolvedAuthResult = remember(auth) {
         runCatching { auth ?: Firebase.auth }
     }
 
@@ -138,9 +217,11 @@ fun AppNavigation(auth: FirebaseAuth? = null) {
             GlobalExceptionHandler.reportError(
                 phase = "FirebaseAuth Initialization",
                 throwable = throwable,
-                isFatal = true
+                isFatal = false,
+                serviceName = "Firebase"
             )
         }
+        AuthScreen(onAuthSuccess = {})
         return
     }
 
@@ -178,7 +259,8 @@ fun NovaForgeStudioShell(
                 GlobalExceptionHandler.reportError(
                     phase = "TTS Audio Engine Initialization",
                     throwable = e,
-                    isFatal = false
+                    isFatal = false,
+                    serviceName = "System"
                 )
             }
             .getOrNull()
@@ -194,25 +276,47 @@ fun NovaForgeStudioShell(
         key = currentUserId,
         factory = viewModelFactory {
             initializer {
-                try {
-                    val app = checkNotNull(this[APPLICATION_KEY]) {
-                        "APPLICATION_KEY missing from CreationExtras"
-                    }
-                    val databaseId = app.getString(R.string.firestore_database_id)
-                    val db = FirebaseFirestore.getInstance(databaseId)
-                    StudioViewModel(
-                        repository = StudioRepository(db),
-                        aiRepository = GeminiAiRepository(),
-                        currentUserId = currentUserId
-                    )
-                } catch (e: Throwable) {
+                val app = this[APPLICATION_KEY]
+                val databaseId = runCatching {
+                    app?.getString(R.string.firestore_database_id)
+                        ?: context.getString(R.string.firestore_database_id)
+                }.onFailure { e ->
                     GlobalExceptionHandler.reportError(
-                        phase = "StudioViewModel Initialization",
+                        phase = "StudioViewModel Database Resource Init",
                         throwable = e,
-                        isFatal = true
+                        isFatal = false,
+                        serviceName = "Firebase"
                     )
-                    throw e
+                }.getOrDefault(context.getString(R.string.firestore_database_id))
+
+                val db = runCatching {
+                    FirebaseFirestore.getInstance(databaseId)
+                }.getOrElse { e ->
+                    GlobalExceptionHandler.reportError(
+                        phase = "StudioViewModel Firestore Init",
+                        throwable = e,
+                        isFatal = false,
+                        serviceName = "Firebase"
+                    )
+                    FirebaseFirestore.getInstance(context.getString(R.string.firestore_database_id))
                 }
+
+                val aiRepo = runCatching {
+                    GeminiAiRepository()
+                }.onFailure { e ->
+                    GlobalExceptionHandler.reportError(
+                        phase = "StudioViewModel Gemini Init",
+                        throwable = e,
+                        isFatal = false,
+                        serviceName = "Gemini"
+                    )
+                }.getOrElse { GeminiAiRepository() }
+
+                StudioViewModel(
+                    repository = StudioRepository(db),
+                    aiRepository = aiRepo,
+                    currentUserId = currentUserId
+                )
             }
         }
     )
@@ -221,25 +325,36 @@ fun NovaForgeStudioShell(
         key = "data_$currentUserId",
         factory = viewModelFactory {
             initializer {
-                try {
-                    val app = checkNotNull(this[APPLICATION_KEY]) {
-                        "APPLICATION_KEY missing from CreationExtras"
-                    }
-                    val databaseId = app.getString(R.string.firestore_database_id)
-                    val db = FirebaseFirestore.getInstance(databaseId)
-                    DataViewModel(
-                        repository = StudioRepository(db),
-                        databaseId = databaseId,
-                        currentUserId = currentUserId
-                    )
-                } catch (e: Throwable) {
+                val app = this[APPLICATION_KEY]
+                val databaseId = runCatching {
+                    app?.getString(R.string.firestore_database_id)
+                        ?: context.getString(R.string.firestore_database_id)
+                }.onFailure { e ->
                     GlobalExceptionHandler.reportError(
-                        phase = "DataViewModel Initialization",
+                        phase = "DataViewModel Database Resource Init",
                         throwable = e,
-                        isFatal = true
+                        isFatal = false,
+                        serviceName = "Firebase"
                     )
-                    throw e
+                }.getOrDefault(context.getString(R.string.firestore_database_id))
+
+                val db = runCatching {
+                    FirebaseFirestore.getInstance(databaseId)
+                }.getOrElse { e ->
+                    GlobalExceptionHandler.reportError(
+                        phase = "DataViewModel Firestore Init",
+                        throwable = e,
+                        isFatal = false,
+                        serviceName = "Firebase"
+                    )
+                    FirebaseFirestore.getInstance(context.getString(R.string.firestore_database_id))
                 }
+
+                DataViewModel(
+                    repository = StudioRepository(db),
+                    databaseId = databaseId,
+                    currentUserId = currentUserId
+                )
             }
         }
     )
@@ -292,6 +407,17 @@ fun NovaForgeStudioShell(
     val lastTranscribedText by viewModel.lastTranscribedText.collectAsStateWithLifecycle()
     val bioscienceOutput by viewModel.bioscienceOutput.collectAsStateWithLifecycle()
 
+    val skillsCatalog by viewModel.skillsCatalog.collectAsStateWithLifecycle()
+    val pinnedSkillIds by viewModel.pinnedSkillIds.collectAsStateWithLifecycle()
+    val autoInjectSkillsEnabled by viewModel.autoInjectSkillsEnabled.collectAsStateWithLifecycle()
+    val lastAppliedSkillIds by viewModel.lastAppliedSkillIds.collectAsStateWithLifecycle()
+    val isSkillsSyncedToFirestore by viewModel.isSkillsSyncedToFirestore.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        val loadedCatalog = SkillsMemoryEngine.loadCatalog(context)
+        viewModel.initializeSkillsMemory(loadedCatalog)
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         containerColor = CyberBackground,
@@ -327,6 +453,24 @@ fun NovaForgeStudioShell(
                     }
                 },
                 actions = {
+                    TextButton(
+                        onClick = { selectedTab = 5 },
+                        modifier = Modifier.testTag("top_skills_memory_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Memory,
+                            contentDescription = "ذاكرة المهارات والأدوات",
+                            tint = if (selectedTab == 5) CyberCyan else CyberEmerald,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "🧠 ${skillsCatalog.totalSkills} مهارة",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (selectedTab == 5) CyberCyan else CyberEmerald,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     IconButton(
                         onClick = {
                             signOutUser(
@@ -552,6 +696,24 @@ fun NovaForgeStudioShell(
                             viewModel.selectCodeTab("Backend")
                             viewModel.updateActiveBuffer(backendBuffer + "\n\n/*\n$bioReport\n*/")
                             selectedTab = 1
+                        }
+                    )
+                    5 -> SkillsMemoryHubTabScreen(
+                        catalog = skillsCatalog,
+                        pinnedSkillIds = pinnedSkillIds,
+                        autoInjectSkillsEnabled = autoInjectSkillsEnabled,
+                        lastAppliedSkillIds = lastAppliedSkillIds,
+                        isSyncedWithFirestore = isSkillsSyncedToFirestore,
+                        onToggleAutoInjectSkills = { viewModel.toggleAutoInjectSkills(it) },
+                        onTogglePinSkill = { viewModel.togglePinSkillInMemory(it) },
+                        onSyncSkillsToFirestore = { viewModel.syncSkillsMemoryToFirestore(silent = false) },
+                        onInjectCodeIntoIde = { code, tab, label ->
+                            viewModel.injectSkillCodeIntoEditor(code, tab, label)
+                            selectedTab = 1
+                        },
+                        onApplySkillInAiChat = { skill ->
+                            viewModel.applySkillInAiChat(skill)
+                            selectedTab = 3
                         }
                     )
                 }

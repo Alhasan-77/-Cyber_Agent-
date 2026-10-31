@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -46,6 +48,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,16 +75,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.data.remote.GeminiAiRepository
 import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBackground
 import com.example.ui.theme.CyberBorder
+import com.example.ui.theme.CyberCoral
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.CyberEmerald
-import com.example.ui.theme.CyberCoral
 import com.example.ui.theme.CyberSurface
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.google.firebase.Firebase
@@ -100,6 +109,7 @@ import java.util.Locale
  */
 data class AppErrorReport(
     val id: String = System.currentTimeMillis().toString(),
+    val serviceName: String = "System",
     val phase: String,
     val title: String,
     val message: String,
@@ -122,8 +132,8 @@ val LocalErrorBoundaryReporter = compositionLocalOf<(String, Throwable, Boolean)
 }
 
 /**
- * Global exception handler and initialization validator that replaces silent failure states
- * with observable, actionable diagnostic reports in the UI.
+ * Global exception handler and service initialization validator (Firebase & Gemini) that replaces
+ * silent failure states with non-blocking, dismissible top alert bars and Snackbars in the UI.
  */
 object GlobalExceptionHandler : Thread.UncaughtExceptionHandler {
 
@@ -164,39 +174,24 @@ object GlobalExceptionHandler : Thread.UncaughtExceptionHandler {
     override fun uncaughtException(thread: Thread, throwable: Throwable) {
         Log.e(TAG, "Uncaught exception on thread ${thread.name}", throwable)
         val report = buildErrorReport(
-            phase = "UncaughtException (${thread.name})",
+            phase = "Runtime Exception (${thread.name})",
             throwable = throwable,
-            isFatal = true
+            isFatal = false
         )
-        _latestError.value = report
-        _errorHistory.value = (_errorHistory.value + report).takeLast(20)
-
-        // If the exception happened on a background thread, keep the UI alive to display the error report.
-        // If it happened on the main thread during a frame, post a new loop so the ErrorBoundary UI can render.
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            try {
-                Looper.loop()
-            } catch (nested: Throwable) {
-                Log.e(TAG, "Nested exception while recovering main looper", nested)
-                val nestedReport = buildErrorReport(
-                    phase = "MainLooper Recovery",
-                    throwable = nested,
-                    isFatal = true
-                )
-                _latestError.value = nestedReport
-            }
-        }
+        publishReport(report)
     }
 
     /**
-     * Runs startup and Firebase/Firestore/Auth configuration checks and records any failure
-     * into [latestError] so initialization problems are immediately visible in the UI.
+     * Runs startup and service initialization checks for both Firebase (FirebaseApp, Firestore,
+     * Auth) and Gemini (Firebase AI Logic & Gemini REST Client) and records any failure into
+     * [latestError] so a non-blocking, dismissible top alert bar and Snackbar are displayed
+     * without ever blocking the main UI.
      */
     fun verifyStartupInitialization(context: Context): Result<Unit> {
-        return runCatching {
-            val appContext = context.applicationContext ?: context
+        val appContext = context.applicationContext ?: context
 
-            // 1. Verify FirebaseApp initialization
+        // 1. Verify Firebase Services Initialization
+        val firebaseResult = runCatching {
             val firebaseApp = try {
                 FirebaseApp.getInstance()
             } catch (e: IllegalStateException) {
@@ -210,7 +205,6 @@ object GlobalExceptionHandler : Thread.UncaughtExceptionHandler {
                 "معرّف مشروع Firebase (projectId) فارغ في إعدادات التطبيق."
             }
 
-            // 2. Verify Named Firestore Database ID resource
             val databaseId = runCatching {
                 appContext.getString(R.string.firestore_database_id)
             }.getOrElse { e ->
@@ -223,7 +217,6 @@ object GlobalExceptionHandler : Thread.UncaughtExceptionHandler {
                 "قيمة firestore_database_id فارغة؛ لا يمكن الاتصال بقاعدة بيانات Firestore المسماة."
             }
 
-            // 3. Verify Google Sign-In Web Client ID resource
             val webClientId = runCatching {
                 appContext.getString(R.string.default_web_client_id)
             }.getOrElse { e ->
@@ -236,32 +229,50 @@ object GlobalExceptionHandler : Thread.UncaughtExceptionHandler {
                 "قيمة default_web_client_id فارغة في موارد التطبيق."
             }
 
-            // 4. Verify FirebaseAuth & FirebaseFirestore instances can be resolved
             Firebase.auth
             FirebaseFirestore.getInstance(databaseId)
             Unit
         }.onFailure { throwable ->
             reportError(
-                phase = "Startup & Firebase Initialization",
+                phase = "Firebase Service Initialization",
                 throwable = throwable,
-                isFatal = true
+                isFatal = false,
+                serviceName = "Firebase"
             )
         }
+
+        // 2. Verify Gemini AI Service Initialization
+        val geminiResult = GeminiAiRepository.verifyInitialization().onFailure { throwable ->
+            reportError(
+                phase = "Gemini AI Service Initialization",
+                throwable = throwable,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
+        }
+
+        return if (firebaseResult.isFailure) firebaseResult else geminiResult
     }
 
     fun reportError(
         phase: String,
         throwable: Throwable,
         isFatal: Boolean = false,
-        customTitle: String? = null
+        customTitle: String? = null,
+        serviceName: String? = null
     ) {
         Log.e(TAG, "Error reported in phase [$phase]: ${throwable.message}", throwable)
         val report = buildErrorReport(
             phase = phase,
             throwable = throwable,
-            isFatal = isFatal,
-            customTitle = customTitle
+            isFatal = false,
+            customTitle = customTitle,
+            explicitService = serviceName
         )
+        publishReport(report)
+    }
+
+    private fun publishReport(report: AppErrorReport) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             _latestError.value = report
             _errorHistory.value = (_errorHistory.value + report).takeLast(20)
@@ -277,23 +288,45 @@ object GlobalExceptionHandler : Thread.UncaughtExceptionHandler {
         _latestError.value = null
     }
 
+    private fun detectServiceName(phase: String, throwable: Throwable, explicitService: String?): String {
+        if (!explicitService.isNullOrBlank()) return explicitService
+        val combined = "$phase ${throwable.message.orEmpty()} ${throwable::class.java.name}"
+        return when {
+            combined.contains("Gemini", ignoreCase = true) ||
+                combined.contains("GenerativeModel", ignoreCase = true) ||
+                combined.contains("firebase.ai", ignoreCase = true) ||
+                combined.contains("generativelanguage", ignoreCase = true) -> "Gemini"
+            combined.contains("Firebase", ignoreCase = true) ||
+                combined.contains("Firestore", ignoreCase = true) ||
+                combined.contains("AppCheck", ignoreCase = true) ||
+                combined.contains("Credential", ignoreCase = true) ||
+                combined.contains("GoogleSignIn", ignoreCase = true) ||
+                combined.contains("Auth", ignoreCase = true) -> "Firebase"
+            else -> "System"
+        }
+    }
+
     private fun buildErrorReport(
         phase: String,
         throwable: Throwable,
         isFatal: Boolean,
-        customTitle: String? = null
+        customTitle: String? = null,
+        explicitService: String? = null
     ): AppErrorReport {
         val sw = StringWriter()
         throwable.printStackTrace(PrintWriter(sw))
         val fullStack = sw.toString()
 
         val rootCause = generateSequence(throwable) { it.cause }.last()
-        val exceptionName = throwable::class.java.simpleName.ifBlank { "Exception" }
         val message = throwable.localizedMessage
             ?: rootCause.localizedMessage
-            ?: "حدث خطأ غير متوقع أثناء تهيئة أو تشغيل التطبيق"
+            ?: "حدث خطأ غير متوقع أثناء تهيئة الخدمة السحابية ($phase)"
+
+        val detectedService = detectServiceName(phase, throwable, explicitService)
 
         val suggestion = when {
+            detectedService == "Gemini" ->
+                "تحقق من اتصال الإنترنت، وتفعيل Firebase AI Logic (App Check)، أو إعداد GEMINI_API_KEY في لوحة Secrets."
             message.contains("default_web_client_id", ignoreCase = true) ||
                 message.contains("Credential", ignoreCase = true) ->
                 "تحقق من إعداد حساب Google في الجهاز/المحاكي ومن تطابق بصمة شهادة SHA-1/SHA-256 في google-services.json."
@@ -303,12 +336,19 @@ object GlobalExceptionHandler : Thread.UncaughtExceptionHandler {
             message.contains("WebView", ignoreCase = true) ->
                 "تحقق من توفر مكون Android System WebView في النظام وإعادة تحميل نافذة المعاينة."
             else ->
-                "يمكنك الضغط على «إعادة تهيئة التطبيق» لإعادة فحص المكونات السحابية أو نسخ التقرير التشخيصي لمراجعته."
+                "يمكنك الضغط على «إعادة المحاولة» لإعادة فحص خدمات Firebase/Gemini أو إغلاق هذا التنبيه للمتابعة."
+        }
+
+        val defaultTitle = when (detectedService) {
+            "Firebase" -> "تنبيه تهيئة خدمة Firebase: $phase"
+            "Gemini" -> "تنبيه تهيئة خدمة Gemini AI: $phase"
+            else -> "تنبيه تشخيصي في مرحلة: $phase"
         }
 
         return AppErrorReport(
+            serviceName = detectedService,
             phase = phase,
-            title = customTitle ?: "تنبيه تشخيصي في مرحلة: $phase",
+            title = customTitle ?: defaultTitle,
             message = message,
             exceptionType = "${throwable::class.java.name} (Root: ${rootCause::class.java.simpleName})",
             stackTrace = fullStack,
@@ -319,9 +359,10 @@ object GlobalExceptionHandler : Thread.UncaughtExceptionHandler {
 }
 
 /**
- * Root Compose ErrorBoundary that catches initialization failures, monitors [GlobalExceptionHandler],
- * and renders either a full diagnostic recovery screen (for fatal initialization errors) or a rich
- * interactive diagnostic banner (for non-fatal errors) instead of failing silently.
+ * Root Surface-level Compose ErrorBoundary that catches service initialization failures
+ * (Firebase / Gemini), monitors [GlobalExceptionHandler], and displays both a non-blocking,
+ * dismissible top alert bar ([ErrorBoundaryBanner]) and a non-blocking, dismissible [Snackbar]
+ * while keeping the main application UI responsive and interactive at all times.
  */
 @Composable
 fun ErrorBoundary(
@@ -332,9 +373,25 @@ fun ErrorBoundary(
     val context = LocalContext.current
     val activeError by GlobalExceptionHandler.latestError.collectAsState()
     var retryTick by remember { mutableIntStateOf(0) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(retryTick) {
         GlobalExceptionHandler.verifyStartupInitialization(context)
+    }
+
+    LaunchedEffect(activeError?.id) {
+        val error = activeError ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = "[${error.serviceName}] ${error.title}: ${error.message}",
+            actionLabel = "إعادة المحاولة",
+            withDismissAction = true,
+            duration = SnackbarDuration.Long
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            GlobalExceptionHandler.clearError()
+            retryTick++
+            onRetryInitialization()
+        }
     }
 
     DisposableEffect(Unit) {
@@ -343,49 +400,104 @@ fun ErrorBoundary(
     }
 
     val reporter: (String, Throwable, Boolean) -> Unit = remember {
-        { phase, throwable, isFatal ->
+        { phase, throwable, _ ->
             GlobalExceptionHandler.reportError(
                 phase = phase,
                 throwable = throwable,
-                isFatal = isFatal
+                isFatal = false
             )
         }
     }
 
     CompositionLocalProvider(LocalErrorBoundaryReporter provides reporter) {
-        Box(modifier = modifier.fillMaxSize()) {
-            val currentError = activeError
-            if (currentError != null && currentError.isFatal) {
-                ErrorBoundaryDiagnosticScreen(
-                    errorReport = currentError,
-                    onRetry = {
-                        GlobalExceptionHandler.clearError()
-                        retryTick++
-                        onRetryInitialization()
-                    },
-                    onDismissAndContinue = {
-                        GlobalExceptionHandler.clearError()
-                    }
-                )
-            } else {
+        Surface(
+            modifier = modifier
+                .fillMaxSize()
+                .testTag("error_boundary_surface"),
+            color = CyberBackground
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.fillMaxSize()) {
+                    val currentError = activeError
                     AnimatedVisibility(visible = currentError != null) {
                         if (currentError != null) {
                             ErrorBoundaryBanner(
                                 errorReport = currentError,
                                 onRetry = {
+                                    snackbarHostState.currentSnackbarData?.dismiss()
                                     GlobalExceptionHandler.clearError()
                                     retryTick++
                                     onRetryInitialization()
                                 },
                                 onDismiss = {
+                                    snackbarHostState.currentSnackbarData?.dismiss()
                                     GlobalExceptionHandler.clearError()
                                 }
                             )
                         }
                     }
-                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .testTag("error_boundary_content_box")
+                    ) {
                         content()
+                    }
+                }
+
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 12.dp)
+                        .testTag("error_boundary_snackbar_host")
+                ) { snackbarData ->
+                    Snackbar(
+                        modifier = Modifier
+                            .border(1.dp, CyberCoral, RoundedCornerShape(12.dp))
+                            .testTag("error_boundary_snackbar"),
+                        shape = RoundedCornerShape(12.dp),
+                        containerColor = CyberSurface,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        action = {
+                            val actionLabel = snackbarData.visuals.actionLabel
+                            if (!actionLabel.isNullOrBlank()) {
+                                TextButton(
+                                    onClick = { snackbarData.performAction() },
+                                    modifier = Modifier.testTag("error_boundary_snackbar_retry")
+                                ) {
+                                    Text(
+                                        text = actionLabel,
+                                        color = CyberCyan,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        },
+                        dismissAction = {
+                            IconButton(
+                                onClick = {
+                                    snackbarData.dismiss()
+                                    GlobalExceptionHandler.clearError()
+                                },
+                                modifier = Modifier.testTag("error_boundary_snackbar_dismiss")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "إغلاق الإشعار",
+                                    tint = CyberCoral
+                                )
+                            }
+                        }
+                    ) {
+                        Text(
+                            text = snackbarData.visuals.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -403,11 +515,14 @@ fun ErrorBoundaryBanner(
     var showStackTrace by remember { mutableStateOf(false) }
     var copiedFeedback by remember { mutableStateOf(false) }
 
-    Card(
+    Surface(
+        color = CyberSurface,
+        tonalElevation = 6.dp,
+        shadowElevation = 8.dp,
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = CyberSurface),
         modifier = Modifier
             .fillMaxWidth()
+            .statusBarsPadding()
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .border(1.5.dp, CyberCoral, RoundedCornerShape(14.dp))
             .testTag("error_boundary_banner")
@@ -435,12 +550,30 @@ fun ErrorBoundaryBanner(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text(
-                            text = errorReport.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = CyberCoral,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                color = CyberCoral.copy(alpha = 0.18f),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.testTag("error_boundary_service_badge")
+                            ) {
+                                Text(
+                                    text = errorReport.serviceName,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = CyberCoral,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Text(
+                                text = errorReport.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = CyberCoral,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         Text(
                             text = "${errorReport.exceptionType} • ${errorReport.timestamp}",
                             style = MaterialTheme.typography.labelSmall,
@@ -624,7 +757,7 @@ fun ErrorBoundaryDiagnosticScreen(
                 modifier = Modifier.border(1.dp, CyberAmber.copy(alpha = 0.6f), RoundedCornerShape(50))
             ) {
                 Text(
-                    text = "المرحلة: ${errorReport.phase} • الخيط: ${errorReport.threadName}",
+                    text = "الخدمة: ${errorReport.serviceName} • المرحلة: ${errorReport.phase} • الخيط: ${errorReport.threadName}",
                     style = MaterialTheme.typography.labelMedium,
                     color = CyberAmber,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
@@ -775,6 +908,7 @@ private fun copyReportToClipboard(context: Context, report: AppErrorReport) {
         val formatted = buildString {
             appendLine("=== NovaForge AI Studio Diagnostic Report ===")
             appendLine("Timestamp: ${report.timestamp}")
+            appendLine("Service: ${report.serviceName}")
             appendLine("Phase: ${report.phase}")
             appendLine("Thread: ${report.threadName}")
             appendLine("Exception: ${report.exceptionType}")

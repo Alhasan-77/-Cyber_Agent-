@@ -4,6 +4,10 @@ import com.example.BuildConfig
 import com.example.data.model.AiRolePersona
 import com.example.data.model.ChatMessage
 import com.example.data.model.GeneratedMediaAsset
+import com.example.ui.components.GlobalExceptionHandler
+import com.google.firebase.Firebase
+import com.google.firebase.ai.ai
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -29,6 +33,33 @@ class GeminiAiRepository(
         const val MODEL_LIVE = "gemini-3.8-live"
         const val MODEL_LYRIA_CLIP = "lyria-3-clip-preview"
         const val MODEL_LYRIA_PRO = "lyria-3-pro-preview"
+
+        fun verifyInitialization(): Result<Unit> = runCatching {
+            // Verify Gemini REST client initialization
+            checkNotNull(GeminiNetworkClient.service) {
+                "تعذر تهيئة عميل الشبكة GeminiNetworkClient.service"
+            }
+            // Verify Firebase AI Logic GenerativeModel initialization
+            Firebase.ai.generativeModel(MODEL_FLASH)
+            Unit
+        }
+    }
+
+    private val defaultFirebaseAiModel by lazy {
+        Firebase.ai.generativeModel(MODEL_FLASH)
+    }
+
+    init {
+        runCatching {
+            defaultFirebaseAiModel
+        }.onFailure { e ->
+            GlobalExceptionHandler.reportError(
+                phase = "GeminiAiRepository Init",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
+        }
     }
 
     private fun apiKey(): String = BuildConfig.GEMINI_API_KEY
@@ -116,7 +147,15 @@ class GeminiAiRepository(
                 }.orEmpty()
 
             Pair(text, sources)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            GlobalExceptionHandler.reportError(
+                phase = "Gemini Chat ($effectiveModel)",
+                throwable = e,
+                isFatal = false,
+                serviceName = "Gemini"
+            )
             fallbackArchitecturalResponse(
                 prompt = userPrompt,
                 model = effectiveModel,
@@ -151,7 +190,15 @@ class GeminiAiRepository(
                 val response = apiService.generateContent(MODEL_FLASH_LITE, apiKey(), request)
                 val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                 if (!text.isNullOrBlank()) return@withContext text
-            } catch (_: Exception) {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Code Autocomplete ($MODEL_FLASH_LITE)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
             }
         }
 
