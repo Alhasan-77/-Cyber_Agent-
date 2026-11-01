@@ -204,6 +204,15 @@ fun IdePreviewTabScreen(
                         label = { Text("🧬 المختبر الجينومي BioMed") },
                         modifier = Modifier.testTag("template_biomed")
                     )
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            onLoadTemplate("THREEJS_BIOGAME")
+                            previewReloadTick++
+                        },
+                        label = { Text("🎮 3D Three.js & BioGame") },
+                        modifier = Modifier.testTag("template_threejs_game")
+                    )
                 }
 
                 // AI Copilot Quick Bar (Low-Latency gemini-3.1-flash-lite + High Thinking gemini-4-argon)

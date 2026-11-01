@@ -15,6 +15,7 @@ import com.example.data.model.UiState
 import com.example.data.model.VersionSnapshot
 import com.example.data.remote.GeminiAiRepository
 import com.example.data.repository.StudioRepository
+import com.example.data.skills.BioscienceSimulationEngine
 import com.example.data.skills.ExtractedSkillItem
 import com.example.data.skills.SkillsMemoryCatalog
 import com.example.data.skills.SkillsMemoryEngine
@@ -397,6 +398,14 @@ class StudioViewModel(
                 _cssBuffer.value = DEFAULT_CSS
                 _jsBuffer.value = BIOMED_JS
                 _backendBuffer.value = BIOMED_BACKEND
+            }
+            "THREEJS_BIOGAME" -> {
+                _editorName.value = "محرك الألعاب الخلوية ومستعرض الجزيئات 3D (Three.js)"
+                _editorLanguage.value = "Three.js WebGL + TypeScript"
+                _htmlBuffer.value = BioscienceSimulationEngine.THREEJS_GAME_HTML
+                _cssBuffer.value = BioscienceSimulationEngine.THREEJS_GAME_CSS
+                _jsBuffer.value = BioscienceSimulationEngine.THREEJS_GAME_JS
+                _backendBuffer.value = BioscienceSimulationEngine.THREEJS_GAME_BACKEND
             }
             else -> {
                 _editorName.value = "منصة التجارة والتحليلات الذكية Full-Stack"

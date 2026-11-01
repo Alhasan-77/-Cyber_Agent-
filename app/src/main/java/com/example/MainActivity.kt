@@ -509,6 +509,10 @@ fun NovaForgeStudioShell(
                     viewModel.selectCodeTab("Backend")
                     viewModel.updateActiveBuffer(backendBuffer + "\n\n/*\n$bioReport\n*/")
                     selectedTab = StudioBottomTab.IDE.index
+                },
+                onLoad3dBioGameTemplateInIde = {
+                    viewModel.loadStarterTemplate("THREEJS_BIOGAME")
+                    selectedTab = StudioBottomTab.IDE.index
                 }
             )
             SKILLS_HUB_TAB_INDEX -> SkillsMemoryHubTabScreen(

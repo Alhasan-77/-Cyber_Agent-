@@ -12,12 +12,17 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.skills.BioscienceSimulationEngine
+import com.example.data.skills.BioscienceWorkflowMode
 import com.example.ui.components.MainScreenLayout
 import com.example.ui.components.SKILLS_HUB_TAB_INDEX
 import com.example.ui.components.StudioBottomTab
+import com.example.ui.screens.BioscienceLabTabScreen
 import com.example.ui.theme.MyApplicationTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -87,5 +92,56 @@ class ExampleRobolectricTest {
         // Click the Top Bar 'Skills' action button
         composeTestRule.onNodeWithTag("top_skills_memory_button").performClick()
         assertEquals(SKILLS_HUB_TAB_INDEX, activeTab)
+    }
+
+    @Test
+    fun `bioscience simulation engine computes accurate metrics and generates 3d biogame html`() {
+        val crisprMetrics = BioscienceSimulationEngine.analyzeSequenceMetrics(
+            rawInput = BioscienceWorkflowMode.CRISPR_EDITING.defaultSequence,
+            workflowMode = BioscienceWorkflowMode.CRISPR_EDITING
+        )
+        assertEquals("DNA", crisprMetrics.sequenceType)
+        assertTrue(crisprMetrics.sequenceLength > 100)
+        assertTrue(crisprMetrics.gcContentPct in 30.0..80.0)
+        assertTrue(crisprMetrics.pamSites.isNotEmpty())
+        assertEquals(100, crisprMetrics.alphaHelixPct + crisprMetrics.betaSheetPct + crisprMetrics.randomCoilPct)
+
+        val html3d = BioscienceSimulationEngine.buildInteractive3dBioGameHtml("GAME", "DNA_HELIX")
+        assertTrue(html3d.contains("bio3d-canvas"))
+        assertTrue(html3d.contains("CELLULAR DEFENSE 3D"))
+        assertTrue(html3d.contains("CRISPR_CAS9"))
+    }
+
+    @Test
+    fun `bioscience lab screen displays 3d simulation and four interactive workflows`() {
+        var exportedTemplate = false
+
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                BioscienceLabTabScreen(
+                    bioscienceOutput = "Sample AI Bio Output",
+                    onRunBioscienceAnalysis = { _, _ -> },
+                    onExportPipelineToIde = {},
+                    onLoad3dBioGameTemplateInIde = { exportedTemplate = true }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("bio_section_all").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("bio_3d_simulation_card").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("bio3d_mode_game").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("bio3d_mode_inspector").assertIsDisplayed()
+
+        // Switch to Bio Tools filter to inspect the 4 workflow chips directly
+        composeTestRule.onNodeWithTag("bio_section_tools").performClick()
+        composeTestRule.onNodeWithTag("bio_workflow_PROTEIN_FOLDING").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("bio_workflow_CRISPR_EDITING").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("bio_workflow_GENOMIC_ALIGNMENT").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("bio_workflow_CLINICAL_TRIALS").assertIsDisplayed()
+
+        // Switch back to Game 3D and trigger IDE export
+        composeTestRule.onNodeWithTag("bio_section_game3d").performClick()
+        composeTestRule.onNodeWithTag("export_3d_biogame_to_ide_button").performClick()
+        assertTrue(exportedTemplate)
     }
 }
