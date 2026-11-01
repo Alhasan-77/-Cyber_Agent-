@@ -12,6 +12,37 @@ sealed interface UiState<out T> {
 }
 
 @IgnoreExtraProperties
+data class UserProfile(
+    @DocumentId val id: String = "",
+    val userId: String = "",
+    val email: String = "",
+    val displayName: String = "",
+    val photoUrl: String = "",
+    val activeBranch: String = "main",
+    val projectsCount: Long = 0L,
+    val bioExperimentsCount: Long = 0L,
+    @ServerTimestamp val createdAt: Timestamp? = null,
+    @ServerTimestamp val updatedAt: Timestamp? = null
+)
+
+@IgnoreExtraProperties
+data class BioExperimentRecord(
+    @DocumentId val id: String = "",
+    val userId: String = "",
+    val title: String = "",
+    val workflowMode: String = "PROTEIN_FOLDING",
+    val fastaSequence: String = "",
+    val researchGoal: String = "",
+    val plddtScore: Long = 90L,
+    val freeEnergyKcal: Double = -10.5,
+    val alphaHelixPct: Long = 50L,
+    val betaSheetPct: Long = 20L,
+    val aiReportSummary: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null,
+    @ServerTimestamp val updatedAt: Timestamp? = null
+)
+
+@IgnoreExtraProperties
 data class StudioProject(
     @DocumentId val id: String = "",
     val userId: String = "",

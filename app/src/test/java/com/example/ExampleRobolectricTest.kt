@@ -1,6 +1,7 @@
 package com.example
 
 import android.content.Context
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -144,4 +145,41 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("export_3d_biogame_to_ide_button").performClick()
         assertTrue(exportedTemplate)
     }
+
+    @Test
+    fun `protein folding visualizer renders simulated structure and switches interactive views`() {
+        val sampleMetrics = BioscienceSimulationEngine.analyzeSequenceMetrics(
+            rawInput = BioscienceWorkflowMode.PROTEIN_FOLDING.defaultSequence,
+            workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING
+        )
+
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                androidx.compose.foundation.layout.Column(
+                    modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())
+                ) {
+                    com.example.ui.components.ProteinFoldingVisualizer(metrics = sampleMetrics)
+                }
+            }
+        }
+
+        composeTestRule.onNodeWithTag("protein_folding_visualizer_card").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("folding_3d_backbone_canvas").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("folding_progress_slider").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("folding_residue_inspector").performScrollTo().assertIsDisplayed()
+
+        // Switch visualization mode to Ramachandran Plot and Contact/Energy Map
+        composeTestRule.onNodeWithTag("folding_view_RAMACHANDRAN").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("folding_ramachandran_canvas").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("folding_view_CONTACT_ENERGY").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("folding_contact_energy_canvas").assertIsDisplayed()
+
+        // Switch coloring mode and step through residues
+        composeTestRule.onNodeWithTag("folding_color_PLDDT").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("folding_selected_residue_detail").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("folding_next_residue_button").performClick()
+        composeTestRule.onNodeWithTag("folding_residue_chip_2").assertIsDisplayed()
+    }
 }
+

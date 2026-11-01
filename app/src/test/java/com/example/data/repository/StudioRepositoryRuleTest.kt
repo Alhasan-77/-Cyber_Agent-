@@ -125,6 +125,58 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
         }
     }
 
+    @Test
+    fun upsertAndObserveUserProfile_authenticatedOwner_succeeds() = runBlocking {
+        val aliceUid = signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+
+        val upsertResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.upsertUserProfile(
+                email = ALICE_EMAIL,
+                displayName = "Alice Researcher",
+                photoUrl = "https://example.com/alice.png",
+                activeBranch = "main",
+                projectsCount = 3L,
+                bioExperimentsCount = 2L
+            )
+        }
+        assertTrue(upsertResult.isSuccess)
+
+        val emittedProfile = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeUserProfile().first { profile -> profile?.userId == aliceUid }
+        }
+        assertNotNull(emittedProfile)
+        assertEquals("Alice Researcher", emittedProfile?.displayName)
+        assertEquals(3L, emittedProfile?.projectsCount)
+    }
+
+    @Test
+    fun createAndObserveBioExperiment_authenticatedOwner_succeeds() = runBlocking {
+        signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+
+        val createResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.createBioExperiment(
+                title = "Human Hemoglobin Folding",
+                workflowMode = "PROTEIN_FOLDING",
+                fastaSequence = ">HBB\nMVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLS",
+                researchGoal = "3D structural stability analysis",
+                plddtScore = 94L,
+                freeEnergyKcal = -11.4,
+                alphaHelixPct = 68L,
+                betaSheetPct = 14L,
+                aiReportSummary = "Stable alpha-helical bundle confirmed."
+            )
+        }
+        assertTrue(createResult.isSuccess)
+        val expId = createResult.getOrThrow()
+
+        val emittedExperiments = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeBioExperiments().first { list -> list.any { it.id == expId } }
+        }
+        assertTrue(emittedExperiments.any { it.id == expId })
+    }
+
     private companion object {
         const val ALICE_EMAIL = "alice@novaforge.test"
         const val BOB_EMAIL = "bob@novaforge.test"

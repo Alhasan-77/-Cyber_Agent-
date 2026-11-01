@@ -840,10 +840,11 @@ private fun CentralDocumentEditorView(
                         onValueChange = { editPrimary = it },
                         label = {
                             Text(
-                                if (document.collectionId == DataViewModel.COLLECTION_SCHEMAS)
-                                    "اسم المجموعة (collectionName)"
-                                else
-                                    "اسم المشروع (name)"
+                                when (document.collectionId) {
+                                    DataViewModel.COLLECTION_SCHEMAS -> "اسم المجموعة (collectionName)"
+                                    DataViewModel.COLLECTION_BIO_EXPERIMENTS -> "عنوان التجربة الحيوية (title)"
+                                    else -> "اسم المشروع (name)"
+                                }
                             )
                         },
                         singleLine = true,
@@ -857,10 +858,11 @@ private fun CentralDocumentEditorView(
                         onValueChange = { editSecondary = it },
                         label = {
                             Text(
-                                if (document.collectionId == DataViewModel.COLLECTION_SCHEMAS)
-                                    "تعريف الحقول والأنواع (fieldsSpec)"
-                                else
-                                    "وصف المشروع (description)"
+                                when (document.collectionId) {
+                                    DataViewModel.COLLECTION_SCHEMAS -> "تعريف الحقول والأنواع (fieldsSpec)"
+                                    DataViewModel.COLLECTION_BIO_EXPERIMENTS -> "أداة المختبر الحيوي (toolType)"
+                                    else -> "وصف المشروع (description)"
+                                }
                             )
                         },
                         singleLine = true,
@@ -874,10 +876,11 @@ private fun CentralDocumentEditorView(
                         onValueChange = { editThird = it },
                         label = {
                             Text(
-                                if (document.collectionId == DataViewModel.COLLECTION_SCHEMAS)
-                                    "محتوى السجلات المهيكلة (sampleRecordsJson)"
-                                else
-                                    "لغة وتقنية المشروع (language)"
+                                when (document.collectionId) {
+                                    DataViewModel.COLLECTION_SCHEMAS -> "محتوى السجلات المهيكلة (sampleRecordsJson)"
+                                    DataViewModel.COLLECTION_BIO_EXPERIMENTS -> "ملخص التقرير الحيوي (summaryReport)"
+                                    else -> "لغة وتقنية المشروع (language)"
+                                }
                             )
                         },
                         singleLine = false,
@@ -1049,6 +1052,11 @@ private fun CentralCreateDocumentView(
             "اسم المشروع السحابي (name)",
             "وصف المشروع (description)",
             "بيئة/لغة التطوير (language)"
+        )
+        DataViewModel.COLLECTION_BIO_EXPERIMENTS -> Triple(
+            "عنوان التجربة الحيوية (title)",
+            "نوع الأداة (PROTEIN_FOLDING / CRISPR / GENOMICS)",
+            "ملخص التقرير والنتائج (summaryReport)"
         )
         DataViewModel.COLLECTION_SNAPSHOTS -> Triple(
             "وسم الإصدار (versionTag مثل v1.4.0)",

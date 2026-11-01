@@ -14,4 +14,12 @@
     <string name="skills_action_content_description">Skills • ذاكرة المهارات والأدوات</string>
     <string name="dismiss_banner">إغلاق</string>
     <string name="security_warning_notice">تحذير أمني: تم تضمين مفاتيح API في ملف APK الخاص بهذا النموذج الأولي. يرجى عدم مشاركة ملف APK علناً.</string>
+    <string name="cloud_profile_content_description">بطاقة الملف الشخصي السحابي وحالة المزامنة</string>
+    <string name="cloud_profile_title">الهوية السحابية ومزامنة Cloud Firestore</string>
+    <string name="cloud_sync_active_badge">متزامن سحابياً</string>
+    <string name="force_cloud_sync_action">مزامنة سحابية فورية</string>
+    <string name="switch_google_account_action">تبديل حساب Google</string>
+    <string name="save_bio_experiment_cloud">حفظ التجربة في السحابة (Firestore)</string>
+    <string name="cloud_bio_experiments_title">☁️ سجل التجارب الحيوية المتزامنة سحابياً (Firestore)</string>
+    <string name="restore_bio_experiment">استعادة التجربة</string>
 </resources>

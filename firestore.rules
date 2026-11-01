@@ -20,6 +20,19 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    // Entity 0: UserProfile validation helper
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+             data.photoUrl is string && data.photoUrl.size() <= 1000 &&
+             data.activeBranch is string && data.activeBranch.size() >= 1 && data.activeBranch.size() <= 60 &&
+             data.projectsCount is int && data.projectsCount >= 0 && data.projectsCount <= 100000 &&
+             data.bioExperimentsCount is int && data.bioExperimentsCount >= 0 && data.bioExperimentsCount <= 100000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
     // Entity 1: StudioProject validation helper
     function isValidStudioProject(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
@@ -70,6 +83,45 @@ service cloud.firestore {
              data.durationMs is int && data.durationMs >= 0 && data.durationMs <= 3600000 &&
              data.reportSummary is string && data.reportSummary.size() >= 1 && data.reportSummary.size() <= 10000 &&
              data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    // Entity 5: BioExperimentRecord validation helper
+    function isValidBioExperimentRecord(data) {
+      return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+             data.workflowMode is string && (data.workflowMode in ['PROTEIN_FOLDING', 'CRISPR_EDITING', 'GENOMIC_ALIGNMENT', 'CLINICAL_TRIALS']) &&
+             data.fastaSequence is string && data.fastaSequence.size() >= 1 && data.fastaSequence.size() <= 50000 &&
+             data.researchGoal is string && data.researchGoal.size() <= 1000 &&
+             data.plddtScore is int && data.plddtScore >= 0 && data.plddtScore <= 100 &&
+             (data.freeEnergyKcal is number) && data.freeEnergyKcal >= -500 && data.freeEnergyKcal <= 500 &&
+             data.alphaHelixPct is int && data.alphaHelixPct >= 0 && data.alphaHelixPct <= 100 &&
+             data.betaSheetPct is int && data.betaSheetPct >= 0 && data.betaSheetPct <= 100 &&
+             data.aiReportSummary is string && data.aiReportSummary.size() <= 30000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && (resource == null || existing().userId == request.auth.uid);
+      allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       incoming().keys().hasAll(['userId', 'email', 'displayName', 'photoUrl', 'activeBranch', 'projectsCount', 'bioExperimentsCount', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'displayName', 'photoUrl', 'activeBranch', 'projectsCount', 'bioExperimentsCount', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidUserProfile(incoming()) &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'photoUrl', 'activeBranch', 'projectsCount', 'bioExperimentsCount', 'updatedAt']);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && existing().userId == request.auth.uid;
     }
 
     match /users/{userId}/projects/{projectId} {
@@ -156,6 +208,31 @@ service cloud.firestore {
       allow update: if false;
 
       allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(logId) && existing().userId == request.auth.uid;
+    }
+
+    match /users/{userId}/bio_experiments/{experimentId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(experimentId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(experimentId) &&
+                       incoming().keys().hasAll(['userId', 'title', 'workflowMode', 'fastaSequence', 'researchGoal', 'plddtScore', 'freeEnergyKcal', 'alphaHelixPct', 'betaSheetPct', 'aiReportSummary', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'title', 'workflowMode', 'fastaSequence', 'researchGoal', 'plddtScore', 'freeEnergyKcal', 'alphaHelixPct', 'betaSheetPct', 'aiReportSummary', 'createdAt', 'updatedAt']) &&
+                       isValidBioExperimentRecord(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidBioExperimentRecord(incoming()) &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(experimentId) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['title', 'workflowMode', 'fastaSequence', 'researchGoal', 'plddtScore', 'freeEnergyKcal', 'alphaHelixPct', 'betaSheetPct', 'aiReportSummary', 'updatedAt']);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(experimentId) && existing().userId == request.auth.uid;
     }
   }
 }

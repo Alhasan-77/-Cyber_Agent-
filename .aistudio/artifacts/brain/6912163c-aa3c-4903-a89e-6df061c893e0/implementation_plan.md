@@ -1,47 +1,55 @@
-# خطة التنفيذ النهائية: إكمال مهارات العلوم الحيوية، لعبة الدفاع الخلوي التفاعلية، ومشاهد Three.js ثلاثية الأبعاد
+# خطة تنفيذ نظام المصادقة السحابية (Google Sign-In) وقاعدة بيانات Firestore المتكاملة
 
-## 1. نظرة عامة على المنتج والهدف العام (Overview & Creative Direction)
-تهدف هذه المرحلة إلى استكمال منظومة **NovaForge AI Studio** عبر دمج ثلاث قدرات تفاعلية متقدمة تعمل بتناغم كامل مع قاعدة بيانات **Cloud Firestore**، محرك **Gemini AI**، وذاكرة المهارات البرمجية:
-1. **مختبر ومهارات العلوم الحيوية المتكاملة (Bioscience & Genomic Skills Suite)**: توسيع قسم المختبر الحيوي ليشمل أربعة مسارات عمل تفاعلية فورية وحسابات حيوية حقيقية:
-   - **محاكاة طي البروتينات والـ DNA ثلاثية الأبعاد (3D Protein & DNA Folding)**: حساب الكتلة الجزيئية (kDa)، مؤشر الكراهية للماء (GRAVY)، التنبؤ ببنية ألفا الحلزونية وصفائح بيتا، وعرض المجسم الجزيئي ثلاثي الأبعاد.
-   - **محاكي التعديل الجيني CRISPR-Cas9**: فحص مواقع PAM (`NGG`) تلقائياً داخل تسلسل الحمض النووي، حساب كفاءة الاستهداف (On-Target Score) ومخاطر القطع غير المستهدف (Off-Target Risk)، وتوليد دليل sgRNA المثالي.
-   - **تحليل الجينوم واكتشاف المتغيرات (Genomic Alignment & Variant Calling)**: حساب نسبة GC، التوزيع النيوكليوتيدي، كشف الطفرات النقطية (SNPs/Indels)، وترجمة أطر القراءة المفتوحة (ORFs).
-   - **لوحة التجارب السريرية والمؤشرات الحيوية (Clinical Trials & Biomarker Analytics)**: محاكاة منحنيات الاستجابة الدوائية (IC50 / Dose-Response) وتقييم مراحل التجارب السريرية (Phase I–III) مع تصدير خط أنابيب الكود (Biopython / R / Nextflow) مباشرة إلى محرر الكود.
-2. **لعبة الدفاع الخلوي والجزيئي التفاعلية (3D Cellular & Molecular Defense Game)**:
-   - بناء لعبة كاملة المراحل تعمل بسرعة **60 إطاراً في الثانية (60fps)** مع دورة حالات متكاملة (`Title Screen` ➔ `Playing` ➔ `Pause` ➔ `Victory / Game Over Modal` مع إعادة اللعب الفورية دون إعادة تحميل الصفحة).
-   - تصميم واجهة **HUD منخفضة التغطية (Low-Occlusion UI)** تترك أكثر من **85%** من مساحة اللعب مرئية بوضوح، مع عصا تحكم لمسية افتراضية (Virtual Touch Joystick) وأزرار مهارات دفاعية تفاعلية (إطلاق الأجسام المضادة، نبضة CRISPR، والدرع المناعي).
-   - دعم كامل لمؤثرات الشعور باللعب (**Game Feel**): اهتزاز الكاميرا الدقيق (Camera Shake)، التوقف اللحظي عند الإصابة الحرجة (Hitstop)، انفجارات الجسيمات المجمعة (Pooled Particle Bursts)، ومؤشرات التحذير المسبقة قبل هجوم الفيروسات (Enemy Telegraphs)، بالإضافة إلى مُركّب صوتي إجرائي عبر **Web Audio API** مع زر كتم/تفعيل الصوت (`Mute Toggle`).
-3. **مستعرض ومختبر مشاهد Three.js ثلاثية الأبعاد (Three.js 3D Procedural Scenes & IDE Template)**:
-   - توفير محرك عرض ثلاثي الأبعاد هجين (مدمج في قسم المختبر الحيوي وكقالب جاهز **`🎮 3D Three.js & BioGame`** داخل محرر الكود `IDE & Live Preview`).
-   - بناء نماذج إجرائية مركبة (Composite Procedural 3D Models من 3 إلى 12 جزءاً هيكلياً: حلزون DNA مزدوج، مركب بروتيني مطوي، كبسولة فيروسية متعددة الأوجه، وخلية مناعية بنواة مضيئة) مع إضاءة قياسية ثلاثية النقاط (Key, Fill, Rim PBR Lighting)، ضباب عمق جوي، وتحكم كاميرا انسيابي (Orbit / Damped Camera) مع شريط أدوات عائم.
+## 1. نظرة عامة والهدف
+تهدف هذه الخطة إلى استكمال وتوسيع البنية السحابية في تطبيق **NovaForge Studio** بحيث يتم ربط جلسة المستخدم الموثقة عبر **Google Sign-In (`CredentialManager`)** بمزامنة سحابية شاملة وفورية في **Cloud Firestore** تشمل:
+1. **ملف تعريف المطور السحابي (`UserProfile`)**: حفظ بيانات حساب Google، إحصائيات النشاط، وتوقيت آخر مزامنة سحابية.
+2. **تجارب المختبر الحيوي وطي البروتين (`BioExperimentRecord`)**: حفظ تسلسلات الأحماض الأمينية، نتائج طي البروتين ثلاثي الأبعاد، طاقة الاستقرار (`freeEnergyKcal`)، ومؤشر الثقة (`pLddtScore`) في Firestore لاستعادتها عبر الأجهزة.
+3. **المشاريع البرمجية ولقطات الإصدارات ومخططات البيانات وسجلات البناء (`StudioProject`, `VersionSnapshot`, `DbCollectionSchema`, `BuildExecutionLog`)**: دعم المزامنة الفورية التلقائية مع إمكانية الحفظ اليدوي واستعادة النسخ بنقرة واحدة.
 
 ---
 
-## 2. الميزات التفصيلية وهيكلة المكونات (Key Features & Component Architecture)
+## 2. تجربة المستخدم وتدفق الواجهات (UX & UI Flow)
 
-### أ. محرك العلوم الحيوية والمهارات التفاعلية (`BioscienceSimulationEngine.kt`)
-- إنشاء وحدة حسابية ومولّد مشاهد متكامل (`com.example.data.skills.BioscienceSimulationEngine`) يقدم:
-  - **حسابات بيولوجية فورية محلية (Real-Time Bioinformatics Metrics)**: حساب دقيق لطول التسلسل، نسبة `GC%`، درجة حرارة الانصهار التقريبية (`Tm`)، البحث عن مواقع `NGG` الخاصة بـ CRISPR-Cas9، ترجمة التسلسل إلى أحماض أمينية، وحساب مؤشرات التجارب السريرية (`IC50`, `p-value`, `Survival Rate`).
-  - **كتالوج مهارات العلوم الحيوية المدمجة (Bioscience Skills Presets)**: بطاقات مهارات تفاعلية جاهزة للحقن في محرر الكود أو المساعد الذكي (`3D Protein Folding AlphaFold Pipeline`, `CRISPR-Cas9 sgRNA Designer`, `Genomic Variant Caller VCF`, `Clinical Trial Survival & Dose Analytics`).
-  - **مولد HTML5 / Three.js WebGL & Canvas 3D التفاعلي**: يولّد كود المشهد ثلاثي الأبعاد واللعبة التفاعلية المتكاملة مع Web Audio API، عصا التحكم اللمسية، وأزرار المهارات ليعمل بسلاسة تامة داخل كل من المختبر الحيوي ونافذة المعاينة الحية في `IdePreviewTabScreen`.
+### أ. بطاقة الملف الشخصي التفاعلية وإدارة الحسابات
+- إضافة **بطاقة ملف شخصي تفاعلية (Interactive Cloud Profile Card & Sheet)** في الشريط العلوي للاستوديو وداخل لوحة التحكم:
+  - تعرض اسم المستخدم، البريد الإلكتروني، الصورة الرمزية أو شارة الهوية السحابية، وحالة الاتصال والمزامنة الفورية (`Live Sync Active` / `Syncing...` / `Synced`) مع زمن الاستجابة (`Latency ms`).
+  - تتيح **تبديل حساب Google** مباشرة (عبر مسح جلسة `CredentialManager` وفتح منتقي حسابات Google) أو **تسجيل الخروج الآمن**، بالإضافة إلى زر **مزامنة سحابية فورية يدوية (Force Cloud Sync)**.
 
-### ب. تطوير واجهة المختبر الحيوي واللعبة (`BioscienceLabTabScreen.kt`)
-- إضافة شريط أوضاع تفاعلي في أعلى قسم المختبر الحيوي (`BioscienceLabTabScreen`) للتبديل السلس بين:
-  1. **🎮 لعبة الدفاع الخلوي ومستعرض 3D (3D Cellular Defense & Three.js Viewer)**:
-     - عارض تفاعلي مباشر (Hardware-Accelerated WebView + Native Compose Telemetry Bar) يعرض:
-       - **وضع اللعبة (Cellular Defense Game Mode)**: شاشة عنوان تفاعلية، عداد نقاط وموجات (Waves 1–3)، شريط صحة الخلية المضيفة، عصا تحكم لمسية على اليسار، وأزرار إطلاق الأجسام المضادة / نبضة CRISPR على اليمين، مع زر إيقاف مؤقت (`Pause`) وزر كتم الصوت (`Mute`) وشاشة فوز/انتهاء اللعبة (`Victory / Game Over`).
-       - **وضع مستعرض المشاهد 3D (Three.js Procedural 3D Inspector)**: التبديل بين 4 مجسمات ثلاثية الأبعاد مركبة (`DNA Double Helix`, `Folded Protein Complex`, `CRISPR-Cas9 Ribonucleoprotein`, `Viral Capsid & Nanobot`) مع التحكم في الدوران التلقائي، تفكيك الأجزاء (`Explode View`)، وإعادة ضبط الكاميرا (`Reset Camera`).
-  2. **🧬 أدوات التحليل الحيوي الأربعة (Protein Folding, CRISPR, Genomics, Clinical Trials)**:
-     - شرائح اختيار سريعة للمسارات الأربعة مع عرض بطاقات نتائج فورية (مواقع PAM المكتشفة، نسبة GC، البنية الثانوية المتوقعة، ومؤشرات التجارب السريرية) بجانب التقرير المعمق المدعوم بنموذج `gemini-4-argon` وزر تصدير المشهد أو الكود العلمي مباشرة إلى محرر `IDE`.
+### ب. حفظ واستعادة تجارب المختبر الحيوي (Bioscience Lab Cloud Sync)
+- داخل تبويب **المختبر الحيوي (`BioscienceLabTabScreen`)**:
+  - حفظ تلقائي وفوري أو يدوي لأي تجربة طي بروتين أو تحليل جيني في مجموعة `users/{userId}/bio_experiments`.
+  - قائمة سحابية تفاعلية للتجارب المحفوظة تتيح **استعادة التجربة (Restore Experiment)** إلى العارض ثلاثي الأبعاد أو حذفها من السحابة.
 
-### ج. دمج قالب Three.js واللعبة في بيئة التطوير (`IdePreviewTabScreen.kt` & `StudioViewModel.kt`)
-- إضافة زر قالب جاهز جديد في شريط قوالب محرر الكود (`IdePreviewTabScreen`):
-  - **`🎮 3D Three.js & BioGame`** (`testTag = "template_threejs_game"`): يقوم بتحميل كود HTML/CSS/JS/Backend الكامل لمحرك المشاهد ثلاثية الأبعاد ولعبة الدفاع الخلوي داخل تبويبات المحرر (`HTML`, `CSS`, `JS`, `Backend`) وتشغيله فوراً في نافذة المعاينة الحية (`Live Interactive Preview`) مع إمكانية تعديل سرعة اللعبة، الإضاءة، أو الجسيمات مباشرة من الكود.
-- حفظ أعلى نتيجة في لعبة الدفاع الخلوي (`highScore` و `maxWaveReached`) ومزامنتها في ذاكرة المشروع وسجل البناء في **Cloud Firestore**.
+### ج. المزامنة التلقائية واليدوية للمشاريع وإدارة قاعدة البيانات
+- تحديث تلقائي لحظي (`Real-Time Snapshot Listeners`) عند تعديل المشاريع أو إضافة لقطات إصدار (`Snapshots`) مع إشعار حالة المزامنة.
+- توفير لوحة تحكم شاملة في تبويب **قاعدة البيانات والإصدارات (`DatabaseAndVcsTabScreen`)** ومكون **`FirestoreDataManagerComponent`** لاستعراض وإدارة جميع المجموعات السحابية الخمس (`Profile`, `Projects`, `Snapshots`, `Collections`, `BioExperiments`, `Logs`).
 
 ---
 
-## 3. معايير الجودة والتحقق (Verification & Quality Criteria)
-- **سلاسة الأداء (60fps & Clamped Delta Time)**: استخدام حلقة `requestAnimationFrame` واحدة مع تقييد الزمن التفاضلي `Math.min(dt, 0.05)` وتجميع الجسيمات (Object Pooling) لمنع أي تقطيع أثناء الانفجارات الجزيئية.
-- **حماية الواجهة (ErrorBoundary & Safe Insets)**: الحفاظ على عمل جميع المكونات داخل `ErrorBoundary` مع احترام الهوامش الآمنة (`WindowInsets`) وتوفير `Modifier.testTag(...)` ومساحة لمس لا تقل عن `48.dp` لكافة الأزرار التفاعلية.
-- **التحقق البرمجي والاختبارات**: تشغيل `compile_applet` وتنفيذ اختبارات الوحدة و Robolectric (`ExampleRobolectricTest`) للتأكد من سلامة التنقل وعرض كافة التبويبات والمكونات الجديدة بنجاح.
+## 3. هيكلة قاعدة البيانات وقواعد الأمان (Firestore Schema & Security Rules)
+
+سيتم تحديث كل من `firebase-blueprint.json` و `firestore.rules` وفق معمارية **Zero-Trust** بحيث يقتصر الوصول على مالك الحساب الموثق (`request.auth.uid == userId`):
+
+1. **وثيقة الملف الشخصي (`/users/{userId}`)**:
+   - الحقول: `userId`, `email`, `displayName`, `photoUrl`, `role`, `projectsCount`, `bioExperimentsCount`, `createdAt`, `updatedAt`.
+2. **مجموعة تجارب المختبر الحيوي (`/users/{userId}/bio_experiments/{experimentId}`)**:
+   - الحقول: `userId`, `title`, `sequence`, `foldingMode`, `pLddtScore`, `freeEnergyKcal`, `helixPercent`, `sheetPercent`, `aiSummary`, `createdAt`, `updatedAt`.
+3. **المجموعات الحالية المحمية (`/users/{userId}/projects`, `/snapshots`, `/collections`, `/logs`)**:
+   - الحفاظ على التحقق الصارم من الأنواع والأحجام وملكية المستخدم (`existing().userId == request.auth.uid`).
+
+---
+
+## 4. المكونات البرمجية المقرر إضافتها أو تحديثها
+
+- **`data/model/StudioModels.kt`**:
+  - إضافة نموذجي `UserProfile` و `BioExperimentRecord` المتوافقين مع Firestore (`@DocumentId`, `@ServerTimestamp`, قيم افتراضية آمنة).
+- **`data/repository/StudioRepository.kt`**:
+  - إضافة دوال المزامنة اللحظية والعمليات (`observeUserProfile`, `upsertUserProfile`, `observeBioExperiments`, `saveBioExperiment`, `deleteBioExperiment`).
+- **`ui/viewmodel/StudioViewModel.kt` و `ui/viewmodel/DataViewModel.kt`**:
+  - ربط حالة المزامنة التلقائية للملف الشخصي وتجارب المختبر الحيوي والمشاريع عند تسجيل الدخول، وتوفير دوال الحفظ اليدوي واستعادة النسخ.
+- **`ui/components/MainScreenLayout.kt` و `ui/screens/AuthScreen.kt`**:
+  - إضافة بطاقة الملف الشخصي التفاعلية مع مؤشر المزامنة السحابية وخيار تبديل حساب Google.
+- **`ui/screens/BioscienceLabTabScreen.kt` و `ui/components/FirestoreDataManagerComponent.kt`**:
+  - دمج سجل التجارب الحيوية السحابية مع إمكانية الحفظ اليدوي والتلقائي والاستعادة الفورية.
+- **`firestore.rules` و `FirestoreSecurityRulesTest.kt`**:
+  - تحديث قواعد الأمان واختباراتها ثم نشرها عبر `deploy_firebase` والتحقق من البناء عبر `compile_applet`.

@@ -1,5 +1,61 @@
 {
   "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated Google user profile metadata and cloud workspace synchronization summary.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the authenticated Google user."
+        },
+        "email": {
+          "type": "string",
+          "description": "Authenticated Google email address."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name from Google Sign-In profile."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Avatar photo URL from Google Sign-In profile."
+        },
+        "activeBranch": {
+          "type": "string",
+          "description": "Currently active VCS branch in the user's cloud studio."
+        },
+        "projectsCount": {
+          "type": "integer",
+          "description": "Total number of synced full-stack projects."
+        },
+        "bioExperimentsCount": {
+          "type": "integer",
+          "description": "Total number of synced bioscience lab experiments."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when user profile was first created (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when user profile was last synced (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "email",
+        "displayName",
+        "photoUrl",
+        "activeBranch",
+        "projectsCount",
+        "bioExperimentsCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "StudioProject": {
       "title": "StudioProject",
       "description": "A full-stack project in NovaForge AI Studio with multi-language source files and cloud settings.",
@@ -222,9 +278,85 @@
         "reportSummary",
         "createdAt"
       ]
+    },
+    "BioExperimentRecord": {
+      "title": "BioExperimentRecord",
+      "description": "A saved Bioscience Lab experiment including protein folding metrics, sequence data, and AI analysis.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the authenticated researcher/owner."
+        },
+        "title": {
+          "type": "string",
+          "description": "Human-readable title of the bioscience experiment."
+        },
+        "workflowMode": {
+          "type": "string",
+          "enum": ["PROTEIN_FOLDING", "CRISPR_EDITING", "GENOMIC_ALIGNMENT", "CLINICAL_TRIALS"],
+          "description": "Bioscience workflow mode."
+        },
+        "fastaSequence": {
+          "type": "string",
+          "description": "FASTA / DNA / RNA / Protein sequence analyzed."
+        },
+        "researchGoal": {
+          "type": "string",
+          "description": "Research objective or hypothesis."
+        },
+        "plddtScore": {
+          "type": "integer",
+          "description": "Predicted Local Distance Difference Test (pLDDT) structural confidence score (0-100)."
+        },
+        "freeEnergyKcal": {
+          "type": "number",
+          "description": "Estimated Gibbs free energy (Delta G in kcal/mol)."
+        },
+        "alphaHelixPct": {
+          "type": "integer",
+          "description": "Percentage of Alpha-Helix secondary structure."
+        },
+        "betaSheetPct": {
+          "type": "integer",
+          "description": "Percentage of Beta-Sheet secondary structure."
+        },
+        "aiReportSummary": {
+          "type": "string",
+          "description": "AI-generated bioinformatics report or pipeline code."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "title",
+        "workflowMode",
+        "fastaSequence",
+        "researchGoal",
+        "plddtScore",
+        "freeEnergyKcal",
+        "alphaHelixPct",
+        "betaSheetPct",
+        "aiReportSummary",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Authenticated user profile and cloud synchronization state."
+    },
     "/users/{userId}/projects/{projectId}": {
       "schema": "StudioProject",
       "description": "Per-user full-stack projects."
@@ -240,6 +372,10 @@
     "/users/{userId}/logs/{logId}": {
       "schema": "BuildExecutionLog",
       "description": "Per-user real-time build monitoring logs and detailed reports."
+    },
+    "/users/{userId}/bio_experiments/{experimentId}": {
+      "schema": "BioExperimentRecord",
+      "description": "Per-user Bioscience Lab protein folding and genomic experiments."
     }
   }
 }

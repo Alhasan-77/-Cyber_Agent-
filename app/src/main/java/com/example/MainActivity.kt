@@ -32,6 +32,7 @@ import com.example.ui.components.GlobalExceptionHandler
 import com.example.ui.components.MainScreenLayout
 import com.example.ui.components.SKILLS_HUB_TAB_INDEX
 import com.example.ui.components.StudioBottomTab
+import androidx.credentials.CredentialManager
 import com.example.ui.screens.AiAndMediaStudioTabScreen
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.BioscienceLabTabScreen
@@ -39,6 +40,7 @@ import com.example.ui.screens.DashboardTabScreen
 import com.example.ui.screens.DatabaseAndVcsTabScreen
 import com.example.ui.screens.IdePreviewTabScreen
 import com.example.ui.screens.SkillsMemoryHubTabScreen
+import com.example.ui.screens.onGoogleSignInClicked
 import com.example.ui.screens.signOutUser
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.DataViewModel
@@ -189,17 +191,25 @@ fun AppNavigation(auth: FirebaseAuth? = null) {
     if (user == null) {
         AuthScreen(onAuthSuccess = { currentUser = resolvedAuth.currentUser })
     } else {
-        NovaForgeStudioShell(currentUserId = user.uid, userEmail = user.email ?: "Cloud Developer")
+        NovaForgeStudioShell(
+            currentUserId = user.uid,
+            userEmail = user.email ?: "Cloud Developer",
+            userDisplayName = user.displayName ?: "NovaForge Developer",
+            userPhotoUrl = user.photoUrl?.toString().orEmpty()
+        )
     }
 }
 
 @Composable
 fun NovaForgeStudioShell(
     currentUserId: String,
-    userEmail: String
+    userEmail: String,
+    userDisplayName: String = "NovaForge Developer",
+    userPhotoUrl: String = ""
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val credentialManager = remember { CredentialManager.create(context) }
     val ttsSpeaker = remember {
         runCatching { AndroidTtsSpeaker(context) }
             .onFailure { e ->
@@ -262,7 +272,10 @@ fun NovaForgeStudioShell(
                 StudioViewModel(
                     repository = StudioRepository(db),
                     aiRepository = aiRepo,
-                    currentUserId = currentUserId
+                    currentUserId = currentUserId,
+                    userEmail = userEmail,
+                    userDisplayName = userDisplayName,
+                    userPhotoUrl = userPhotoUrl
                 )
             }
         }
@@ -309,6 +322,10 @@ fun NovaForgeStudioShell(
     var selectedTab by rememberSaveable { mutableIntStateOf(StudioBottomTab.DASHBOARD.index) }
 
     val projectsState by viewModel.projectsState.collectAsStateWithLifecycle()
+    val bioExperimentsState by viewModel.bioExperimentsState.collectAsStateWithLifecycle()
+    val userProfileState by viewModel.userProfileState.collectAsStateWithLifecycle()
+    val syncLatencyMs by viewModel.syncLatencyMs.collectAsStateWithLifecycle()
+    val lastSyncTimestampLabel by viewModel.lastSyncTimestampLabel.collectAsStateWithLifecycle()
     val snapshotsState by viewModel.snapshotsState.collectAsStateWithLifecycle()
     val collectionsState by viewModel.collectionsState.collectAsStateWithLifecycle()
     val buildLogsState by viewModel.buildLogsState.collectAsStateWithLifecycle()
@@ -361,10 +378,18 @@ fun NovaForgeStudioShell(
         viewModel.initializeSkillsMemory(loadedCatalog)
     }
 
+    val resolvedProfile = (userProfileState as? UiState.Success)?.data
+    val syncedProjectsCount = (projectsState as? UiState.Success)?.data?.size
+        ?: resolvedProfile?.projectsCount?.toInt()
+        ?: 0
+    val syncedBioExperimentsCount = (bioExperimentsState as? UiState.Success)?.data?.size
+        ?: resolvedProfile?.bioExperimentsCount?.toInt()
+        ?: 0
+
     MainScreenLayout(
         selectedTab = selectedTab,
         onSelectTab = { selectedTab = it },
-        userEmail = userEmail,
+        userEmail = resolvedProfile?.email?.ifBlank { userEmail } ?: userEmail,
         activeBranch = activeBranch,
         skillsCount = skillsCatalog.totalSkills,
         pinnedSkillsCount = pinnedSkillIds.size,
@@ -375,6 +400,29 @@ fun NovaForgeStudioShell(
             signOutUser(
                 context = context,
                 onSignOutComplete = {},
+                scope = scope
+            )
+        },
+        userDisplayName = resolvedProfile?.displayName?.ifBlank { userDisplayName } ?: userDisplayName,
+        userId = currentUserId,
+        syncedProjectsCount = syncedProjectsCount,
+        syncedBioExperimentsCount = syncedBioExperimentsCount,
+        syncLatencyMs = syncLatencyMs,
+        lastSyncTimestampLabel = lastSyncTimestampLabel,
+        onForceCloudSync = { viewModel.forceManualCloudSync() },
+        onSwitchGoogleAccount = {
+            onGoogleSignInClicked(
+                context = context,
+                credentialManager = credentialManager,
+                onAuthSuccess = { viewModel.forceManualCloudSync() },
+                onAuthError = { err ->
+                    GlobalExceptionHandler.reportError(
+                        phase = "Switch Google Account",
+                        throwable = IllegalStateException(err),
+                        isFatal = false,
+                        serviceName = "Firebase"
+                    )
+                },
                 scope = scope
             )
         }
@@ -513,6 +561,23 @@ fun NovaForgeStudioShell(
                 onLoad3dBioGameTemplateInIde = {
                     viewModel.loadStarterTemplate("THREEJS_BIOGAME")
                     selectedTab = StudioBottomTab.IDE.index
+                },
+                bioExperimentsState = bioExperimentsState,
+                onSaveBioExperiment = { title, workflowMode, seq, goal, plddt, freeEnergy, alphaPct, betaPct, summary ->
+                    viewModel.saveBioExperimentToCloud(
+                        title = title,
+                        workflowMode = workflowMode,
+                        fastaSequence = seq,
+                        researchGoal = goal,
+                        plddtScore = plddt,
+                        freeEnergyKcal = freeEnergy,
+                        alphaHelixPct = alphaPct,
+                        betaSheetPct = betaPct,
+                        aiReportSummary = summary
+                    )
+                },
+                onDeleteBioExperiment = { expId ->
+                    viewModel.deleteBioExperimentFromCloud(expId)
                 }
             )
             SKILLS_HUB_TAB_INDEX -> SkillsMemoryHubTabScreen(

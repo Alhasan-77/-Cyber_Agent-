@@ -2,9 +2,11 @@ package com.example.data.repository
 
 import android.content.Context
 import com.example.R
+import com.example.data.model.BioExperimentRecord
 import com.example.data.model.BuildExecutionLog
 import com.example.data.model.DbCollectionSchema
 import com.example.data.model.StudioProject
+import com.example.data.model.UserProfile
 import com.example.data.model.VersionSnapshot
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
@@ -536,6 +538,266 @@ class StudioRepository(private val db: FirebaseFirestore) {
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.GET, path)
+            throw e
+        }
+    }
+
+    // --- User Profile (/users/{userId}) ---
+
+    fun observeUserProfile(): Flow<UserProfile?> = flow {
+        val uid = requireUserId()
+        val path = "users/$uid"
+        emitAll(
+            db.collection("users").document(uid)
+                .snapshots()
+                .map { doc ->
+                    if (doc.exists()) {
+                        doc.toObject(
+                            UserProfile::class.java,
+                            DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                        )
+                    } else {
+                        null
+                    }
+                }
+                .catch { error ->
+                    if (error is Exception) handleFirestoreError(error, OperationType.GET, path)
+                    throw error
+                }
+        )
+    }
+
+    suspend fun getUserProfile(): Result<UserProfile?> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid"
+        try {
+            val doc = db.collection("users").document(uid).get().await()
+            if (doc.exists()) {
+                doc.toObject(
+                    UserProfile::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                )
+            } else {
+                null
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.GET, path)
+            throw e
+        }
+    }
+
+    suspend fun upsertUserProfile(
+        email: String,
+        displayName: String,
+        photoUrl: String,
+        activeBranch: String,
+        projectsCount: Long,
+        bioExperimentsCount: Long
+    ): Result<Unit> = runCatching {
+        val uid = requireUserId()
+        val docRef = db.collection("users").document(uid)
+        val safeEmail = email.take(200)
+        val safeDisplayName = displayName.ifBlank {
+            safeEmail.substringBefore("@").ifBlank { "Cloud Developer" }
+        }.take(120)
+        val safePhotoUrl = photoUrl.take(1000)
+        val safeBranch = activeBranch.ifBlank { "main" }.take(60)
+        val safeProjects = projectsCount.coerceIn(0L, 100000L)
+        val safeBio = bioExperimentsCount.coerceIn(0L, 100000L)
+        try {
+            val existingDoc = docRef.get().await()
+            if (existingDoc.exists()) {
+                val existingProfile = existingDoc.toObject(
+                    UserProfile::class.java,
+                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                )
+                if (existingProfile?.createdAt != null) {
+                    docRef.set(
+                        existingProfile.copy(
+                            userId = uid,
+                            email = safeEmail,
+                            displayName = safeDisplayName,
+                            photoUrl = safePhotoUrl,
+                            activeBranch = safeBranch,
+                            projectsCount = safeProjects,
+                            bioExperimentsCount = safeBio,
+                            updatedAt = null
+                        )
+                    ).await()
+                    return@runCatching
+                }
+            }
+            val payload = mapOf(
+                "userId" to uid,
+                "email" to safeEmail,
+                "displayName" to safeDisplayName,
+                "photoUrl" to safePhotoUrl,
+                "activeBranch" to safeBranch,
+                "projectsCount" to safeProjects,
+                "bioExperimentsCount" to safeBio,
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            docRef.set(payload).await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, docRef.path)
+            throw e
+        }
+    }
+
+    // --- Bioscience Lab Experiments (/users/{userId}/bio_experiments/{experimentId}) ---
+
+    fun observeBioExperiments(): Flow<List<BioExperimentRecord>> = flow {
+        val uid = requireUserId()
+        val path = "users/$uid/bio_experiments"
+        emitAll(
+            db.collection("users").document(uid).collection("bio_experiments")
+                .whereEqualTo("userId", uid)
+                .snapshots()
+                .map { snapshot ->
+                    snapshot.toObjects(
+                        BioExperimentRecord::class.java,
+                        DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+                    )
+                }
+                .catch { error ->
+                    if (error is Exception) handleFirestoreError(error, OperationType.LIST, path)
+                    throw error
+                }
+        )
+    }
+
+    suspend fun getBioExperiments(): Result<List<BioExperimentRecord>> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid/bio_experiments"
+        try {
+            val snapshot = db.collection("users").document(uid).collection("bio_experiments")
+                .whereEqualTo("userId", uid)
+                .get()
+                .await()
+            snapshot.toObjects(
+                BioExperimentRecord::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.LIST, path)
+            throw e
+        }
+    }
+
+    suspend fun getBioExperimentById(experimentId: String): Result<BioExperimentRecord?> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid/bio_experiments/$experimentId"
+        try {
+            val doc = db.collection("users").document(uid)
+                .collection("bio_experiments").document(experimentId)
+                .get()
+                .await()
+            doc.toObject(
+                BioExperimentRecord::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.GET, path)
+            throw e
+        }
+    }
+
+    suspend fun createBioExperiment(
+        title: String,
+        workflowMode: String,
+        fastaSequence: String,
+        researchGoal: String,
+        plddtScore: Long,
+        freeEnergyKcal: Double,
+        alphaHelixPct: Long,
+        betaSheetPct: Long,
+        aiReportSummary: String
+    ): Result<String> = runCatching {
+        val uid = requireUserId()
+        val expId = "bio_" + UUID.randomUUID().toString().replace("-", "").take(16)
+        val docRef = db.collection("users").document(uid).collection("bio_experiments").document(expId)
+        val safeMode = if (workflowMode in listOf("PROTEIN_FOLDING", "CRISPR_EDITING", "GENOMIC_ALIGNMENT", "CLINICAL_TRIALS")) {
+            workflowMode
+        } else {
+            "PROTEIN_FOLDING"
+        }
+        val payload = mapOf(
+            "userId" to uid,
+            "title" to title.ifBlank { "تجربة طي البروتين" }.take(160),
+            "workflowMode" to safeMode,
+            "fastaSequence" to fastaSequence.ifBlank { ">SEQ\nMVHLTPEEKSAV" }.take(50000),
+            "researchGoal" to researchGoal.take(1000),
+            "plddtScore" to plddtScore.coerceIn(0L, 100L),
+            "freeEnergyKcal" to freeEnergyKcal.coerceIn(-500.0, 500.0),
+            "alphaHelixPct" to alphaHelixPct.coerceIn(0L, 100L),
+            "betaSheetPct" to betaSheetPct.coerceIn(0L, 100L),
+            "aiReportSummary" to aiReportSummary.take(30000),
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        try {
+            docRef.set(payload).await()
+            expId
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, docRef.path)
+            throw e
+        }
+    }
+
+    suspend fun updateBioExperiment(experiment: BioExperimentRecord): Result<Unit> = runCatching {
+        val uid = requireUserId()
+        require(experiment.id.isNotBlank()) { "BioExperiment ID must not be blank for update" }
+        requireNotNull(experiment.createdAt) { "BioExperiment createdAt must not be null for update" }
+        val docRef = db.collection("users").document(uid).collection("bio_experiments").document(experiment.id)
+        val safeMode = if (experiment.workflowMode in listOf("PROTEIN_FOLDING", "CRISPR_EDITING", "GENOMIC_ALIGNMENT", "CLINICAL_TRIALS")) {
+            experiment.workflowMode
+        } else {
+            "PROTEIN_FOLDING"
+        }
+        try {
+            docRef.set(
+                experiment.copy(
+                    userId = uid,
+                    title = experiment.title.ifBlank { "تجربة طي البروتين" }.take(160),
+                    workflowMode = safeMode,
+                    fastaSequence = experiment.fastaSequence.ifBlank { ">SEQ\nMVHLTPEEKSAV" }.take(50000),
+                    researchGoal = experiment.researchGoal.take(1000),
+                    plddtScore = experiment.plddtScore.coerceIn(0L, 100L),
+                    freeEnergyKcal = experiment.freeEnergyKcal.coerceIn(-500.0, 500.0),
+                    alphaHelixPct = experiment.alphaHelixPct.coerceIn(0L, 100L),
+                    betaSheetPct = experiment.betaSheetPct.coerceIn(0L, 100L),
+                    aiReportSummary = experiment.aiReportSummary.take(30000),
+                    updatedAt = null
+                )
+            ).await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, docRef.path)
+            throw e
+        }
+    }
+
+    suspend fun deleteBioExperiment(experimentId: String): Result<Unit> = runCatching {
+        val uid = requireUserId()
+        val docRef = db.collection("users").document(uid).collection("bio_experiments").document(experimentId)
+        try {
+            docRef.delete().await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, docRef.path)
             throw e
         }
     }

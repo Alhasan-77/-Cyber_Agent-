@@ -22,8 +22,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Biotech
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.ViewInAr
@@ -40,6 +44,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -55,15 +60,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.R
+import com.example.data.model.BioExperimentRecord
+import com.example.data.model.UiState
 import com.example.data.skills.BioSequenceMetrics
 import com.example.data.skills.BioscienceSimulationEngine
 import com.example.data.skills.BioscienceWorkflowMode
+import com.example.ui.components.ProteinFoldingVisualizer
 import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBackground
+import com.example.ui.theme.CyberCoral
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.CyberEmerald
 import com.example.ui.theme.CyberSurface
@@ -77,7 +88,20 @@ fun BioscienceLabTabScreen(
     bioscienceOutput: String?,
     onRunBioscienceAnalysis: (String, String) -> Unit,
     onExportPipelineToIde: (String) -> Unit,
-    onLoad3dBioGameTemplateInIde: (() -> Unit)? = null
+    onLoad3dBioGameTemplateInIde: (() -> Unit)? = null,
+    bioExperimentsState: UiState<List<BioExperimentRecord>> = UiState.Success(emptyList()),
+    onSaveBioExperiment: (
+        title: String,
+        toolType: String,
+        sequenceInput: String,
+        targetParameters: String,
+        plddtScore: Int,
+        rmsdScore: Double,
+        gcContentPercent: Int,
+        crisprGuidesCount: Int,
+        summaryReport: String
+    ) -> Unit = { _, _, _, _, _, _, _, _, _ -> },
+    onDeleteBioExperiment: (String) -> Unit = {}
 ) {
     var selectedSectionFilter by rememberSaveable { mutableStateOf("ALL") } // ALL, GAME_3D, BIO_TOOLS
     var selected3dViewMode by rememberSaveable { mutableStateOf("GAME") } // GAME, INSPECTOR
@@ -479,8 +503,43 @@ fun BioscienceLabTabScreen(
                                 Text("تصدير الكود للمحرر", color = CyberEmerald)
                             }
                         }
+
+                        Button(
+                            onClick = {
+                                val summaryText = bioscienceOutput
+                                    ?: "تحليل فوري (${activeWorkflow.badgeText}): الطول=${liveMetrics.sequenceLength}، pLDDT=${liveMetrics.plddtConfidence}%، ΔG=${liveMetrics.bindingAffinityKcal} kcal/mol، مواقع PAM=${liveMetrics.pamSites.size}، الجاهزية=${liveMetrics.clinicalPhaseReadiness}"
+                                onSaveBioExperiment(
+                                    "${activeWorkflow.titleAr} (${liveMetrics.sequenceType})",
+                                    activeWorkflow.name,
+                                    fastaSequence,
+                                    researchGoal,
+                                    liveMetrics.plddtConfidence.toInt(),
+                                    liveMetrics.bindingAffinityKcal,
+                                    liveMetrics.alphaHelixPct,
+                                    liveMetrics.betaSheetPct,
+                                    summaryText
+                                )
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("save_bio_experiment_cloud_button")
+                        ) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, tint = CyberBackground)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(id = R.string.save_bio_experiment_cloud),
+                                color = CyberBackground,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
+            }
+
+            // 3b. Interactive Protein Folding Structural Visualizer
+            item {
+                ProteinFoldingVisualizer(metrics = liveMetrics)
             }
 
             // 4. Real-Time Computed Bioinformatics & Clinical Dashboard Card
@@ -699,6 +758,142 @@ fun BioscienceLabTabScreen(
                                 .background(CyberBackground)
                                 .padding(12.dp)
                         )
+                    }
+                }
+            }
+        }
+
+        // 6. Cloud Firestore Synced Bio Experiments History & Restore Card
+        item {
+            val cloudExperiments = (bioExperimentsState as? UiState.Success)?.data.orEmpty()
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = CyberSurface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, CyberEmerald.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                    .testTag("cloud_bio_experiments_card")
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDone,
+                                contentDescription = null,
+                                tint = CyberEmerald
+                            )
+                            Column {
+                                Text(
+                                    text = stringResource(id = R.string.cloud_bio_experiments_title),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = CyberEmerald,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "تتم المزامنة الفورية لتجارب البروتين والجينوم مع حساب Google الخاص بك (${cloudExperiments.size} تجربة)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    if (cloudExperiments.isEmpty()) {
+                        Text(
+                            text = "لا توجد تجارب حيوية محفوظة سحابياً بعد. اضغط على «حفظ التجربة في السحابة» لحفظ التسلسل والمؤشرات الحالية.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        cloudExperiments.take(6).forEach { exp ->
+                            Surface(
+                                color = CyberBackground,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, CyberCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                    .testTag("cloud_bio_exp_item_${exp.id}")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = exp.title,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = CyberCyan,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "${exp.workflowMode} • pLDDT: ${exp.plddtScore}% • ΔG: ${exp.freeEnergyKcal} kcal/mol • Helix: ${exp.alphaHelixPct}% • Sheet: ${exp.betaSheetPct}%",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontFamily = JetBrainsMonoFontFamily
+                                                ),
+                                                color = CyberEmerald
+                                            )
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    fastaSequence = exp.fastaSequence
+                                                    researchGoal = exp.researchGoal
+                                                    BioscienceWorkflowMode.entries.find {
+                                                        it.name.equals(exp.workflowMode, ignoreCase = true)
+                                                    }?.let { activeWorkflow = it }
+                                                },
+                                                modifier = Modifier.testTag("restore_bio_exp_${exp.id}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Restore,
+                                                    contentDescription = stringResource(id = R.string.restore_bio_experiment),
+                                                    tint = CyberCyan
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = stringResource(id = R.string.restore_bio_experiment),
+                                                    color = CyberCyan,
+                                                    style = MaterialTheme.typography.labelMedium
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { onDeleteBioExperiment(exp.id) },
+                                                modifier = Modifier.testTag("delete_bio_exp_${exp.id}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "حذف التجربة",
+                                                    tint = CyberCoral
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (exp.aiReportSummary.isNotBlank()) {
+                                        Text(
+                                            text = exp.aiReportSummary.take(180),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

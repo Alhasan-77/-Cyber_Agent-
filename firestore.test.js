@@ -54,10 +54,49 @@ function validProjectPayload(uid) {
   };
 }
 
-test("Unauthenticated user: cannot read projects", async () => {
+function validUserProfilePayload(uid) {
+  const now = new Date();
+  return {
+    userId: uid,
+    email: "alice@novaforge.dev",
+    displayName: "Alice Researcher",
+    photoUrl: "https://example.com/avatar.png",
+    activeBranch: "main",
+    projectsCount: 2,
+    bioExperimentsCount: 3,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function validBioExperimentPayload(uid) {
+  const now = new Date();
+  return {
+    userId: uid,
+    title: "Hemoglobin Beta Folding",
+    workflowMode: "PROTEIN_FOLDING",
+    fastaSequence: ">HBB\nMVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVMGNPKVKAHGKKVLGAFSDGLAHLDNLKGTFATLSELHCDKLHVDPENFRLLGNVLVCVLAHHFGKEFTPPVQAAYQKVVAGVANALAHKYH",
+    researchGoal: "Analyze 3D Alpha-Helix stability and pLDDT score",
+    plddtScore: 94,
+    freeEnergyKcal: -11.4,
+    alphaHelixPct: 68,
+    betaSheetPct: 14,
+    aiReportSummary: "High structural confidence across heme-binding pocket.",
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+test("Unauthenticated user: cannot read projects, profiles, or bio experiments", async () => {
   const unauthDb = testEnv.unauthenticatedContext().firestore();
   await assertFails(
     unauthDb.collection(`users/${ALICE_UID}/projects`).where("userId", "==", ALICE_UID).get()
+  );
+  await assertFails(
+    unauthDb.collection("users").doc(ALICE_UID).get()
+  );
+  await assertFails(
+    unauthDb.collection(`users/${ALICE_UID}/bio_experiments`).where("userId", "==", ALICE_UID).get()
   );
 });
 
@@ -81,13 +120,54 @@ test("Authenticated user: fails query without userId filter (rules are not filte
   );
 });
 
-test("Authenticated user: cannot read another user's project", async () => {
+test("Authenticated user: cannot read another user's project, profile, or bio experiment", async () => {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await context.firestore().collection(`users/${BOB_UID}/projects`).doc("bob_proj").set(validProjectPayload(BOB_UID));
+    await context.firestore().collection("users").doc(BOB_UID).set(validUserProfilePayload(BOB_UID));
+    await context.firestore().collection(`users/${BOB_UID}/bio_experiments`).doc("bob_exp").set(validBioExperimentPayload(BOB_UID));
   });
   const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
   await assertFails(
     aliceDb.collection(`users/${BOB_UID}/projects`).doc("bob_proj").get()
+  );
+  await assertFails(
+    aliceDb.collection("users").doc(BOB_UID).get()
+  );
+  await assertFails(
+    aliceDb.collection(`users/${BOB_UID}/bio_experiments`).doc("bob_exp").get()
+  );
+});
+
+test("Authenticated user: can create, read, and update own UserProfile", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).get()
+  );
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).set(validUserProfilePayload(ALICE_UID))
+  );
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).update({
+      projectsCount: 5,
+      bioExperimentsCount: 4,
+      updatedAt: new Date(),
+    })
+  );
+});
+
+test("Authenticated user: can create, query, and update own BioExperimentRecord", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  await assertSucceeds(
+    aliceDb.collection(`users/${ALICE_UID}/bio_experiments`).doc("exp_1").set(validBioExperimentPayload(ALICE_UID))
+  );
+  await assertSucceeds(
+    aliceDb.collection(`users/${ALICE_UID}/bio_experiments`).where("userId", "==", ALICE_UID).get()
+  );
+  await assertSucceeds(
+    aliceDb.collection(`users/${ALICE_UID}/bio_experiments`).doc("exp_1").update({
+      plddtScore: 97,
+      updatedAt: new Date(),
+    })
   );
 });
 

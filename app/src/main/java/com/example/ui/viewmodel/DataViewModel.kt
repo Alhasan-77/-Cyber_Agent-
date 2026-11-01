@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.R
+import com.example.data.model.BioExperimentRecord
 import com.example.data.model.BuildExecutionLog
 import com.example.data.model.DbCollectionSchema
 import com.example.data.model.FirestoreCollectionInfo
@@ -140,22 +141,36 @@ class DataViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), UiState.Loading)
 
+    val bioExperimentsState: StateFlow<UiState<List<BioExperimentRecord>>> = repository.observeBioExperiments()
+        .map<List<BioExperimentRecord>, UiState<List<BioExperimentRecord>>> { list ->
+            _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
+            UiState.Success(list.sortedByDescending { it.updatedAt?.seconds ?: it.createdAt?.seconds ?: 0L })
+        }
+        .catch { e ->
+            _connectionStatus.value = FirestoreConnectionStatus.ERROR
+            emit(UiState.Error(e.message ?: "فشل تحميل تجارب المختبر الحيوي"))
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), UiState.Loading)
+
     val firestoreCollections: StateFlow<List<FirestoreCollectionInfo>> = combine(
         schemasState,
         projectsState,
         snapshotsState,
-        logsState
-    ) { schemasUi, projectsUi, snapshotsUi, logsUi ->
+        logsState,
+        bioExperimentsState
+    ) { schemasUi, projectsUi, snapshotsUi, logsUi, bioUi ->
         val schemasCount = (schemasUi as? UiState.Success)?.data?.size ?: 0
         val projectsCount = (projectsUi as? UiState.Success)?.data?.size ?: 0
         val snapshotsCount = (snapshotsUi as? UiState.Success)?.data?.size ?: 0
         val logsCount = (logsUi as? UiState.Success)?.data?.size ?: 0
+        val bioCount = (bioUi as? UiState.Success)?.data?.size ?: 0
 
         buildCollectionsSummaryList(
             schemasCount = schemasCount,
             projectsCount = projectsCount,
             snapshotsCount = snapshotsCount,
-            logsCount = logsCount
+            logsCount = logsCount,
+            bioCount = bioCount
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
@@ -164,14 +179,17 @@ class DataViewModel(
         _searchQuery,
         schemasState,
         projectsState,
-        combine(snapshotsState, logsState) { s, l -> s to l }
-    ) { selectedCol, query, schemasUi, projectsUi, (snapshotsUi, logsUi) ->
+        combine(snapshotsState, logsState, bioExperimentsState) { s, l, b -> Triple(s, l, b) }
+    ) { selectedCol, query, schemasUi, projectsUi, (snapshotsUi, logsUi, bioUi) ->
         val rawDocs = when (selectedCol) {
             COLLECTION_SCHEMAS -> {
                 (schemasUi as? UiState.Success)?.data.orEmpty().map { mapSchemaToDocumentItem(it) }
             }
             COLLECTION_PROJECTS -> {
                 (projectsUi as? UiState.Success)?.data.orEmpty().map { mapProjectToDocumentItem(it) }
+            }
+            COLLECTION_BIO_EXPERIMENTS -> {
+                (bioUi as? UiState.Success)?.data.orEmpty().map { mapBioExperimentToDocumentItem(it) }
             }
             COLLECTION_SNAPSHOTS -> {
                 (snapshotsUi as? UiState.Success)?.data.orEmpty().map { mapSnapshotToDocumentItem(it) }
@@ -235,6 +253,10 @@ class DataViewModel(
                 .map<List<StudioProject>, UiState<List<FirestoreDocumentItem>>> { list ->
                     UiState.Success(list.map { mapProjectToDocumentItem(it) })
                 }
+            COLLECTION_BIO_EXPERIMENTS -> repository.observeBioExperiments()
+                .map<List<BioExperimentRecord>, UiState<List<FirestoreDocumentItem>>> { list ->
+                    UiState.Success(list.map { mapBioExperimentToDocumentItem(it) })
+                }
             COLLECTION_SNAPSHOTS -> repository.observeSnapshots()
                 .map<List<VersionSnapshot>, UiState<List<FirestoreDocumentItem>>> { list ->
                     UiState.Success(list.map { mapSnapshotToDocumentItem(it) })
@@ -261,11 +283,13 @@ class DataViewModel(
                 val projects = repository.getUserProjects().getOrThrow()
                 val snapshots = repository.getSnapshots().getOrThrow()
                 val logs = repository.getBuildLogs().getOrThrow()
+                val bioExps = repository.getBioExperiments().getOrThrow()
                 buildCollectionsSummaryList(
                     schemasCount = schemas.size,
                     projectsCount = projects.size,
                     snapshotsCount = snapshots.size,
-                    logsCount = logs.size
+                    logsCount = logs.size,
+                    bioCount = bioExps.size
                 )
             }.onSuccess { list ->
                 _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
@@ -296,6 +320,8 @@ class DataViewModel(
                         .map { mapSchemaToDocumentItem(it) }
                     COLLECTION_PROJECTS -> repository.getUserProjects().getOrThrow()
                         .map { mapProjectToDocumentItem(it) }
+                    COLLECTION_BIO_EXPERIMENTS -> repository.getBioExperiments().getOrThrow()
+                        .map { mapBioExperimentToDocumentItem(it) }
                     COLLECTION_SNAPSHOTS -> repository.getSnapshots().getOrThrow()
                         .map { mapSnapshotToDocumentItem(it) }
                     COLLECTION_LOGS -> repository.getBuildLogs().getOrThrow()
@@ -335,6 +361,8 @@ class DataViewModel(
                         ?.let { mapSchemaToDocumentItem(it) }
                     COLLECTION_PROJECTS -> repository.getProjectById(currentUserId, documentId).getOrThrow()
                         ?.let { mapProjectToDocumentItem(it) }
+                    COLLECTION_BIO_EXPERIMENTS -> repository.getBioExperimentById(documentId).getOrThrow()
+                        ?.let { mapBioExperimentToDocumentItem(it) }
                     COLLECTION_SNAPSHOTS -> repository.getSnapshotById(documentId).getOrThrow()
                         ?.let { mapSnapshotToDocumentItem(it) }
                     COLLECTION_LOGS -> repository.getBuildLogById(documentId).getOrThrow()
@@ -601,6 +629,34 @@ class DataViewModel(
                         _dataStatusMessage.value = msg
                     }
                 }
+                COLLECTION_BIO_EXPERIMENTS -> {
+                    val title = primaryField.ifBlank { "تجربة طي البروتين وتحليل الجينوم" }
+                    val mode = secondaryField.ifBlank { "PROTEIN_FOLDING" }
+                    val summary = jsonOrSummaryField.ifBlank { "تم حفظ معلمات طي البروتين وتقييم pLDDT=92% في قاعدة البيانات السحابية." }
+                    repository.createBioExperiment(
+                        title = title,
+                        workflowMode = mode,
+                        fastaSequence = ">sp|P04637|P53_HUMAN\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP",
+                        researchGoal = "Preset: Custom Firestore Experiment ($mode)",
+                        plddtScore = 92L,
+                        freeEnergyKcal = -11.5,
+                        alphaHelixPct = 54L,
+                        betaSheetPct = 22L,
+                        aiReportSummary = summary
+                    ).onSuccess { newId ->
+                        _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
+                        _selectedDocumentId.value = newId
+                        _isCreatingNewDocument.value = false
+                        val msg = "تم إنشاء مستند تجربة حيوية ($newId) في /users/$currentUserId/bio_experiments"
+                        _mutationState.value = UiState.Success(msg)
+                        _dataStatusMessage.value = msg
+                    }.onFailure { e ->
+                        _connectionStatus.value = FirestoreConnectionStatus.ERROR
+                        val msg = "فشل إنشاء التجربة الحيوية: ${e.localizedMessage}"
+                        _mutationState.value = UiState.Error(msg)
+                        _dataStatusMessage.value = msg
+                    }
+                }
             }
         }
     }
@@ -664,6 +720,30 @@ class DataViewModel(
                             }
                     }
                 }
+                COLLECTION_BIO_EXPERIMENTS -> {
+                    val existing = (bioExperimentsState.value as? UiState.Success)?.data?.find { it.id == documentId }
+                        ?: repository.getBioExperimentById(documentId).getOrNull()
+                    if (existing != null) {
+                        val updatedExp = existing.copy(
+                            title = updatedPrimary.ifBlank { existing.title },
+                            workflowMode = updatedSecondary.ifBlank { existing.workflowMode },
+                            aiReportSummary = updatedJsonOrThird.ifBlank { existing.aiReportSummary }
+                        )
+                        repository.updateBioExperiment(updatedExp)
+                            .onSuccess {
+                                _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
+                                val msg = "تم تحديث مستند التجربة الحيوية ${existing.id} في Firestore بنجاح"
+                                _mutationState.value = UiState.Success(msg)
+                                _dataStatusMessage.value = msg
+                            }
+                            .onFailure { e ->
+                                _connectionStatus.value = FirestoreConnectionStatus.ERROR
+                                val msg = "فشل تحديث التجربة الحيوية: ${e.localizedMessage}"
+                                _mutationState.value = UiState.Error(msg)
+                                _dataStatusMessage.value = msg
+                            }
+                    }
+                }
                 else -> {
                     _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
                     val msg = "هذه المجموعة محمية بقواعد عدم التعديل (Immutable Audit Records) في Firestore"
@@ -681,6 +761,7 @@ class DataViewModel(
             val result = when (collectionId) {
                 COLLECTION_SCHEMAS -> repository.deleteCollectionSchema(documentId)
                 COLLECTION_PROJECTS -> repository.deleteProject(documentId)
+                COLLECTION_BIO_EXPERIMENTS -> repository.deleteBioExperiment(documentId)
                 COLLECTION_SNAPSHOTS -> repository.deleteSnapshot(documentId)
                 COLLECTION_LOGS -> repository.deleteBuildLog(documentId)
                 else -> Result.failure(IllegalArgumentException("Unknown collection: $collectionId"))
@@ -706,7 +787,8 @@ class DataViewModel(
         schemasCount: Int,
         projectsCount: Int,
         snapshotsCount: Int,
-        logsCount: Int
+        logsCount: Int,
+        bioCount: Int = 0
     ): List<FirestoreCollectionInfo> = listOf(
         FirestoreCollectionInfo(
             id = COLLECTION_SCHEMAS,
@@ -727,6 +809,16 @@ class DataViewModel(
             isUpdateAllowed = true,
             descriptionAr = "مستندات المشاريع السحابية وأكواد HTML/CSS/JS/Backend",
             schemaFields = listOf("name", "description", "language", "htmlCode", "cssCode", "jsCode", "backendCode")
+        ),
+        FirestoreCollectionInfo(
+            id = COLLECTION_BIO_EXPERIMENTS,
+            name = "bio_experiments",
+            titleAr = "تجارب المختبر الحيوي (bio_experiments)",
+            fullPath = "users/$currentUserId/bio_experiments",
+            documentCount = bioCount,
+            isUpdateAllowed = true,
+            descriptionAr = "تجارب طي البروتين وتعديل الجينات CRISPR وتحليل الجينوم المتزامنة سحابياً",
+            schemaFields = listOf("title", "workflowMode", "plddtScore", "freeEnergyKcal", "alphaHelixPct", "betaSheetPct", "aiReportSummary")
         ),
         FirestoreCollectionInfo(
             id = COLLECTION_SNAPSHOTS,
@@ -878,6 +970,44 @@ class DataViewModel(
         )
     }
 
+    private fun mapBioExperimentToDocumentItem(exp: BioExperimentRecord): FirestoreDocumentItem {
+        val ts = formatTimestamp(exp.updatedAt?.toDate() ?: exp.createdAt?.toDate())
+        return FirestoreDocumentItem(
+            id = exp.id,
+            collectionId = COLLECTION_BIO_EXPERIMENTS,
+            fullPath = "users/$currentUserId/bio_experiments/${exp.id}",
+            primaryTitle = exp.title,
+            secondarySubtitle = "${exp.workflowMode} • pLDDT: ${exp.plddtScore}% • ΔG: ${exp.freeEnergyKcal} kcal/mol • Helix: ${exp.alphaHelixPct}%",
+            fields = linkedMapOf(
+                "title" to exp.title,
+                "workflowMode" to exp.workflowMode,
+                "aiReportSummary" to exp.aiReportSummary,
+                "plddtScore" to "${exp.plddtScore}%",
+                "freeEnergyKcal" to "${exp.freeEnergyKcal} kcal/mol",
+                "alphaHelixPct" to "${exp.alphaHelixPct}%",
+                "betaSheetPct" to "${exp.betaSheetPct}%",
+                "researchGoal" to exp.researchGoal
+            ),
+            rawJson = buildPrettyJson(
+                mapOf(
+                    "id" to exp.id,
+                    "userId" to exp.userId,
+                    "title" to exp.title,
+                    "workflowMode" to exp.workflowMode,
+                    "plddtScore" to exp.plddtScore.toString(),
+                    "freeEnergyKcal" to exp.freeEnergyKcal.toString(),
+                    "alphaHelixPct" to exp.alphaHelixPct.toString(),
+                    "betaSheetPct" to exp.betaSheetPct.toString(),
+                    "researchGoal" to exp.researchGoal,
+                    "aiReportSummary" to exp.aiReportSummary,
+                    "updatedAt" to ts
+                )
+            ),
+            isUpdateAllowed = true,
+            timestampLabel = ts
+        )
+    }
+
     private fun formatTimestamp(date: Date?): String {
         if (date == null) return "الآن (Server Timestamp)"
         return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(date)
@@ -894,6 +1024,7 @@ class DataViewModel(
     companion object {
         const val COLLECTION_SCHEMAS = "collections"
         const val COLLECTION_PROJECTS = "projects"
+        const val COLLECTION_BIO_EXPERIMENTS = "bio_experiments"
         const val COLLECTION_SNAPSHOTS = "snapshots"
         const val COLLECTION_LOGS = "logs"
     }
