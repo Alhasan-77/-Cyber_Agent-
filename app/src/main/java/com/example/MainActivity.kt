@@ -409,6 +409,9 @@ fun NovaForgeStudioShell(
         syncedBioExperimentsCount = syncedBioExperimentsCount,
         syncLatencyMs = syncLatencyMs,
         lastSyncTimestampLabel = lastSyncTimestampLabel,
+        selectedAiModel = selectedChatModel,
+        onSelectAiModel = { viewModel.setChatModel(it) },
+        onToggleAiProvider = { viewModel.toggleAiProvider(it) },
         onForceCloudSync = { viewModel.forceManualCloudSync() },
         onSwitchGoogleAccount = {
             onGoogleSignInClicked(

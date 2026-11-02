@@ -21,6 +21,7 @@ data class UserProfile(
     val activeBranch: String = "main",
     val projectsCount: Long = 0L,
     val bioExperimentsCount: Long = 0L,
+    val preferredAiModel: String = "gemini+chatgpt-dual",
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 )

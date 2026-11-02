@@ -15,6 +15,7 @@ import com.example.data.model.StudioProject
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
 import com.example.data.model.VersionSnapshot
+import com.example.data.remote.AiEngineProvider
 import com.example.data.remote.GeminiAiRepository
 import com.example.data.repository.StudioRepository
 import com.example.data.skills.BioscienceSimulationEngine
@@ -52,9 +53,20 @@ class StudioViewModel(
     private val _lastSyncTimestampLabel = MutableStateFlow(currentTimeLabel())
     val lastSyncTimestampLabel: StateFlow<String> = _lastSyncTimestampLabel.asStateFlow()
 
+    private var hasRestoredPreferredModelFromCloud = false
+
     val userProfileState: StateFlow<UiState<UserProfile?>> = repository.observeUserProfile()
         .map<UserProfile?, UiState<UserProfile?>> { profile ->
             _lastSyncTimestampLabel.value = currentTimeLabel()
+            val savedModel = profile?.preferredAiModel?.takeIf { it.isNotBlank() }
+            if (savedModel != null) {
+                val normalized = GeminiAiRepository.normalizePreferredModel(savedModel)
+                if (!hasRestoredPreferredModelFromCloud || _selectedChatModel.value != normalized) {
+                    hasRestoredPreferredModelFromCloud = true
+                    _selectedChatModel.value = normalized
+                    aiRepository.setActiveModel(normalized)
+                }
+            }
             UiState.Success(profile)
         }
         .catch { e ->
@@ -678,7 +690,8 @@ class StudioViewModel(
             _isBusy.value = true
             val generated = aiRepository.generateFullStackCodebase(
                 projectBrief = "$name - $description",
-                stackLanguage = language
+                stackLanguage = language,
+                preferredModel = _selectedChatModel.value
             )
             val html = generated["html"] ?: DEFAULT_HTML
             val css = generated["css"] ?: DEFAULT_CSS
@@ -910,7 +923,31 @@ class StudioViewModel(
     }
 
     fun setChatModel(model: String) {
-        _selectedChatModel.value = model
+        val normalized = GeminiAiRepository.normalizePreferredModel(model)
+        hasRestoredPreferredModelFromCloud = true
+        _selectedChatModel.value = normalized
+        aiRepository.setActiveModel(normalized)
+        val provider = AiEngineProvider.fromModelId(normalized)
+        appendConsoleLog("[AI Prompt Service] Injected ${provider.shortBadge} client ($normalized) & syncing preference to Firestore.")
+        _statusBanner.value = "🤖 تم تفعيل محرك الذكاء الاصطناعي: ${provider.titleAr} ($normalized) وحفظه في ملفك السحابي"
+        viewModelScope.launch {
+            repository.updatePreferredAiModel(normalized).onSuccess {
+                _lastSyncTimestampLabel.value = currentTimeLabel()
+            }
+        }
+    }
+
+    fun toggleAiProvider(useChatGpt: Boolean) {
+        val targetModel = if (useChatGpt) {
+            GeminiAiRepository.MODEL_GPT_4O
+        } else {
+            GeminiAiRepository.MODEL_FLASH
+        }
+        setChatModel(targetModel)
+    }
+
+    fun selectAiEngineProvider(provider: AiEngineProvider) {
+        setChatModel(provider.defaultModelId)
     }
 
     fun setChatPersona(persona: AiRolePersona) {
@@ -1190,7 +1227,8 @@ class StudioViewModel(
                 photoUrl = userPhotoUrl,
                 activeBranch = _activeBranch.value,
                 projectsCount = projCount.toLong(),
-                bioExperimentsCount = bioCount.toLong()
+                bioExperimentsCount = bioCount.toLong(),
+                preferredAiModel = if (hasRestoredPreferredModelFromCloud) _selectedChatModel.value else null
             ).onSuccess {
                 _lastSyncTimestampLabel.value = currentTimeLabel()
             }

@@ -10,7 +10,9 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import org.robolectric.annotation.Config
 
+@Config(sdk = [36])
 class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
 
     @Test
@@ -137,7 +139,8 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
                 photoUrl = "https://example.com/alice.png",
                 activeBranch = "main",
                 projectsCount = 3L,
-                bioExperimentsCount = 2L
+                bioExperimentsCount = 2L,
+                preferredAiModel = "gpt-4o"
             )
         }
         assertTrue(upsertResult.isSuccess)
@@ -148,6 +151,19 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
         assertNotNull(emittedProfile)
         assertEquals("Alice Researcher", emittedProfile?.displayName)
         assertEquals(3L, emittedProfile?.projectsCount)
+        assertEquals("gpt-4o", emittedProfile?.preferredAiModel)
+
+        val updateModelResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.updatePreferredAiModel("gemini-3.8-flash")
+        }
+        assertTrue(updateModelResult.isSuccess)
+
+        val updatedProfile = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeUserProfile().first { profile ->
+                profile?.userId == aliceUid && profile.preferredAiModel == "gemini-3.8-flash"
+            }
+        }
+        assertEquals("gemini-3.8-flash", updatedProfile?.preferredAiModel)
     }
 
     @Test

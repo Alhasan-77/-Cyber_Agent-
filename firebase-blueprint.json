@@ -33,6 +33,10 @@
           "type": "integer",
           "description": "Total number of synced bioscience lab experiments."
         },
+        "preferredAiModel": {
+          "type": "string",
+          "description": "User's preferred AI model or engine (e.g., gemini-3.8-flash, gemini-4-argon, gpt-4o, gpt-4o-mini, gemini+chatgpt-dual) remembered across sessions."
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -52,6 +56,7 @@
         "activeBranch",
         "projectsCount",
         "bioExperimentsCount",
+        "preferredAiModel",
         "createdAt",
         "updatedAt"
       ]

@@ -230,6 +230,12 @@ private fun MultiTurnChatbotSection(
                     )
                 }
                 Text(
+                    text = "☁️ النموذج المفضل المحفوظ في ملفك السحابي (Firestore Profile): $selectedChatModel",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CyberEmerald,
+                    modifier = Modifier.testTag("saved_preferred_ai_model_label")
+                )
+                Text(
                     text = "تخصيص دور المساعد وتوجيه المحرك (Gemini API + ChatGPT API Routing):",
                     style = MaterialTheme.typography.labelMedium,
                     color = CyberCyan

@@ -29,6 +29,7 @@ service cloud.firestore {
              data.activeBranch is string && data.activeBranch.size() >= 1 && data.activeBranch.size() <= 60 &&
              data.projectsCount is int && data.projectsCount >= 0 && data.projectsCount <= 100000 &&
              data.bioExperimentsCount is int && data.bioExperimentsCount >= 0 && data.bioExperimentsCount <= 100000 &&
+             (!('preferredAiModel' in data) || (data.preferredAiModel is string && data.preferredAiModel.size() >= 1 && data.preferredAiModel.size() <= 100)) &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
              data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
@@ -109,7 +110,7 @@ service cloud.firestore {
                        request.auth.uid == userId &&
                        isValidId(userId) &&
                        incoming().keys().hasAll(['userId', 'email', 'displayName', 'photoUrl', 'activeBranch', 'projectsCount', 'bioExperimentsCount', 'createdAt', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['userId', 'email', 'displayName', 'photoUrl', 'activeBranch', 'projectsCount', 'bioExperimentsCount', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'displayName', 'photoUrl', 'activeBranch', 'projectsCount', 'bioExperimentsCount', 'preferredAiModel', 'createdAt', 'updatedAt']) &&
                        isValidUserProfile(incoming());
 
       allow update: if isSignedIn() &&
@@ -119,7 +120,7 @@ service cloud.firestore {
                        existing().userId == request.auth.uid &&
                        incoming().userId == existing().userId &&
                        incoming().createdAt == existing().createdAt &&
-                       incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'photoUrl', 'activeBranch', 'projectsCount', 'bioExperimentsCount', 'updatedAt']);
+                       incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'photoUrl', 'activeBranch', 'projectsCount', 'bioExperimentsCount', 'preferredAiModel', 'updatedAt']);
 
       allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && existing().userId == request.auth.uid;
     }

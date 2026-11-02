@@ -594,7 +594,8 @@ class StudioRepository(private val db: FirebaseFirestore) {
         photoUrl: String,
         activeBranch: String,
         projectsCount: Long,
-        bioExperimentsCount: Long
+        bioExperimentsCount: Long,
+        preferredAiModel: String? = null
     ): Result<Unit> = runCatching {
         val uid = requireUserId()
         val docRef = db.collection("users").document(uid)
@@ -613,6 +614,9 @@ class StudioRepository(private val db: FirebaseFirestore) {
                     UserProfile::class.java,
                     DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
                 )
+                val resolvedModel = preferredAiModel?.takeIf { it.isNotBlank() }?.take(100)
+                    ?: existingProfile?.preferredAiModel?.takeIf { it.isNotBlank() }?.take(100)
+                    ?: "gemini+chatgpt-dual"
                 if (existingProfile?.createdAt != null) {
                     docRef.set(
                         existingProfile.copy(
@@ -623,12 +627,14 @@ class StudioRepository(private val db: FirebaseFirestore) {
                             activeBranch = safeBranch,
                             projectsCount = safeProjects,
                             bioExperimentsCount = safeBio,
+                            preferredAiModel = resolvedModel,
                             updatedAt = null
                         )
                     ).await()
                     return@runCatching
                 }
             }
+            val initialModel = preferredAiModel?.takeIf { it.isNotBlank() }?.take(100) ?: "gemini+chatgpt-dual"
             val payload = mapOf(
                 "userId" to uid,
                 "email" to safeEmail,
@@ -637,6 +643,7 @@ class StudioRepository(private val db: FirebaseFirestore) {
                 "activeBranch" to safeBranch,
                 "projectsCount" to safeProjects,
                 "bioExperimentsCount" to safeBio,
+                "preferredAiModel" to initialModel,
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -645,6 +652,46 @@ class StudioRepository(private val db: FirebaseFirestore) {
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.WRITE, docRef.path)
+            throw e
+        }
+    }
+
+    suspend fun updatePreferredAiModel(preferredAiModel: String): Result<Unit> = runCatching {
+        val uid = requireUserId()
+        val docRef = db.collection("users").document(uid)
+        val safeModel = preferredAiModel.ifBlank { "gemini+chatgpt-dual" }.take(100)
+        try {
+            val existingDoc = docRef.get().await()
+            if (existingDoc.exists()) {
+                docRef.update(
+                    mapOf(
+                        "preferredAiModel" to safeModel,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            } else {
+                val user = auth.currentUser
+                val email = (user?.email ?: "developer@novaforge.cloud").take(200)
+                val displayName = (user?.displayName ?: email.substringBefore("@").ifBlank { "Cloud Developer" }).take(120)
+                val photoUrl = (user?.photoUrl?.toString() ?: "").take(1000)
+                val payload = mapOf(
+                    "userId" to uid,
+                    "email" to email,
+                    "displayName" to displayName,
+                    "photoUrl" to photoUrl,
+                    "activeBranch" to "main",
+                    "projectsCount" to 0L,
+                    "bioExperimentsCount" to 0L,
+                    "preferredAiModel" to safeModel,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                docRef.set(payload).await()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, docRef.path)
             throw e
         }
     }

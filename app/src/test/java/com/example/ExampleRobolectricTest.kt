@@ -181,5 +181,41 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("folding_next_residue_button").performClick()
         composeTestRule.onNodeWithTag("folding_residue_chip_2").assertIsDisplayed()
     }
+
+    @Test
+    fun `ai engine control bar toggles between Gemini and ChatGPT and opens model dropdown`() {
+        var selectedModel = "gemini-3.8-flash"
+        var toggledToChatGpt = false
+
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                MainScreenLayout(
+                    selectedTab = StudioBottomTab.DASHBOARD.index,
+                    onSelectTab = {},
+                    userEmail = "dev@novaforge.ai",
+                    activeBranch = "main",
+                    skillsCount = 25,
+                    pinnedSkillsCount = 3,
+                    selectedAiModel = selectedModel,
+                    onSelectAiModel = { selectedModel = it },
+                    onToggleAiProvider = { useChatGpt ->
+                        toggledToChatGpt = useChatGpt
+                        selectedModel = if (useChatGpt) "gpt-4o" else "gemini-3.8-flash"
+                    }
+                ) {
+                    Text("Content")
+                }
+            }
+        }
+
+        composeTestRule.onNodeWithTag("ai_engine_control_bar").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("ai_provider_toggle").assertIsDisplayed().performClick()
+        assertTrue(toggledToChatGpt)
+        assertEquals("gpt-4o", selectedModel)
+
+        composeTestRule.onNodeWithTag("ai_model_dropdown_button").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("ai_dropdown_option_gemini-4-argon").assertIsDisplayed().performClick()
+        assertEquals("gemini-4-argon", selectedModel)
+    }
 }
 

@@ -64,6 +64,7 @@ function validUserProfilePayload(uid) {
     activeBranch: "main",
     projectsCount: 2,
     bioExperimentsCount: 3,
+    preferredAiModel: "gpt-4o",
     createdAt: now,
     updatedAt: now,
   };
@@ -138,7 +139,7 @@ test("Authenticated user: cannot read another user's project, profile, or bio ex
   );
 });
 
-test("Authenticated user: can create, read, and update own UserProfile", async () => {
+test("Authenticated user: can create, read, and update own UserProfile including preferredAiModel", async () => {
   const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
   await assertSucceeds(
     aliceDb.collection("users").doc(ALICE_UID).get()
@@ -150,6 +151,14 @@ test("Authenticated user: can create, read, and update own UserProfile", async (
     aliceDb.collection("users").doc(ALICE_UID).update({
       projectsCount: 5,
       bioExperimentsCount: 4,
+      preferredAiModel: "gemini-3.8-flash",
+      updatedAt: new Date(),
+    })
+  );
+  // Rejects invalid type for preferredAiModel
+  await assertFails(
+    aliceDb.collection("users").doc(ALICE_UID).update({
+      preferredAiModel: 12345,
       updatedAt: new Date(),
     })
   );

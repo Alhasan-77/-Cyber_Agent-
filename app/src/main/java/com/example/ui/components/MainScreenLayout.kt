@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -46,6 +47,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -58,6 +61,8 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -66,6 +71,7 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -79,6 +85,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.R
+import com.example.data.remote.AiEngineProvider
+import com.example.data.remote.GeminiAiRepository
 import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBackground
 import com.example.ui.theme.CyberBorder
@@ -163,6 +171,9 @@ fun MainScreenLayout(
     syncedBioExperimentsCount: Int = 0,
     syncLatencyMs: Long = 16L,
     lastSyncTimestampLabel: String = "الآن",
+    selectedAiModel: String = GeminiAiRepository.MODEL_DUAL_ENGINE,
+    onSelectAiModel: (String) -> Unit = {},
+    onToggleAiProvider: (Boolean) -> Unit = {},
     onForceCloudSync: () -> Unit = {},
     onSwitchGoogleAccount: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -184,6 +195,8 @@ fun MainScreenLayout(
             syncedBioExperimentsCount = syncedBioExperimentsCount,
             syncLatencyMs = syncLatencyMs,
             lastSyncTimestampLabel = lastSyncTimestampLabel,
+            selectedAiModel = selectedAiModel,
+            onSelectAiModel = onSelectAiModel,
             isBusy = isBusy,
             onForceCloudSync = onForceCloudSync,
             onSwitchGoogleAccount = {
@@ -229,6 +242,14 @@ fun MainScreenLayout(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            AiEngineControlBar(
+                selectedAiModel = selectedAiModel,
+                onSelectAiModel = onSelectAiModel,
+                onToggleAiProvider = onToggleAiProvider,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+            )
             AnimatedVisibility(visible = statusBanner != null) {
                 Surface(
                     color = CyberSurface,
@@ -427,6 +448,136 @@ fun StudioTopAppBar(
 }
 
 @Composable
+fun AiEngineControlBar(
+    selectedAiModel: String,
+    onSelectAiModel: (String) -> Unit,
+    onToggleAiProvider: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var dropdownExpanded by remember { mutableStateOf(false) }
+    val isChatGptActive = GeminiAiRepository.isOpenAiModel(selectedAiModel)
+    val isDualActive = GeminiAiRepository.isDualEngineModel(selectedAiModel)
+    val activeProvider = AiEngineProvider.fromModelId(selectedAiModel)
+    val activeAccent = when (activeProvider) {
+        AiEngineProvider.CHATGPT -> CyberEmerald
+        AiEngineProvider.DUAL_ENGINE -> CyberAmber
+        AiEngineProvider.GEMINI -> CyberCyan
+    }
+
+    Surface(
+        color = CyberSurface,
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+            .border(1.dp, activeAccent.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+            .testTag("ai_engine_control_bar")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "🔷 Gemini",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (!isChatGptActive) CyberCyan else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (!isChatGptActive) FontWeight.Bold else FontWeight.Normal
+                )
+                Switch(
+                    checked = isChatGptActive,
+                    onCheckedChange = { useChatGpt ->
+                        onToggleAiProvider(useChatGpt)
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = CyberBackground,
+                        checkedTrackColor = CyberEmerald,
+                        uncheckedThumbColor = CyberBackground,
+                        uncheckedTrackColor = CyberCyan
+                    ),
+                    modifier = Modifier.testTag("ai_provider_toggle")
+                )
+                Text(
+                    text = "🟢 ChatGPT",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isChatGptActive) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (isChatGptActive) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+
+            Box {
+                OutlinedButton(
+                    onClick = { dropdownExpanded = true },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    border = BorderStroke(1.dp, activeAccent.copy(alpha = 0.65f)),
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("ai_model_dropdown_button")
+                ) {
+                    Text(
+                        text = if (isDualActive) "🤝 Dual Engine" else selectedAiModel,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = JetBrainsMonoFontFamily
+                        ),
+                        color = activeAccent,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "اختيار نموذج الذكاء الاصطناعي",
+                        tint = activeAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = dropdownExpanded,
+                    onDismissRequest = { dropdownExpanded = false },
+                    modifier = Modifier
+                        .background(CyberSurface)
+                        .border(1.dp, CyberBorder, RoundedCornerShape(8.dp))
+                        .testTag("ai_model_dropdown_menu")
+                ) {
+                    GeminiAiRepository.SUPPORTED_TEXT_MODELS.forEach { (modelId, label) ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (selectedAiModel == modelId) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (selectedAiModel == modelId) CyberCyan else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = modelId,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontFamily = JetBrainsMonoFontFamily
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            onClick = {
+                                dropdownExpanded = false
+                                onSelectAiModel(modelId)
+                            },
+                            modifier = Modifier.testTag("ai_dropdown_option_$modelId")
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun CloudUserProfileDialog(
     userDisplayName: String,
     userEmail: String,
@@ -436,6 +587,8 @@ fun CloudUserProfileDialog(
     syncedBioExperimentsCount: Int,
     syncLatencyMs: Long,
     lastSyncTimestampLabel: String,
+    selectedAiModel: String = GeminiAiRepository.MODEL_DUAL_ENGINE,
+    onSelectAiModel: (String) -> Unit = {},
     isBusy: Boolean,
     onForceCloudSync: () -> Unit,
     onSwitchGoogleAccount: () -> Unit,
@@ -559,12 +712,23 @@ fun CloudUserProfileDialog(
                         modifier = Modifier.weight(1f)
                     )
                     ProfileMetricBox(
-                        label = "الفرع النشط",
-                        value = activeBranch,
+                        label = "النموذج المفضل",
+                        value = selectedAiModel,
                         accent = CyberAmber,
                         modifier = Modifier.weight(1f)
                     )
                 }
+
+                AiEngineControlBar(
+                    selectedAiModel = selectedAiModel,
+                    onSelectAiModel = onSelectAiModel,
+                    onToggleAiProvider = { useGpt ->
+                        onSelectAiModel(
+                            if (useGpt) GeminiAiRepository.MODEL_GPT_4O else GeminiAiRepository.MODEL_FLASH
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 HorizontalDivider(color = CyberBorder)
 

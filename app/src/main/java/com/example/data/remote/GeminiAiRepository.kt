@@ -50,16 +50,89 @@ class GeminiAiRepository(
         const val MODEL_LYRIA_CLIP = "lyria-3-clip-preview"
         const val MODEL_LYRIA_PRO = "lyria-3-pro-preview"
 
+        val SUPPORTED_TEXT_MODELS: List<Pair<String, String>> = listOf(
+            MODEL_DUAL_ENGINE to "🤝 مزدوج: Gemini + ChatGPT معاً",
+            MODEL_GPT_4O to "🟢 ChatGPT (gpt-4o)",
+            MODEL_GPT_4O_MINI to "🟢 ChatGPT السريع (gpt-4o-mini)",
+            MODEL_ARGON to "🔷 Gemini العميق (gemini-4-argon)",
+            MODEL_FLASH to "🔷 Gemini المتوازن (gemini-3.8-flash)",
+            MODEL_FLASH_LITE to "🔷 Gemini الفوري (gemini-3.5-flash-lite)"
+        )
+
         fun isOpenAiModel(modelName: String): Boolean =
             modelName == MODEL_GPT_4O || modelName == MODEL_GPT_4O_MINI
 
         fun isDualEngineModel(modelName: String): Boolean =
             modelName == MODEL_DUAL_ENGINE
 
+        fun normalizePreferredModel(modelName: String?): String {
+            if (modelName.isNullOrBlank()) return MODEL_DUAL_ENGINE
+            val validIds = SUPPORTED_TEXT_MODELS.map { it.first }.toSet()
+            return if (modelName in validIds) modelName else MODEL_DUAL_ENGINE
+        }
+
         fun verifyInitialization(): Result<Unit> = runCatching {
             // Verify Firebase AI Logic GenerativeModel initialization
             Firebase.ai.generativeModel(MODEL_FLASH)
             Unit
+        }
+    }
+
+    @Volatile
+    private var activePreferredModel: String = MODEL_DUAL_ENGINE
+
+    @Volatile
+    private var injectedClient: AiTextGenerationClient = createClientForModel(MODEL_DUAL_ENGINE)
+
+    fun setActiveModel(modelName: String) {
+        val normalized = normalizePreferredModel(modelName)
+        activePreferredModel = normalized
+        injectedClient = createClientForModel(normalized)
+    }
+
+    fun getActiveModel(): String = activePreferredModel
+
+    fun getActiveClient(): AiTextGenerationClient = injectedClient
+
+    private fun createClientForModel(targetModel: String): AiTextGenerationClient {
+        val provider = AiEngineProvider.fromModelId(targetModel)
+        return object : AiTextGenerationClient {
+            override val provider: AiEngineProvider = provider
+            override val modelId: String = targetModel
+
+            override suspend fun generateText(
+                systemInstruction: String,
+                userPrompt: String,
+                useHighThinking: Boolean
+            ): Result<String> = runCatching {
+                when (provider) {
+                    AiEngineProvider.CHATGPT -> {
+                        val openAiModel = if (isOpenAiModel(targetModel)) targetModel else MODEL_GPT_4O
+                        callOpenAiChat(
+                            userPrompt = "$systemInstruction\n\n$userPrompt",
+                            openAiModel = openAiModel,
+                            useHighThinking = useHighThinking
+                        ).getOrThrow()
+                    }
+                    AiEngineProvider.DUAL_ENGINE -> {
+                        val (reply, _) = sendDualEngineMultiTurnChat(
+                            history = emptyList(),
+                            userPrompt = userPrompt,
+                            persona = AiRolePersona.FULLSTACK_ARCHITECT,
+                            useSearchGrounding = false,
+                            useHighThinking = useHighThinking
+                        )
+                        reply
+                    }
+                    AiEngineProvider.GEMINI -> {
+                        val geminiModel = resolveTextModel(targetModel)
+                        withTimeout(AI_TIMEOUT_MS) {
+                            geminiModel.generateContent("$systemInstruction\n\n$userPrompt").text
+                                ?: "تم إتمام التوليد عبر $targetModel"
+                        }
+                    }
+                }
+            }
         }
     }
 

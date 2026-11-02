@@ -4,6 +4,7 @@ import com.example.BuildConfig
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -12,6 +13,58 @@ import retrofit2.http.Body
 import retrofit2.http.Header
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
+
+/**
+ * High-level AI Engine Provider allowing users to switch between Gemini, ChatGPT, or Dual Engine.
+ */
+enum class AiEngineProvider(
+    val id: String,
+    val titleAr: String,
+    val shortBadge: String,
+    val defaultModelId: String
+) {
+    GEMINI(
+        id = "GEMINI",
+        titleAr = "🔷 Gemini (Firebase AI)",
+        shortBadge = "Gemini",
+        defaultModelId = "gemini-3.8-flash"
+    ),
+    CHATGPT(
+        id = "CHATGPT",
+        titleAr = "🟢 ChatGPT (OpenAI API)",
+        shortBadge = "ChatGPT",
+        defaultModelId = "gpt-4o"
+    ),
+    DUAL_ENGINE(
+        id = "DUAL_ENGINE",
+        titleAr = "🤝 مزدوج (Gemini + ChatGPT)",
+        shortBadge = "Dual AI",
+        defaultModelId = "gemini+chatgpt-dual"
+    );
+
+    companion object {
+        fun fromModelId(modelId: String): AiEngineProvider {
+            return when {
+                modelId == GeminiAiRepository.MODEL_DUAL_ENGINE -> DUAL_ENGINE
+                GeminiAiRepository.isOpenAiModel(modelId) -> CHATGPT
+                else -> GEMINI
+            }
+        }
+    }
+}
+
+/**
+ * Common interface for AI text generation clients injected into the prompt service.
+ */
+interface AiTextGenerationClient {
+    val provider: AiEngineProvider
+    val modelId: String
+    suspend fun generateText(
+        systemInstruction: String,
+        userPrompt: String,
+        useHighThinking: Boolean = false
+    ): Result<String>
+}
 
 @Serializable
 data class OpenAiChatCompletionRequest(
@@ -51,10 +104,13 @@ data class OpenAiErrorDetail(
     val code: String? = null
 )
 
+/**
+ * Retrofit service interface for the OpenAI Chat Completions API.
+ */
 interface OpenAiApiService {
     @POST("v1/chat/completions")
     suspend fun createChatCompletion(
-        @Header("Authorization") authorization: String,
+        @Header("Authorization") authorization: String = "Bearer ${OpenAiNetworkClient.getConfiguredApiKey()}",
         @Body request: OpenAiChatCompletionRequest
     ): OpenAiChatCompletionResponse
 }
@@ -70,7 +126,20 @@ object OpenAiNetworkClient {
         explicitNulls = false
     }
 
+    private val authInterceptor = Interceptor { chain ->
+        val original = chain.request()
+        val existingAuth = original.header("Authorization")
+        val configuredKey = getConfiguredApiKey()
+        val requestBuilder = original.newBuilder()
+            .header("Content-Type", "application/json")
+        if (existingAuth.isNullOrBlank() && configuredKey.isNotBlank()) {
+            requestBuilder.header("Authorization", "Bearer $configuredKey")
+        }
+        chain.proceed(requestBuilder.build())
+    }
+
     private val okHttpClient = OkHttpClient.Builder()
+        .addInterceptor(authInterceptor)
         .connectTimeout(45, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS)
         .writeTimeout(45, TimeUnit.SECONDS)
