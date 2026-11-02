@@ -75,8 +75,8 @@ fun configureAppCheck(context: Context, intent: Intent?) {
 
         if (BuildConfig.DEBUG) {
             val debugToken = intent?.getStringExtra(DEBUG_TOKEN_EXTRA)
+            val persistenceKey = FirebaseApp.getInstance().persistenceKey
             if (!debugToken.isNullOrEmpty()) {
-                val persistenceKey = FirebaseApp.getInstance().persistenceKey
                 val prefs = context.getSharedPreferences(
                     "$DEBUG_STORE_PREFIX$persistenceKey",
                     Context.MODE_PRIVATE
@@ -84,6 +84,11 @@ fun configureAppCheck(context: Context, intent: Intent?) {
                 prefs.edit()
                     .putString(DEBUG_SECRET_KEY, debugToken)
                     .commit()
+                // Clear any stale cached App Check JWT token so DebugAppCheckProviderFactory mints a fresh token
+                context.getSharedPreferences(
+                    "com.google.firebase.appcheck.store.$persistenceKey",
+                    Context.MODE_PRIVATE
+                ).edit().clear().commit()
                 Log.d(TAG, "App Check debug secret configured successfully.")
             } else {
                 Log.w(TAG, "No debug token found in Intent extra.")
@@ -140,6 +145,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        configureAppCheck(this, intent)
     }
 }
 

@@ -1,14 +1,17 @@
 package com.example.data.remote
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
+import com.example.BuildConfig
 import com.example.data.model.AiRolePersona
 import com.example.data.model.ChatMessage
 import com.example.data.model.GeneratedMediaAsset
 import com.example.ui.components.GlobalExceptionHandler
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.GenerativeModel
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.ImagePart
@@ -16,15 +19,19 @@ import com.google.firebase.ai.type.QuotaExceededException
 import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayOutputStream
 import java.util.UUID
+import kotlin.coroutines.resume
 
 class GeminiAiRepository(
     @Suppress("UNUSED_PARAMETER")
@@ -72,9 +79,66 @@ class GeminiAiRepository(
         }
 
         fun verifyInitialization(): Result<Unit> = runCatching {
-            // Verify Firebase AI Logic GenerativeModel initialization
-            Firebase.ai.generativeModel(MODEL_FLASH)
+            // Verify FirebaseApp is ready while keeping Firebase.ai.generativeModel strictly lazy
+            FirebaseApp.getInstance()
             Unit
+        }
+    }
+
+    private fun isAppCheckTokenError(throwable: Throwable): Boolean {
+        val fullMsg = buildString {
+            var curr: Throwable? = throwable
+            while (curr != null) {
+                append(curr.message.orEmpty()).append(" ")
+                curr = curr.cause
+            }
+        }
+        return fullMsg.contains("App Check", ignoreCase = true) ||
+            fullMsg.contains("AppCheck", ignoreCase = true) ||
+            fullMsg.contains("token is invalid", ignoreCase = true)
+    }
+
+    private suspend fun forceRefreshAppCheckToken() {
+        runCatching {
+            val app = FirebaseApp.getInstance()
+            val appContext = app.applicationContext
+            val persistenceKey = app.persistenceKey
+            // Clear any stale cached JWT token so FirebaseAppCheck mints a fresh one
+            appContext.getSharedPreferences(
+                "com.google.firebase.appcheck.store.$persistenceKey",
+                Context.MODE_PRIVATE
+            ).edit().clear().commit()
+
+            if (BuildConfig.DEBUG) {
+                FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                    DebugAppCheckProviderFactory.getInstance()
+                )
+            }
+
+            suspendCancellableCoroutine { cont ->
+                FirebaseAppCheck.getInstance().getAppCheckToken(true)
+                    .addOnCompleteListener {
+                        if (cont.isActive) cont.resume(Unit)
+                    }
+            }
+        }.onFailure { err ->
+            Log.w(TAG, "App Check token force-refresh attempt warning", err)
+        }
+    }
+
+    private suspend fun <T> executeWithAppCheckRetry(block: suspend () -> T): T {
+        return try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (isAppCheckTokenError(e)) {
+                Log.w(TAG, "App Check token rejected; refreshing token and retrying once...", e)
+                forceRefreshAppCheckToken()
+                block()
+            } else {
+                throw e
+            }
         }
     }
 
@@ -127,8 +191,9 @@ class GeminiAiRepository(
                     AiEngineProvider.GEMINI -> {
                         val geminiModel = resolveTextModel(targetModel)
                         withTimeout(AI_TIMEOUT_MS) {
-                            geminiModel.generateContent("$systemInstruction\n\n$userPrompt").text
-                                ?: "تم إتمام التوليد عبر $targetModel"
+                            executeWithAppCheckRetry {
+                                geminiModel.generateContent("$systemInstruction\n\n$userPrompt").text
+                            } ?: "تم إتمام التوليد عبر $targetModel"
                         }
                     }
                 }
@@ -448,9 +513,11 @@ class GeminiAiRepository(
 
             val model = resolveTextModel(effectiveModel)
             val responseText = withTimeout(AI_TIMEOUT_MS) {
-                val chat = model.startChat(history = chatHistory)
-                val response = chat.sendMessage(fullUserPrompt)
-                response.text
+                executeWithAppCheckRetry {
+                    val chat = model.startChat(history = chatHistory)
+                    val response = chat.sendMessage(fullUserPrompt)
+                    response.text
+                }
             }
 
             val text = responseText?.takeIf { it.isNotBlank() }
@@ -497,12 +564,29 @@ class GeminiAiRepository(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Gemini Chat error ($effectiveModel)", e)
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Chat ($effectiveModel)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
+            if (OpenAiNetworkClient.isApiKeyConfigured()) {
+                val backupGpt = callOpenAiChat(
+                    history = history,
+                    userPrompt = userPrompt,
+                    openAiModel = if (useHighThinking) MODEL_GPT_4O else MODEL_GPT_4O_MINI,
+                    persona = persona,
+                    useHighThinking = useHighThinking
+                ).getOrNull()
+                if (!backupGpt.isNullOrBlank()) {
+                    return Pair(
+                        backupGpt,
+                        listOf("Auto-Failover Engine (${if (useHighThinking) MODEL_GPT_4O else MODEL_GPT_4O_MINI})")
+                    )
+                }
+            }
+            if (!isAppCheckTokenError(e)) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Chat ($effectiveModel)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
+            }
             fallbackArchitecturalResponse(
                 prompt = userPrompt,
                 model = effectiveModel,
@@ -575,7 +659,9 @@ class GeminiAiRepository(
             }
             if (!gptText.isNullOrBlank() && isDualEngineModel(preferredModel)) {
                 val geminiText = runCatching {
-                    withTimeout(AI_TIMEOUT_MS) { flashLiteModel.generateContent(prompt).text }
+                    withTimeout(AI_TIMEOUT_MS) {
+                        executeWithAppCheckRetry { flashLiteModel.generateContent(prompt).text }
+                    }
                 }.getOrNull()
                 return@withContext buildString {
                     if (!geminiText.isNullOrBlank()) {
@@ -591,19 +677,23 @@ class GeminiAiRepository(
 
         try {
             val text = withTimeout(AI_TIMEOUT_MS) {
-                val response = flashLiteModel.generateContent(prompt)
-                response.text
+                executeWithAppCheckRetry {
+                    val response = flashLiteModel.generateContent(prompt)
+                    response.text
+                }
             }
             if (!text.isNullOrBlank()) return@withContext text
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Code Autocomplete ($MODEL_FLASH_LITE)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
+            if (!isAppCheckTokenError(e)) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Code Autocomplete ($MODEL_FLASH_LITE)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
+            }
         }
 
         when (activeTab) {
@@ -670,8 +760,10 @@ class GeminiAiRepository(
 
         try {
             val out = withTimeout(AI_TIMEOUT_MS) {
-                val response = argonModel.generateContent(prompt)
-                response.text
+                executeWithAppCheckRetry {
+                    val response = argonModel.generateContent(prompt)
+                    response.text
+                }
             }
             val openAiSupplement = if (OpenAiNetworkClient.isApiKeyConfigured()) {
                 callOpenAiChat(
@@ -690,12 +782,14 @@ class GeminiAiRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Full-Stack Generator ($MODEL_ARGON)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
+            if (!isAppCheckTokenError(e)) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Full-Stack Generator ($MODEL_ARGON)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
+            }
         }
         buildGeneratedStackFromAiText(projectBrief, stackLanguage, null)
     }
@@ -715,15 +809,17 @@ class GeminiAiRepository(
         try {
             val inputBitmap = decodeBase64Bitmap(sourceImageBase64)
             val response = withTimeout(AI_TIMEOUT_MS) {
-                if (inputBitmap != null) {
-                    imageModel.generateContent(
-                        content {
-                            image(inputBitmap)
-                            text(prompt)
-                        }
-                    )
-                } else {
-                    imageModel.generateContent(prompt)
+                executeWithAppCheckRetry {
+                    if (inputBitmap != null) {
+                        imageModel.generateContent(
+                            content {
+                                image(inputBitmap)
+                                text(prompt)
+                            }
+                        )
+                    } else {
+                        imageModel.generateContent(prompt)
+                    }
                 }
             }
 
@@ -825,17 +921,19 @@ class GeminiAiRepository(
         try {
             val inputBitmap = decodeBase64Bitmap(sourcePhotoBase64)
             val summaryText = withTimeout(AI_TIMEOUT_MS) {
-                if (inputBitmap != null) {
-                    flashModel.generateContent(
-                        content {
-                            image(inputBitmap)
-                            text("أنشئ خطة تحريك مشاهد تفصيلية (Motion Storyboard) بنسبة $safeRatio للطلب: $prompt")
-                        }
-                    ).text
-                } else {
-                    flashModel.generateContent(
-                        "أنشئ توصيف مشاهد فيديو احترافي (Video Scene Specification) بنسبة $safeRatio للطلب: $prompt"
-                    ).text
+                executeWithAppCheckRetry {
+                    if (inputBitmap != null) {
+                        flashModel.generateContent(
+                            content {
+                                image(inputBitmap)
+                                text("أنشئ خطة تحريك مشاهد تفصيلية (Motion Storyboard) بنسبة $safeRatio للطلب: $prompt")
+                            }
+                        ).text
+                    } else {
+                        flashModel.generateContent(
+                            "أنشئ توصيف مشاهد فيديو احترافي (Video Scene Specification) بنسبة $safeRatio للطلب: $prompt"
+                        ).text
+                    }
                 }
             }
 
@@ -851,12 +949,14 @@ class GeminiAiRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Video Pipeline ($MODEL_OMNI_VIDEO)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
+            if (!isAppCheckTokenError(e)) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Video Pipeline ($MODEL_OMNI_VIDEO)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
+            }
             return@withContext GeneratedMediaAsset(
                 id = UUID.randomUUID().toString(),
                 type = "VIDEO",
@@ -881,25 +981,27 @@ class GeminiAiRepository(
             val rawBytes = runCatching { Base64.decode(mediaBase64, Base64.DEFAULT) }.getOrNull()
 
             val responseText = withTimeout(AI_TIMEOUT_MS) {
-                when {
-                    bitmap != null -> {
-                        argonModel.generateContent(
-                            content {
-                                image(bitmap)
-                                text(prompt)
-                            }
-                        ).text
-                    }
-                    rawBytes != null && rawBytes.isNotEmpty() -> {
-                        argonModel.generateContent(
-                            content {
-                                inlineData(rawBytes, mimeType)
-                                text(prompt)
-                            }
-                        ).text
-                    }
-                    else -> {
-                        argonModel.generateContent(prompt).text
+                executeWithAppCheckRetry {
+                    when {
+                        bitmap != null -> {
+                            argonModel.generateContent(
+                                content {
+                                    image(bitmap)
+                                    text(prompt)
+                                }
+                            ).text
+                        }
+                        rawBytes != null && rawBytes.isNotEmpty() -> {
+                            argonModel.generateContent(
+                                content {
+                                    inlineData(rawBytes, mimeType)
+                                    text(prompt)
+                                }
+                            ).text
+                        }
+                        else -> {
+                            argonModel.generateContent(prompt).text
+                        }
                     }
                 }
             }
@@ -907,12 +1009,14 @@ class GeminiAiRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Media Analysis ($MODEL_ARGON)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
+            if (!isAppCheckTokenError(e)) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Media Analysis ($MODEL_ARGON)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
+            }
             return@withContext "تحليل $mediaTypeAr عبر $MODEL_ARGON:\n• نوع الملف: $mimeType\n• حجم البيانات المرفوعة: ${(mediaBase64.length * 3) / 4 / 1024} كيلوبايت\n• ملاحظة الاتصال: ${e.localizedMessage}"
         }
 
@@ -948,23 +1052,27 @@ class GeminiAiRepository(
             try {
                 val audioBytes = Base64.decode(audioBase64, Base64.DEFAULT)
                 val text = withTimeout(AI_TIMEOUT_MS) {
-                    flashModel.generateContent(
-                        content {
-                            inlineData(audioBytes, mimeType)
-                            text("Transcribe this audio recording accurately in Arabic or English:")
-                        }
-                    ).text
+                    executeWithAppCheckRetry {
+                        flashModel.generateContent(
+                            content {
+                                inlineData(audioBytes, mimeType)
+                                text("Transcribe this audio recording accurately in Arabic or English:")
+                            }
+                        ).text
+                    }
                 }
                 if (!text.isNullOrBlank()) return@withContext text
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                GlobalExceptionHandler.reportError(
-                    phase = "Gemini Audio Transcription ($MODEL_FLASH)",
-                    throwable = e,
-                    isFatal = false,
-                    serviceName = "Gemini"
-                )
+                if (!isAppCheckTokenError(e)) {
+                    GlobalExceptionHandler.reportError(
+                        phase = "Gemini Audio Transcription ($MODEL_FLASH)",
+                        throwable = e,
+                        isFatal = false,
+                        serviceName = "Gemini"
+                    )
+                }
             }
         }
         "تم نسخ التسجيل الصوتي عبر $MODEL_TRANSCRIBE: «قم ببناء واجهة لوحة تحكم متفاعلة مع جدول قاعدة بيانات مرن ومعاينة حية»."
@@ -980,29 +1088,33 @@ class GeminiAiRepository(
                 runCatching { Base64.decode(it, Base64.DEFAULT) }.getOrNull()
             }
             val reply = withTimeout(AI_TIMEOUT_MS) {
-                if (audioBytes != null && audioBytes.isNotEmpty()) {
-                    flashModel.generateContent(
-                        content {
-                            inlineData(audioBytes, "audio/wav")
-                            text("Respond naturally and concisely in Arabic as a real-time voice coding copilot: $spokenPrompt")
-                        }
-                    ).text
-                } else {
-                    flashModel.generateContent(
-                        "Respond naturally and concisely in Arabic as a real-time voice coding copilot: $spokenPrompt"
-                    ).text
+                executeWithAppCheckRetry {
+                    if (audioBytes != null && audioBytes.isNotEmpty()) {
+                        flashModel.generateContent(
+                            content {
+                                inlineData(audioBytes, "audio/wav")
+                                text("Respond naturally and concisely in Arabic as a real-time voice coding copilot: $spokenPrompt")
+                            }
+                        ).text
+                    } else {
+                        flashModel.generateContent(
+                            "Respond naturally and concisely in Arabic as a real-time voice coding copilot: $spokenPrompt"
+                        ).text
+                    }
                 }
             }
             if (!reply.isNullOrBlank()) return@withContext reply
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Live Voice Turn ($MODEL_FLASH)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
+            if (!isAppCheckTokenError(e)) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Live Voice Turn ($MODEL_FLASH)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
+            }
         }
         "استجابة صوتية فورية من $MODEL_LIVE: أهلاً بك في جلسة البرمجة الصوتية الحية! لقد قمت بفحص بنية مشروعك الحالية، ويمكننا الآن تعديل واجهة المعاينة أو استعلامات قاعدة البيانات مباشرة بأوامرك الصوتية."
     }
@@ -1082,7 +1194,9 @@ class GeminiAiRepository(
 
         try {
             val aiAnalysis = withTimeout(AI_TIMEOUT_MS) {
-                argonModel.generateContent(prompt).text
+                executeWithAppCheckRetry {
+                    argonModel.generateContent(prompt).text
+                }
             }
             val openAiBioNote = if (OpenAiNetworkClient.isApiKeyConfigured()) {
                 callOpenAiChat(
@@ -1111,12 +1225,14 @@ class GeminiAiRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Bioscience Analysis ($MODEL_ARGON)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
+            if (!isAppCheckTokenError(e)) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Bioscience Analysis ($MODEL_ARGON)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
+            }
         }
 
         """
