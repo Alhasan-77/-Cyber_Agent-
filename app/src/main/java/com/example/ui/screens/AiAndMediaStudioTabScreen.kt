@@ -71,6 +71,7 @@ import com.example.data.model.AiRolePersona
 import com.example.data.model.ChatMessage
 import com.example.data.model.GeneratedMediaAsset
 import com.example.data.remote.GeminiAiRepository
+import com.example.data.remote.OpenAiNetworkClient
 import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBackground
 import com.example.ui.theme.CyberBorder
@@ -123,7 +124,7 @@ fun AiAndMediaStudioTabScreen(
             FilterChip(
                 selected = subTab == 0,
                 onClick = { subTab = 0 },
-                label = { Text("محادثة Gemini الذكية") },
+                label = { Text("محادثة Gemini + ChatGPT") },
                 leadingIcon = { Icon(Icons.Default.Chat, contentDescription = null) },
                 modifier = Modifier.testTag("ai_subtab_chat")
             )
@@ -193,6 +194,8 @@ private fun MultiTurnChatbotSection(
     onSpeakText: (String) -> Unit
 ) {
     var inputPrompt by remember { mutableStateOf("") }
+    val isOpenAiReady = remember { OpenAiNetworkClient.isApiKeyConfigured() }
+    val openAiStatusLabel = remember { OpenAiNetworkClient.getKeyStatusSummaryAr() }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -209,8 +212,25 @@ private fun MultiTurnChatbotSection(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🔷 Gemini API: متصل (Firebase AI Logic)",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = CyberCyan
+                    )
+                    Text(
+                        text = "🟢 ChatGPT API: $openAiStatusLabel",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isOpenAiReady) CyberEmerald else CyberAmber,
+                        modifier = Modifier.testTag("openai_api_status_badge")
+                    )
+                }
                 Text(
-                    text = "تخصيص دور المساعد والنموذج (Role System Instruction & Model Routing):",
+                    text = "تخصيص دور المساعد وتوجيه المحرك (Gemini API + ChatGPT API Routing):",
                     style = MaterialTheme.typography.labelMedium,
                     color = CyberCyan
                 )
@@ -231,9 +251,12 @@ private fun MultiTurnChatbotSection(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     listOf(
-                        GeminiAiRepository.MODEL_ARGON to "Complex (gemini-4-argon)",
-                        GeminiAiRepository.MODEL_FLASH to "General (gemini-3.8-flash)",
-                        GeminiAiRepository.MODEL_FLASH_LITE to "Fast (gemini-3.5-flash-lite)"
+                        GeminiAiRepository.MODEL_DUAL_ENGINE to "🤝 Dual (Gemini + ChatGPT معاً)",
+                        GeminiAiRepository.MODEL_GPT_4O to "🟢 ChatGPT (gpt-4o)",
+                        GeminiAiRepository.MODEL_GPT_4O_MINI to "🟢 ChatGPT Fast (gpt-4o-mini)",
+                        GeminiAiRepository.MODEL_ARGON to "🔷 Gemini Complex (gemini-4-argon)",
+                        GeminiAiRepository.MODEL_FLASH to "🔷 Gemini General (gemini-3.8-flash)",
+                        GeminiAiRepository.MODEL_FLASH_LITE to "🔷 Gemini Fast (gemini-3.5-flash-lite)"
                     ).forEach { (modelId, label) ->
                         FilterChip(
                             selected = selectedChatModel == modelId,

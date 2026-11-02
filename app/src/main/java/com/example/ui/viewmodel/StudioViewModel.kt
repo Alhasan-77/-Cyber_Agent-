@@ -180,15 +180,15 @@ class StudioViewModel(
             ChatMessage(
                 id = "welcome_1",
                 isUser = false,
-                text = "مرحباً بك في NovaForge AI Studio! أنا مساعدك الذكي لبناء تطبيقات Full-Stack المتكاملة، إدارة قواعد البيانات المرنة، التحكم في الإصدارات، وتوليد الوسائط والعلوم الحيوية. كيف نبدأ اليوم؟",
-                modelUsed = GeminiAiRepository.MODEL_ARGON,
+                text = "مرحباً بك في NovaForge AI Studio! تم تفعيل محركي **Gemini API** (عبر Firebase AI Logic) و **ChatGPT API** (عبر OpenAI API) للعمل جنباً إلى جنب لبناء تطبيقات Full-Stack المتكاملة، إدارة قواعد البيانات، وتوليد الكود والعلوم الحيوية. يمكنك اختيار أي محرك منفرداً أو تشغيل وضع المحرك المزدوج (Gemini + ChatGPT معاً).",
+                modelUsed = GeminiAiRepository.MODEL_DUAL_ENGINE,
                 timestampLabel = currentTimeLabel()
             )
         )
     )
     val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages.asStateFlow()
 
-    private val _selectedChatModel = MutableStateFlow(GeminiAiRepository.MODEL_ARGON)
+    private val _selectedChatModel = MutableStateFlow(GeminiAiRepository.MODEL_DUAL_ENGINE)
     val selectedChatModel: StateFlow<String> = _selectedChatModel.asStateFlow()
 
     private val _selectedPersona = MutableStateFlow(AiRolePersona.FULLSTACK_ARCHITECT)
@@ -747,12 +747,13 @@ class StudioViewModel(
             val snippet = aiRepository.generateLowLatencyCodeSuggestion(
                 currentCode = currentContent,
                 activeTab = currentTab,
-                instruction = enrichedInstruction
+                instruction = enrichedInstruction,
+                preferredModel = _selectedChatModel.value
             )
             updateActiveBuffer(currentContent + "\n\n" + snippet)
             val skillsNote = if (appliedIds.isNotEmpty()) " [Skills: ${appliedIds.joinToString(", ")}]" else ""
-            appendConsoleLog("[AI Copilot] Injected low-latency snippet into $currentTab via ${GeminiAiRepository.MODEL_FLASH_LITE}$skillsNote")
-            _statusBanner.value = "⚡ تم إدراج اقتراح برمجي فوري مدعوم بذاكرة المهارات (${appliedIds.take(2).joinToString(", ")})"
+            appendConsoleLog("[AI Copilot] Injected low-latency snippet into $currentTab via ${_selectedChatModel.value}$skillsNote")
+            _statusBanner.value = "⚡ تم إدراج اقتراح برمجي فوري (${_selectedChatModel.value}) مدعوم بذاكرة المهارات"
             _isBusy.value = false
         }
     }
@@ -766,14 +767,18 @@ class StudioViewModel(
             } else {
                 prompt
             }
-            appendConsoleLog("[High Thinking] Synthesizing full-stack architecture via ${GeminiAiRepository.MODEL_ARGON} with skills ${appliedIds.joinToString(", ")}...")
-            val generated = aiRepository.generateFullStackCodebase(enrichedPrompt, _editorLanguage.value)
+            appendConsoleLog("[High Thinking] Synthesizing full-stack architecture via ${_selectedChatModel.value} with skills ${appliedIds.joinToString(", ")}...")
+            val generated = aiRepository.generateFullStackCodebase(
+                projectBrief = enrichedPrompt,
+                stackLanguage = _editorLanguage.value,
+                preferredModel = _selectedChatModel.value
+            )
             _htmlBuffer.value = generated["html"] ?: _htmlBuffer.value
             _cssBuffer.value = generated["css"] ?: _cssBuffer.value
             _jsBuffer.value = generated["js"] ?: _jsBuffer.value
             _backendBuffer.value = generated["backend"] ?: _backendBuffer.value
             saveAndBuildCurrentProject()
-            _statusBanner.value = "🧠 تم توليد البنية الكاملة بوضع التفكير العالي مع تطبيق المهارات (${appliedIds.take(3).joinToString(", ")})"
+            _statusBanner.value = "🧠 تم توليد البنية الكاملة عبر (${_selectedChatModel.value}) مع تطبيق المهارات (${appliedIds.take(3).joinToString(", ")})"
             _isBusy.value = false
         }
     }
@@ -949,6 +954,10 @@ class StudioViewModel(
                 useHighThinking = _useHighThinking.value
             )
             val effectiveModel = when {
+                GeminiAiRepository.isDualEngineModel(_selectedChatModel.value) ->
+                    GeminiAiRepository.MODEL_DUAL_ENGINE
+                GeminiAiRepository.isOpenAiModel(_selectedChatModel.value) ->
+                    _selectedChatModel.value
                 _useHighThinking.value -> GeminiAiRepository.MODEL_ARGON
                 _useSearchGrounding.value -> GeminiAiRepository.MODEL_FLASH
                 else -> _selectedChatModel.value
@@ -1093,10 +1102,14 @@ class StudioViewModel(
     fun runBioscienceAnalysis(fastaSequence: String, researchGoal: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val result = aiRepository.analyzeBioscienceSequence(fastaSequence, researchGoal)
+            val result = aiRepository.analyzeBioscienceSequence(
+                fastaOrSequence = fastaSequence,
+                researchGoal = researchGoal,
+                preferredModel = _selectedChatModel.value
+            )
             _bioscienceOutput.value = result
             repository.createBioExperiment(
-                title = researchGoal.take(80).ifBlank { "تحليل تسلسل حيوي (${GeminiAiRepository.MODEL_ARGON})" },
+                title = researchGoal.take(80).ifBlank { "تحليل تسلسل حيوي (${_selectedChatModel.value})" },
                 workflowMode = "PROTEIN_FOLDING",
                 fastaSequence = fastaSequence,
                 researchGoal = researchGoal,
@@ -1107,7 +1120,7 @@ class StudioViewModel(
                 aiReportSummary = result
             )
             syncUserProfileToCloud()
-            _statusBanner.value = "اكتمل التحليل الحيوي وتم حفظ التجربة سحابياً في Firestore (${GeminiAiRepository.MODEL_ARGON})"
+            _statusBanner.value = "اكتمل التحليل الحيوي وتم حفظ التجربة سحابياً في Firestore (${_selectedChatModel.value})"
             _isBusy.value = false
         }
     }

@@ -19,6 +19,8 @@ import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayOutputStream
@@ -26,7 +28,8 @@ import java.util.UUID
 
 class GeminiAiRepository(
     @Suppress("UNUSED_PARAMETER")
-    private val apiService: GeminiApiService = GeminiNetworkClient.service
+    private val apiService: GeminiApiService = GeminiNetworkClient.service,
+    private val openAiService: OpenAiApiService = OpenAiNetworkClient.service
 ) {
     companion object {
         private const val TAG = "GeminiAiRepository"
@@ -35,6 +38,9 @@ class GeminiAiRepository(
         const val MODEL_ARGON = "gemini-4-argon"
         const val MODEL_FLASH = "gemini-3.8-flash"
         const val MODEL_FLASH_LITE = "gemini-3.5-flash-lite"
+        const val MODEL_GPT_4O = "gpt-4o"
+        const val MODEL_GPT_4O_MINI = "gpt-4o-mini"
+        const val MODEL_DUAL_ENGINE = "gemini+chatgpt-dual"
         const val MODEL_NANO_BANANA = "gemini-nano-banana-2.1"
         const val MODEL_PRO_IMAGE = "gemini-3-pro-image"
         const val MODEL_OMNI_VIDEO = "gemini-omni-1.1-flash"
@@ -43,6 +49,12 @@ class GeminiAiRepository(
         const val MODEL_LIVE = "gemini-3.8-live"
         const val MODEL_LYRIA_CLIP = "lyria-3-clip-preview"
         const val MODEL_LYRIA_PRO = "lyria-3-pro-preview"
+
+        fun isOpenAiModel(modelName: String): Boolean =
+            modelName == MODEL_GPT_4O || modelName == MODEL_GPT_4O_MINI
+
+        fun isDualEngineModel(modelName: String): Boolean =
+            modelName == MODEL_DUAL_ENGINE
 
         fun verifyInitialization(): Result<Unit> = runCatching {
             // Verify Firebase AI Logic GenerativeModel initialization
@@ -106,8 +118,69 @@ class GeminiAiRepository(
         }
     }
 
-    // 1. Multi-turn Chatbot with Persona System Instruction, High Thinking (gemini-4-argon),
-    // General (gemini-3.8-flash), and Fast Mode (gemini-3.5-flash-lite) via Firebase AI Logic
+    suspend fun callOpenAiChat(
+        history: List<ChatMessage> = emptyList(),
+        userPrompt: String,
+        openAiModel: String = MODEL_GPT_4O,
+        persona: AiRolePersona = AiRolePersona.FULLSTACK_ARCHITECT,
+        useHighThinking: Boolean = false
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val apiKey = OpenAiNetworkClient.getConfiguredApiKey()
+            if (!OpenAiNetworkClient.isApiKeyConfigured()) {
+                throw IllegalStateException(
+                    "مفتاح OPENAI_API_KEY غير مضبوط بعد في لوحة الأسرار (Secrets Panel) في AI Studio. " +
+                        "أضف المفتاح باسم OPENAI_API_KEY في لوحة Secrets ليتم حقنه تلقائياً عبر BuildConfig.OPENAI_API_KEY."
+                )
+            }
+
+            val systemContent = buildString {
+                appendLine("[System Role: ${persona.titleAr}]")
+                appendLine(persona.systemPrompt)
+                if (useHighThinking) {
+                    appendLine("[Mode: Deep Architectural & Algorithmic Reasoning]")
+                }
+            }.trim()
+
+            val messages = buildList {
+                add(OpenAiChatMessage(role = "system", content = systemContent))
+                history.takeLast(8).forEach { msg ->
+                    add(
+                        OpenAiChatMessage(
+                            role = if (msg.isUser) "user" else "assistant",
+                            content = msg.text
+                        )
+                    )
+                }
+                add(OpenAiChatMessage(role = "user", content = userPrompt))
+            }
+
+            val response = withTimeout(AI_TIMEOUT_MS) {
+                openAiService.createChatCompletion(
+                    authorization = "Bearer $apiKey",
+                    request = OpenAiChatCompletionRequest(
+                        model = openAiModel,
+                        messages = messages,
+                        temperature = if (useHighThinking) 0.4f else 0.7f
+                    )
+                )
+            }
+
+            val errorMsg = response.error?.message
+            if (!errorMsg.isNullOrBlank()) {
+                throw IllegalStateException("خطأ من خادم OpenAI: $errorMsg")
+            }
+
+            val reply = response.choices.firstOrNull()?.message?.content?.trim()
+            if (reply.isNullOrBlank()) {
+                throw IllegalStateException("لم يُرجع نموذج ChatGPT ($openAiModel) نصاً في الاستجابة.")
+            }
+            reply
+        }
+    }
+
+    // 1. Multi-turn Chatbot supporting Gemini (Firebase AI Logic), ChatGPT (OpenAI API),
+    // and Side-by-Side Dual Engine (Gemini + ChatGPT simultaneously)
     suspend fun sendMultiTurnChat(
         history: List<ChatMessage>,
         userPrompt: String,
@@ -116,13 +189,174 @@ class GeminiAiRepository(
         useSearchGrounding: Boolean,
         useHighThinking: Boolean
     ): Pair<String, List<String>> = withContext(Dispatchers.IO) {
+        if (isDualEngineModel(selectedModel)) {
+            return@withContext sendDualEngineMultiTurnChat(
+                history = history,
+                userPrompt = userPrompt,
+                persona = persona,
+                useSearchGrounding = useSearchGrounding,
+                useHighThinking = useHighThinking
+            )
+        }
+
+        if (isOpenAiModel(selectedModel)) {
+            return@withContext sendOpenAiMultiTurnChatWithFallback(
+                history = history,
+                userPrompt = userPrompt,
+                openAiModel = selectedModel,
+                persona = persona,
+                useSearchGrounding = useSearchGrounding,
+                useHighThinking = useHighThinking
+            )
+        }
+
+        sendGeminiSingleEngineChat(
+            history = history,
+            userPrompt = userPrompt,
+            selectedModel = selectedModel,
+            persona = persona,
+            useSearchGrounding = useSearchGrounding,
+            useHighThinking = useHighThinking
+        )
+    }
+
+    private suspend fun sendDualEngineMultiTurnChat(
+        history: List<ChatMessage>,
+        userPrompt: String,
+        persona: AiRolePersona,
+        useSearchGrounding: Boolean,
+        useHighThinking: Boolean
+    ): Pair<String, List<String>> = coroutineScope {
+        val geminiModel = if (useHighThinking) MODEL_ARGON else MODEL_FLASH
+        val openAiModel = MODEL_GPT_4O
+
+        val geminiDeferred = async {
+            sendGeminiSingleEngineChat(
+                history = history,
+                userPrompt = userPrompt,
+                selectedModel = geminiModel,
+                persona = persona,
+                useSearchGrounding = useSearchGrounding,
+                useHighThinking = useHighThinking
+            )
+        }
+
+        val openAiDeferred = async {
+            callOpenAiChat(
+                history = history,
+                userPrompt = userPrompt,
+                openAiModel = openAiModel,
+                persona = persona,
+                useHighThinking = useHighThinking
+            )
+        }
+
+        val (geminiText, geminiSources) = geminiDeferred.await()
+        val openAiResult = openAiDeferred.await()
+
+        val combinedText = buildString {
+            appendLine("🤝 **وضع المحرك المزدوج المتزامن (Gemini API + ChatGPT API)**")
+            appendLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            appendLine("🔷 **[1] استجابة محرك Gemini ($geminiModel — Firebase AI Logic):**")
+            appendLine(geminiText)
+            appendLine()
+            appendLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            appendLine("🟢 **[2] استجابة محرك ChatGPT ($openAiModel — OpenAI API):**")
+            openAiResult.onSuccess { gptReply ->
+                appendLine(gptReply)
+            }.onFailure { err ->
+                appendLine("⚠️ تعذر إكمال اتصال ChatGPT المباشر (${err.localizedMessage}).")
+                appendLine("💡 للتفعيل الفوري: افتح **لوحة الأسرار (Secrets Panel)** في AI Studio وأضف مفتاحك تحت الاسم `OPENAI_API_KEY` ليتم قراءته عبر `BuildConfig.OPENAI_API_KEY`.")
+            }
+        }.trim()
+
+        val sources = buildList {
+            addAll(geminiSources)
+            add("Firebase AI Logic ($geminiModel)")
+            if (openAiResult.isSuccess) {
+                add("OpenAI Chat Completions API ($openAiModel)")
+            } else {
+                add("OpenAI API Status: ${OpenAiNetworkClient.getKeyStatusSummaryAr()}")
+            }
+        }.distinct()
+
+        Pair(combinedText, sources)
+    }
+
+    private suspend fun sendOpenAiMultiTurnChatWithFallback(
+        history: List<ChatMessage>,
+        userPrompt: String,
+        openAiModel: String,
+        persona: AiRolePersona,
+        useSearchGrounding: Boolean,
+        useHighThinking: Boolean
+    ): Pair<String, List<String>> {
+        val openAiResult = callOpenAiChat(
+            history = history,
+            userPrompt = userPrompt,
+            openAiModel = openAiModel,
+            persona = persona,
+            useHighThinking = useHighThinking
+        )
+
+        openAiResult.onSuccess { reply ->
+            return Pair(
+                reply,
+                listOf("OpenAI ChatGPT API ($openAiModel • BuildConfig.OPENAI_API_KEY)")
+            )
+        }
+
+        val error = openAiResult.exceptionOrNull()
+        if (error != null && OpenAiNetworkClient.isApiKeyConfigured()) {
+            GlobalExceptionHandler.reportError(
+                phase = "OpenAI Chat ($openAiModel)",
+                throwable = error,
+                isFatal = false,
+                serviceName = "OpenAI / ChatGPT"
+            )
+        }
+
+        // Seamless fallback to Gemini alongside clear instructions for OPENAI_API_KEY
+        val (geminiBackup, geminiSources) = sendGeminiSingleEngineChat(
+            history = history,
+            userPrompt = userPrompt,
+            selectedModel = if (useHighThinking) MODEL_ARGON else MODEL_FLASH,
+            persona = persona,
+            useSearchGrounding = useSearchGrounding,
+            useHighThinking = useHighThinking
+        )
+
+        val combined = buildString {
+            appendLine("ℹ️ **ملاحظة محرك ChatGPT ($openAiModel):** ${error?.localizedMessage ?: "تعذر الاتصال بـ OpenAI API"}")
+            if (!OpenAiNetworkClient.isApiKeyConfigured()) {
+                appendLine("🔑 **طريقة ربط مفتاح ChatGPT بأمان:** افتح لوحة **Secrets** في AI Studio وأدخل مفتاحك في الحقل `OPENAI_API_KEY` (يُقرأ تلقائياً عبر `BuildConfig.OPENAI_API_KEY`).")
+            }
+            appendLine()
+            appendLine("🔄 **الاستجابة المساندة الفورية عبر محرك Gemini المدمج:**")
+            appendLine(geminiBackup)
+        }.trim()
+
+        return Pair(
+            combined,
+            (geminiSources + listOf("OpenAI Fallback → Gemini (${if (useHighThinking) MODEL_ARGON else MODEL_FLASH})")).distinct()
+        )
+    }
+
+    private suspend fun sendGeminiSingleEngineChat(
+        history: List<ChatMessage>,
+        userPrompt: String,
+        selectedModel: String,
+        persona: AiRolePersona,
+        useSearchGrounding: Boolean,
+        useHighThinking: Boolean
+    ): Pair<String, List<String>> {
         val effectiveModel = when {
             useHighThinking -> MODEL_ARGON
             useSearchGrounding -> MODEL_FLASH
             else -> selectedModel
         }
 
-        try {
+        return try {
             val chatHistory = history.takeLast(10).map { msg ->
                 content(role = if (msg.isUser) "user" else "model") {
                     text(msg.text)
@@ -240,11 +474,12 @@ class GeminiAiRepository(
         }
     }
 
-    // 2. Low-Latency Inline Code Autocomplete & Refactoring (gemini-3.5-flash-lite)
+    // 2. Low-Latency Inline Code Autocomplete & Refactoring (Gemini 3.5 Flash-Lite + ChatGPT gpt-4o-mini)
     suspend fun generateLowLatencyCodeSuggestion(
         currentCode: String,
         activeTab: String,
-        instruction: String
+        instruction: String,
+        preferredModel: String = MODEL_FLASH_LITE
     ): String = withContext(Dispatchers.IO) {
         val prompt = """
             Language/Layer: $activeTab
@@ -253,6 +488,33 @@ class GeminiAiRepository(
             $currentCode
             Provide a concise, high-performance code completion or enhancement snippet ready to insert.
         """.trimIndent()
+
+        if (isOpenAiModel(preferredModel) || (isDualEngineModel(preferredModel) && OpenAiNetworkClient.isApiKeyConfigured())) {
+            val openAiRes = callOpenAiChat(
+                userPrompt = prompt,
+                openAiModel = MODEL_GPT_4O_MINI,
+                persona = AiRolePersona.FULLSTACK_ARCHITECT,
+                useHighThinking = false
+            )
+            val gptText = openAiRes.getOrNull()
+            if (!gptText.isNullOrBlank() && !isDualEngineModel(preferredModel)) {
+                return@withContext gptText
+            }
+            if (!gptText.isNullOrBlank() && isDualEngineModel(preferredModel)) {
+                val geminiText = runCatching {
+                    withTimeout(AI_TIMEOUT_MS) { flashLiteModel.generateContent(prompt).text }
+                }.getOrNull()
+                return@withContext buildString {
+                    if (!geminiText.isNullOrBlank()) {
+                        appendLine("// --- [Gemini $MODEL_FLASH_LITE Suggestion] ---")
+                        appendLine(geminiText)
+                        appendLine()
+                    }
+                    appendLine("// --- [ChatGPT $MODEL_GPT_4O_MINI Suggestion] ---")
+                    appendLine(gptText)
+                }.trim()
+            }
+        }
 
         try {
             val text = withTimeout(AI_TIMEOUT_MS) {
@@ -310,23 +572,47 @@ class GeminiAiRepository(
         }
     }
 
-    // 3. Full-Stack Architecture Generator with High Thinking (gemini-4-argon)
+    // 3. Full-Stack Architecture Generator with High Thinking (Gemini 4 Argon + ChatGPT gpt-4o)
     suspend fun generateFullStackCodebase(
         projectBrief: String,
-        stackLanguage: String
+        stackLanguage: String,
+        preferredModel: String = MODEL_ARGON
     ): Map<String, String> = withContext(Dispatchers.IO) {
-        try {
-            val prompt = """
-                Build a complete interactive Full-Stack web preview (HTML, CSS, JS) and Backend code ($stackLanguage) for: $projectBrief.
-                Return valid code blocks or structured sections.
-            """.trimIndent()
+        val prompt = """
+            Build a complete interactive Full-Stack web preview (HTML, CSS, JS) and Backend code ($stackLanguage) for: $projectBrief.
+            Return valid code blocks or structured sections.
+        """.trimIndent()
 
+        if (isOpenAiModel(preferredModel) && OpenAiNetworkClient.isApiKeyConfigured()) {
+            val gptOut = callOpenAiChat(
+                userPrompt = prompt,
+                openAiModel = MODEL_GPT_4O,
+                persona = AiRolePersona.FULLSTACK_ARCHITECT,
+                useHighThinking = true
+            ).getOrNull()
+            if (!gptOut.isNullOrBlank()) {
+                return@withContext buildGeneratedStackFromAiText(projectBrief, stackLanguage, gptOut)
+            }
+        }
+
+        try {
             val out = withTimeout(AI_TIMEOUT_MS) {
                 val response = argonModel.generateContent(prompt)
                 response.text
             }
-            if (!out.isNullOrBlank()) {
-                return@withContext buildGeneratedStackFromAiText(projectBrief, stackLanguage, out)
+            val openAiSupplement = if (OpenAiNetworkClient.isApiKeyConfigured()) {
+                callOpenAiChat(
+                    userPrompt = "Provide a concise production-ready backend controller ($stackLanguage) for: $projectBrief",
+                    openAiModel = MODEL_GPT_4O_MINI,
+                    persona = AiRolePersona.FULLSTACK_ARCHITECT,
+                    useHighThinking = true
+                ).getOrNull()
+            } else {
+                null
+            }
+            val mergedOut = listOfNotNull(out, openAiSupplement).joinToString("\n\n// --- [OpenAI ChatGPT Co-Architect] ---\n")
+            if (mergedOut.isNotBlank()) {
+                return@withContext buildGeneratedStackFromAiText(projectBrief, stackLanguage, mergedOut)
             }
         } catch (e: CancellationException) {
             throw e
@@ -666,10 +952,11 @@ class GeminiAiRepository(
         )
     }
 
-    // 11. Bioscience Skills Engine (Sequence Analysis + Gemini 4 Argon via Firebase AI Logic)
+    // 11. Bioscience Skills Engine (Sequence Analysis + Gemini 4 Argon + ChatGPT gpt-4o)
     suspend fun analyzeBioscienceSequence(
         fastaOrSequence: String,
-        researchGoal: String
+        researchGoal: String,
+        preferredModel: String = MODEL_ARGON
     ): String = withContext(Dispatchers.IO) {
         val cleanedSeq = fastaOrSequence.lines()
             .filterNot { it.trim().startsWith(">") }
@@ -696,24 +983,57 @@ class GeminiAiRepository(
             appendLine("• الوزن الجزيئي التقريبي: ${"%.1f".format(approxMolWeightDa / 1000.0)} kDa")
         }
 
-        try {
-            val prompt = """
-                You are a Senior Bioinformatics & Computational Biology AI Scientist.
-                Analyze the following biological sequence and research goal:
-                Sequence metrics:
-                $deterministicHeader
-                Raw Sequence:
-                ${cleanedSeq.take(1500)}
-                Research Goal:
-                $researchGoal
-                Provide functional domain insights, structural folding predictions, and a complete Python (Biopython) analysis script in Arabic.
-            """.trimIndent()
+        val prompt = """
+            You are a Senior Bioinformatics & Computational Biology AI Scientist.
+            Analyze the following biological sequence and research goal:
+            Sequence metrics:
+            $deterministicHeader
+            Raw Sequence:
+            ${cleanedSeq.take(1500)}
+            Research Goal:
+            $researchGoal
+            Provide functional domain insights, structural folding predictions, and a complete Python (Biopython) analysis script in Arabic.
+        """.trimIndent()
 
+        if (isOpenAiModel(preferredModel) && OpenAiNetworkClient.isApiKeyConfigured()) {
+            val gptBio = callOpenAiChat(
+                userPrompt = prompt,
+                openAiModel = MODEL_GPT_4O,
+                persona = AiRolePersona.BIOSCIENCE_SPECIALIST,
+                useHighThinking = true
+            ).getOrNull()
+            if (!gptBio.isNullOrBlank()) {
+                return@withContext "$deterministicHeader\n\n🟢 **[تحليل ChatGPT ($MODEL_GPT_4O)]:**\n$gptBio"
+            }
+        }
+
+        try {
             val aiAnalysis = withTimeout(AI_TIMEOUT_MS) {
                 argonModel.generateContent(prompt).text
             }
+            val openAiBioNote = if (OpenAiNetworkClient.isApiKeyConfigured()) {
+                callOpenAiChat(
+                    userPrompt = "Provide a concise clinical & structural validation summary in Arabic for this sequence and goal: $researchGoal (Length=$length)",
+                    openAiModel = MODEL_GPT_4O_MINI,
+                    persona = AiRolePersona.BIOSCIENCE_SPECIALIST,
+                    useHighThinking = false
+                ).getOrNull()
+            } else {
+                null
+            }
             if (!aiAnalysis.isNullOrBlank()) {
-                return@withContext "$deterministicHeader\n\n$aiAnalysis"
+                val combinedBio = buildString {
+                    appendLine(deterministicHeader)
+                    appendLine()
+                    appendLine("🔷 **[تحليل Gemini ($MODEL_ARGON)]:**")
+                    appendLine(aiAnalysis)
+                    if (!openAiBioNote.isNullOrBlank()) {
+                        appendLine()
+                        appendLine("🟢 **[المراجعة التكميلية عبر ChatGPT ($MODEL_GPT_4O_MINI)]:**")
+                        appendLine(openAiBioNote)
+                    }
+                }.trim()
+                return@withContext combinedBio
             }
         } catch (e: CancellationException) {
             throw e
