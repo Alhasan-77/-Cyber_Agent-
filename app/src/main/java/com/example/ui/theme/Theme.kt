@@ -5,36 +5,42 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val NovaForgeDarkScheme = darkColorScheme(
+private val GeminiStudioColorScheme = darkColorScheme(
     primary = CyberCyan,
-    onPrimary = Color(0xFF001F26),
-    primaryContainer = Color(0xFF004D5A),
-    onPrimaryContainer = Color(0xFFB8F5FF),
+    onPrimary = Color(0xFF062E6F),
+    primaryContainer = GeminiPillSelectedContainer,
+    onPrimaryContainer = GeminiOnPillSelectedContainer,
     secondary = CyberViolet,
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFF2D1B69),
-    onSecondaryContainer = Color(0xFFE4D9FF),
+    onSecondary = Color(0xFF281344),
+    secondaryContainer = GeminiPillSelectedContainer,
+    onSecondaryContainer = GeminiOnPillSelectedContainer,
     tertiary = CyberEmerald,
-    onTertiary = Color(0xFF00210E),
+    onTertiary = Color(0xFF0A3818),
     background = CyberBackground,
     onBackground = CyberTextPrimary,
     surface = CyberSurface,
     onSurface = CyberTextPrimary,
     surfaceVariant = CyberSurfaceElevated,
     onSurfaceVariant = CyberTextSecondary,
+    surfaceContainerLowest = Color(0xFF0E0E0F),
+    surfaceContainerLow = Color(0xFF18191A),
+    surfaceContainer = CyberSurface,
+    surfaceContainerHigh = CyberSurfaceElevated,
+    surfaceContainerHighest = CyberSurfaceHigh,
+    outline = CyberBorder,
+    outlineVariant = Color(0xFF2D3033),
     error = CyberCoral,
-    onError = Color.White,
-    outline = CyberBorder
+    onError = Color(0xFF601410),
+    errorContainer = Color(0xFF8C1D18),
+    onErrorContainer = Color(0xFFF9DEDC)
 )
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = true,
-    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
-        colorScheme = NovaForgeDarkScheme,
+        colorScheme = GeminiStudioColorScheme,
         typography = Typography,
         content = content
     )

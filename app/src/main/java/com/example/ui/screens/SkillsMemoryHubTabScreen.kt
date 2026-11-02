@@ -171,14 +171,14 @@ fun SkillsMemoryHubTabScreen(
     ) {
         // Top Memory Status & Auto-Routing Control Card
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = CyberSurface),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, CyberCyan.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                .border(1.dp, com.example.ui.theme.GeminiBorderGradient, RoundedCornerShape(24.dp))
         ) {
             Column(
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier.padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
@@ -194,23 +194,23 @@ fun SkillsMemoryHubTabScreen(
                             modifier = Modifier
                                 .size(42.dp)
                                 .clip(CircleShape)
-                                .background(CyberViolet.copy(alpha = 0.22f))
-                                .border(1.dp, CyberCyan, CircleShape),
+                                .background(com.example.ui.theme.GeminiSparkleGradient),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Memory,
                                 contentDescription = null,
-                                tint = CyberCyan,
-                                modifier = Modifier.size(24.dp)
+                                tint = androidx.compose.ui.graphics.Color.White,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "ذاكرة المهارات والأدوات والمكتبات الدائمة (Skills & Tools Memory Hub)",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = CyberCyan,
+                                text = "ذاكرة مهارات Gemini والأدوات الدائمة (Skills Hub)",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    brush = com.example.ui.theme.GeminiSparkleGradient
+                                ),
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
@@ -226,7 +226,7 @@ fun SkillsMemoryHubTabScreen(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (isSyncedWithFirestore) CyberEmerald else CyberCyan
                         ),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(50),
                         modifier = Modifier.testTag("sync_skills_firestore_button")
                     ) {
                         Icon(

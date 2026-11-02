@@ -5,14 +5,19 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,34 +26,40 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -60,6 +71,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -79,7 +91,13 @@ import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.CyberEmerald
 import com.example.ui.theme.CyberSurface
 import com.example.ui.theme.CyberSurfaceElevated
+import com.example.ui.theme.CyberTextPrimary
+import com.example.ui.theme.CyberTextSecondary
 import com.example.ui.theme.CyberViolet
+import com.example.ui.theme.GeminiBorderGradient
+import com.example.ui.theme.GeminiOnPillSelectedContainer
+import com.example.ui.theme.GeminiPillSelectedContainer
+import com.example.ui.theme.GeminiSparkleGradient
 import com.example.util.AudioAndMediaHelper
 import kotlinx.coroutines.launch
 
@@ -114,34 +132,77 @@ fun AiAndMediaStudioTabScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        // Gemini Pill Segmented Mode Switcher
+        Surface(
+            color = CyberSurface,
+            shape = RoundedCornerShape(50),
+            border = BorderStroke(1.dp, CyberBorder),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            FilterChip(
-                selected = subTab == 0,
-                onClick = { subTab = 0 },
-                label = { Text("محادثة Gemini + ChatGPT") },
-                leadingIcon = { Icon(Icons.Default.Chat, contentDescription = null) },
-                modifier = Modifier.testTag("ai_subtab_chat")
-            )
-            FilterChip(
-                selected = subTab == 1,
-                onClick = { subTab = 1 },
-                label = { Text("استوديو الصور والفيديو") },
-                leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
-                modifier = Modifier.testTag("ai_subtab_visual")
-            )
-            FilterChip(
-                selected = subTab == 2,
-                onClick = { subTab = 2 },
-                label = { Text("الصوت الحـي والموسيقى") },
-                leadingIcon = { Icon(Icons.Default.MusicNote, contentDescription = null) },
-                modifier = Modifier.testTag("ai_subtab_audio")
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                FilterChip(
+                    selected = subTab == 0,
+                    onClick = { subTab = 0 },
+                    label = { Text("محادثة Gemini") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    shape = RoundedCornerShape(50),
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.Transparent,
+                        labelColor = CyberTextSecondary,
+                        selectedContainerColor = GeminiPillSelectedContainer,
+                        selectedLabelColor = GeminiOnPillSelectedContainer,
+                        selectedLeadingIconColor = GeminiOnPillSelectedContainer
+                    ),
+                    border = null,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("ai_subtab_chat")
+                )
+                FilterChip(
+                    selected = subTab == 1,
+                    onClick = { subTab = 1 },
+                    label = { Text("الصور والفيديو") },
+                    leadingIcon = { Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    shape = RoundedCornerShape(50),
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.Transparent,
+                        labelColor = CyberTextSecondary,
+                        selectedContainerColor = GeminiPillSelectedContainer,
+                        selectedLabelColor = GeminiOnPillSelectedContainer,
+                        selectedLeadingIconColor = GeminiOnPillSelectedContainer
+                    ),
+                    border = null,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("ai_subtab_visual")
+                )
+                FilterChip(
+                    selected = subTab == 2,
+                    onClick = { subTab = 2 },
+                    label = { Text("الصوت والموسيقى") },
+                    leadingIcon = { Icon(Icons.Default.MusicNote, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    shape = RoundedCornerShape(50),
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.Transparent,
+                        labelColor = CyberTextSecondary,
+                        selectedContainerColor = GeminiPillSelectedContainer,
+                        selectedLabelColor = GeminiOnPillSelectedContainer,
+                        selectedLeadingIconColor = GeminiOnPillSelectedContainer
+                    ),
+                    border = null,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("ai_subtab_audio")
+                )
+            }
         }
 
         when (subTab) {
@@ -194,22 +255,32 @@ private fun MultiTurnChatbotSection(
     onSpeakText: (String) -> Unit
 ) {
     var inputPrompt by remember { mutableStateOf("") }
+    var showPersonaSelector by remember { mutableStateOf(false) }
     val isOpenAiReady = remember { OpenAiNetworkClient.isApiKeyConfigured() }
     val openAiStatusLabel = remember { OpenAiNetworkClient.getKeyStatusSummaryAr() }
+
+    val quickSuggestions = remember {
+        listOf(
+            "✨ صمّم معمارية تطبيق متكامل بـ Kotlin و Firestore",
+            "🔍 راجع أمان الكود واقترح تحسينات للأداء",
+            "🧬 حلّل تسلسل بروتين الهيموغلوبين وخصائصه"
+        )
+    }
 
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // Sleek Gemini Model & Capability Strip
         Card(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(containerColor = CyberSurface),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+                .border(1.dp, CyberBorder, RoundedCornerShape(22.dp))
         ) {
             Column(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Row(
@@ -218,121 +289,291 @@ private fun MultiTurnChatbotSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "🔷 Gemini API: متصل (Firebase AI Logic)",
+                        text = "✦ Gemini API متصل",
                         style = MaterialTheme.typography.labelMedium,
-                        color = CyberCyan
+                        color = CyberCyan,
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "🟢 ChatGPT API: $openAiStatusLabel",
+                        text = "🟢 ChatGPT: $openAiStatusLabel",
                         style = MaterialTheme.typography.labelMedium,
                         color = if (isOpenAiReady) CyberEmerald else CyberAmber,
                         modifier = Modifier.testTag("openai_api_status_badge")
                     )
                 }
-                Text(
-                    text = "☁️ النموذج المفضل المحفوظ في ملفك السحابي (Firestore Profile): $selectedChatModel",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = CyberEmerald,
-                    modifier = Modifier.testTag("saved_preferred_ai_model_label")
-                )
-                Text(
-                    text = "تخصيص دور المساعد وتوجيه المحرك (Gemini API + ChatGPT API Routing):",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = CyberCyan
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AiRolePersona.entries.forEach { persona ->
-                        FilterChip(
-                            selected = selectedPersona == persona,
-                            onClick = { onSelectPersona(persona) },
-                            label = { Text(persona.titleAr) }
-                        )
+                    Text(
+                        text = "☁️ النموذج المفضل: $selectedChatModel • ${selectedPersona.titleAr}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CyberTextSecondary,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("saved_preferred_ai_model_label")
+                    )
+                    Surface(
+                        onClick = { showPersonaSelector = !showPersonaSelector },
+                        color = CyberSurfaceElevated,
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                tint = CyberCyan,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = if (showPersonaSelector) "إخفاء الأدوار" else "تخصيص الدور",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CyberCyan
+                            )
+                        }
                     }
                 }
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+
+                // Horizontal scrollable Gemini Model & Grounding Pills
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     listOf(
-                        GeminiAiRepository.MODEL_DUAL_ENGINE to "🤝 Dual (Gemini + ChatGPT معاً)",
-                        GeminiAiRepository.MODEL_GPT_4O to "🟢 ChatGPT (gpt-4o)",
-                        GeminiAiRepository.MODEL_GPT_4O_MINI to "🟢 ChatGPT Fast (gpt-4o-mini)",
-                        GeminiAiRepository.MODEL_ARGON to "🔷 Gemini Complex (gemini-4-argon)",
-                        GeminiAiRepository.MODEL_FLASH to "🔷 Gemini General (gemini-3.8-flash)",
-                        GeminiAiRepository.MODEL_FLASH_LITE to "🔷 Gemini Fast (gemini-3.5-flash-lite)"
+                        GeminiAiRepository.MODEL_DUAL_ENGINE to "✦ Dual (Gemini + ChatGPT)",
+                        GeminiAiRepository.MODEL_GPT_4O to "🟢 GPT-4o",
+                        GeminiAiRepository.MODEL_GPT_4O_MINI to "🟢 GPT-4o Mini",
+                        GeminiAiRepository.MODEL_ARGON to "✦ Gemini 4 Argon",
+                        GeminiAiRepository.MODEL_FLASH to "✦ Gemini 3.8 Flash",
+                        GeminiAiRepository.MODEL_FLASH_LITE to "✦ Flash Lite"
                     ).forEach { (modelId, label) ->
+                        val isSelected = selectedChatModel == modelId
                         FilterChip(
-                            selected = selectedChatModel == modelId,
+                            selected = isSelected,
                             onClick = { onSelectChatModel(modelId) },
                             label = { Text(label) },
+                            shape = RoundedCornerShape(50),
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = CyberSurfaceElevated,
+                                labelColor = CyberTextSecondary,
+                                selectedContainerColor = GeminiPillSelectedContainer,
+                                selectedLabelColor = GeminiOnPillSelectedContainer
+                            ),
+                            border = null,
                             modifier = Modifier.testTag("chat_model_$modelId")
                         )
                     }
                     FilterChip(
                         selected = useHighThinking,
                         onClick = { onToggleHighThinking(!useHighThinking) },
-                        label = { Text("ThinkingLevel.HIGH") },
-                        leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                        label = { Text("تفكير عميق") },
+                        leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                        shape = RoundedCornerShape(50),
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = CyberSurfaceElevated,
+                            selectedContainerColor = GeminiPillSelectedContainer,
+                            selectedLabelColor = GeminiOnPillSelectedContainer
+                        ),
+                        border = null,
                         modifier = Modifier.testTag("toggle_high_thinking")
                     )
                     FilterChip(
                         selected = useSearchGrounding,
                         onClick = { onToggleSearch(!useSearchGrounding) },
-                        label = { Text("Google Search") },
-                        leadingIcon = { Icon(Icons.Default.Public, contentDescription = null) },
+                        label = { Text("بحث Google") },
+                        leadingIcon = { Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                        shape = RoundedCornerShape(50),
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = CyberSurfaceElevated,
+                            selectedContainerColor = GeminiPillSelectedContainer,
+                            selectedLabelColor = GeminiOnPillSelectedContainer
+                        ),
+                        border = null,
                         modifier = Modifier.testTag("toggle_search_grounding")
                     )
+                }
+
+                AnimatedVisibility(visible = showPersonaSelector) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        AiRolePersona.entries.forEach { persona ->
+                            FilterChip(
+                                selected = selectedPersona == persona,
+                                onClick = { onSelectPersona(persona) },
+                                label = { Text(persona.titleAr) },
+                                shape = RoundedCornerShape(50)
+                            )
+                        }
+                    }
                 }
             }
         }
 
+        // Authentic Gemini Conversation Stream
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(chatMessages, key = { it.id }) { msg ->
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (msg.isUser) CyberSurfaceElevated else CyberSurface
-                    ),
+            // Gemini Welcome Header + Suggestion Pills at top of chat
+            item {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(
-                            1.dp,
-                            if (msg.isUser) CyberViolet.copy(alpha = 0.5f) else CyberCyan.copy(alpha = 0.35f),
-                            RoundedCornerShape(14.dp)
-                        )
+                        .padding(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(GeminiSparkleGradient),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = if (msg.isUser) "👤 أنت" else "🤖 ${msg.modelUsed}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (msg.isUser) CyberAmber else CyberCyan
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                        }
+                        Text(
+                            text = "اسأل Gemini أو ChatGPT في أي وقت",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                brush = GeminiSparkleGradient
+                            ),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        quickSuggestions.forEach { suggestion ->
+                            Surface(
+                                color = CyberSurface,
+                                shape = RoundedCornerShape(20.dp),
+                                border = BorderStroke(1.dp, CyberBorder),
+                                modifier = Modifier.clickable {
+                                    onSendChatMessage(suggestion)
+                                }
+                            ) {
                                 Text(
-                                    text = msg.timestampLabel,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = suggestion,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = CyberTextPrimary,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
                                 )
-                                if (!msg.isUser) {
-                                    IconButton(
-                                        onClick = { onSpeakText(msg.text) },
-                                        modifier = Modifier.size(32.dp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            items(chatMessages, key = { it.id }) { msg ->
+                if (msg.isUser) {
+                    // Authentic Gemini User Message Pill (Start/Right aligned in RTL)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        Surface(
+                            color = CyberSurfaceElevated,
+                            shape = RoundedCornerShape(
+                                topStart = 24.dp,
+                                topEnd = 24.dp,
+                                bottomStart = 6.dp,
+                                bottomEnd = 24.dp
+                            ),
+                            modifier = Modifier.widthIn(max = 340.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                Text(
+                                    text = msg.text,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = CyberTextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "أنت • ${msg.timestampLabel}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = CyberTextSecondary
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Authentic Gemini AI Response Card with 4-point Sparkle Avatar
+                    Card(
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = CyberSurface),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, CyberBorder, RoundedCornerShape(24.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(26.dp)
+                                            .clip(CircleShape)
+                                            .background(GeminiSparkleGradient),
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.VolumeUp,
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = msg.modelUsed,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = CyberCyan,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = msg.timestampLabel,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = CyberTextSecondary
+                                    )
+                                    IconButton(
+                                        onClick = { onSpeakText(msg.text) },
+                                        modifier = Modifier.size(34.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                                             contentDescription = "استماع للرد عبر TTS",
                                             tint = CyberCyan,
                                             modifier = Modifier.size(18.dp)
@@ -340,26 +581,38 @@ private fun MultiTurnChatbotSection(
                                     }
                                 }
                             }
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = msg.text,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        if (msg.groundingSources.isNotEmpty()) {
+
                             Spacer(modifier = Modifier.height(8.dp))
+
                             Text(
-                                text = "🌐 مصادر Google Search Grounding:",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = CyberEmerald
+                                text = msg.text,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = CyberTextPrimary
                             )
-                            msg.groundingSources.forEach { src ->
-                                Text(
-                                    text = "• $src",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = CyberCyan
-                                )
+
+                            if (msg.groundingSources.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Surface(
+                                    color = CyberSurfaceElevated,
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text(
+                                            text = "🌐 مصادر Google Search:",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = CyberEmerald,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        msg.groundingSources.forEach { src ->
+                                            Text(
+                                                text = "• $src",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = CyberCyan
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -367,32 +620,79 @@ private fun MultiTurnChatbotSection(
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Iconic Google Gemini Floating Pill Prompt Bar
+        Surface(
+            color = CyberSurface,
+            shape = RoundedCornerShape(32.dp),
+            border = BorderStroke(1.dp, GeminiBorderGradient),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            OutlinedTextField(
-                value = inputPrompt,
-                onValueChange = { inputPrompt = it },
-                placeholder = { Text("اكتب سؤالك البرمجي أو المعماري...") },
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .testTag("chatbot_message_input")
-            )
-            Button(
-                onClick = {
-                    if (inputPrompt.isNotBlank()) {
-                        onSendChatMessage(inputPrompt)
-                        inputPrompt = ""
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
-                modifier = Modifier
-                    .height(54.dp)
-                    .testTag("chatbot_send_button")
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "إرسال", tint = CyberBackground)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(CyberSurfaceElevated),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = CyberCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = inputPrompt,
+                    onValueChange = { inputPrompt = it },
+                    placeholder = {
+                        Text(
+                            text = "اسأل Gemini أو اطلب كتابة كود...",
+                            color = CyberTextSecondary
+                        )
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("chatbot_message_input")
+                )
+
+                Button(
+                    onClick = {
+                        if (inputPrompt.isNotBlank()) {
+                            onSendChatMessage(inputPrompt)
+                            inputPrompt = ""
+                        }
+                    },
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CyberCyan,
+                        contentColor = CyberBackground
+                    ),
+                    modifier = Modifier
+                        .size(46.dp)
+                        .testTag("chatbot_send_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "إرسال",
+                        tint = CyberBackground,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }
@@ -411,7 +711,7 @@ private fun VisualMediaStudioSection(
     val scope = rememberCoroutineScope()
 
     var visualPrompt by remember {
-        mutableStateOf("تصميم واجهة لوحة تحكم سحابية مستقبلية بألوان السيان والبنفسجي")
+        mutableStateOf("تصميم واجهة لوحة تحكم سحابية مستقبلية بألوان Gemini الزرقاء والبنفسجية")
     }
     var useStudioProImage by remember { mutableStateOf(true) }
     val aspectRatios = listOf("1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9")
@@ -445,69 +745,93 @@ private fun VisualMediaStudioSection(
     ) {
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CyberCyan.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                    .border(1.dp, GeminiBorderGradient, RoundedCornerShape(24.dp))
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = "🎨 توليد وتعديل الصور والفيديو وتحليل الوسائط",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = CyberCyan
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(GeminiSparkleGradient),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = "استوديو Gemini لتوليد الصور والفيديو وتحليل الوسائط",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = CyberTextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
                     OutlinedTextField(
                         value = visualPrompt,
                         onValueChange = { visualPrompt = it },
                         label = { Text("وصف الصورة أو الفيديو أو سؤال التحليل (Prompt)") },
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("visual_studio_prompt_input")
                     )
 
-                    // Image Model Selection: gemini-nano-banana-2.1 vs gemini-3-pro-image-preview
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = !useStudioProImage,
                             onClick = { useStudioProImage = false },
-                            label = { Text("gemini-nano-banana-2.1 (إنشاء وتعديل)") },
+                            label = { Text("gemini-nano-banana-2.1") },
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("model_nano_banana")
                         )
                         FilterChip(
                             selected = useStudioProImage,
                             onClick = { useStudioProImage = true },
-                            label = { Text("gemini-3-pro-image (جودة استوديو)") },
+                            label = { Text("gemini-3-pro-image") },
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("model_pro_image")
                         )
                     }
 
-                    // Image Size Selection (1K, 2K, 4K)
-                    Text(
-                        text = "حجم ودقة الصورة (Image Size - 1K / 2K / 4K):",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "الدقة:",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = CyberTextSecondary
+                        )
                         imageSizes.forEach { size ->
                             FilterChip(
                                 selected = selectedImageSize == size,
                                 onClick = { selectedImageSize = size },
                                 label = { Text(size) },
+                                shape = RoundedCornerShape(50),
                                 modifier = Modifier.testTag("image_size_$size")
                             )
                         }
                     }
 
-                    // Aspect Ratio Selection (1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9)
                     Text(
                         text = "نسبة العرض إلى الارتفاع للصور (Aspect Ratio):",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = CyberTextSecondary
                     )
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -518,35 +842,37 @@ private fun VisualMediaStudioSection(
                                 selected = selectedAspectRatio == ratio,
                                 onClick = { selectedAspectRatio = ratio },
                                 label = { Text(ratio) },
+                                shape = RoundedCornerShape(50),
                                 modifier = Modifier.testTag("aspect_ratio_$ratio")
                             )
                         }
                     }
 
-                    // Video Aspect Ratio (16:9 or 9:16) for gemini-omni-1.1-flash
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "أبعاد الفيديو (gemini-omni-1.1-flash):",
-                            style = MaterialTheme.typography.labelMedium
+                            text = "أبعاد الفيديو:",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = CyberTextSecondary
                         )
                         FilterChip(
                             selected = selectedVideoRatio == "16:9",
                             onClick = { selectedVideoRatio = "16:9" },
                             label = { Text("16:9 أفقي") },
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("video_ratio_16_9")
                         )
                         FilterChip(
                             selected = selectedVideoRatio == "9:16",
                             onClick = { selectedVideoRatio = "9:16" },
                             label = { Text("9:16 عمودي") },
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("video_ratio_9_16")
                         )
                     }
 
-                    // Upload Photo or Video via PickVisualMedia
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -557,15 +883,17 @@ private fun VisualMediaStudioSection(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
                                 )
                             },
+                            shape = RoundedCornerShape(50),
+                            border = BorderStroke(1.dp, CyberBorder),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("upload_media_button")
                         ) {
                             Icon(Icons.Default.UploadFile, contentDescription = null, tint = CyberCyan)
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (uploadedBase64 != null) "تم إرفاق ملف (${uploadedMime})" else "رفع صورة أو فيديو",
-                                color = CyberCyan
+                                text = if (uploadedBase64 != null) "تم إرفاق (${uploadedMime})" else "إرفاق صورة أو فيديو",
+                                color = CyberTextPrimary
                             )
                         }
                         if (uploadedBase64 != null) {
@@ -578,6 +906,7 @@ private fun VisualMediaStudioSection(
                                         uploadedIsVideo
                                     )
                                 },
+                                shape = RoundedCornerShape(50),
                                 modifier = Modifier.testTag("analyze_media_argon_button")
                             ) {
                                 Icon(Icons.Default.VideoLibrary, contentDescription = null, tint = CyberEmerald)
@@ -587,7 +916,6 @@ private fun VisualMediaStudioSection(
                         }
                     }
 
-                    // Action Buttons: Generate/Edit Image & Generate/Animate Video
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -603,13 +931,14 @@ private fun VisualMediaStudioSection(
                                     uploadedMime
                                 )
                             },
+                            shape = RoundedCornerShape(50),
                             colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("generate_image_button")
                         ) {
                             Icon(Icons.Default.Image, contentDescription = null, tint = CyberBackground)
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (uploadedBase64 != null && !uploadedIsVideo) "تعديل/توليد صورة" else "توليد صورة",
                                 color = CyberBackground,
@@ -626,15 +955,20 @@ private fun VisualMediaStudioSection(
                                     if (!uploadedIsVideo) uploadedMime else null
                                 )
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = CyberViolet),
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = GeminiPillSelectedContainer,
+                                contentColor = GeminiOnPillSelectedContainer
+                            ),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("generate_video_button")
                         ) {
                             Icon(Icons.Default.Movie, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (uploadedBase64 != null && !uploadedIsVideo) "تحريك الصورة لفيديو" else "توليد فيديو"
+                                text = if (uploadedBase64 != null && !uploadedIsVideo) "تحريك لفيديو" else "توليد فيديو",
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -645,22 +979,24 @@ private fun VisualMediaStudioSection(
         if (mediaAnalysisOutput != null) {
             item {
                 Card(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(22.dp),
                     colors = CardDefaults.cardColors(containerColor = CyberSurfaceElevated),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, CyberEmerald, RoundedCornerShape(14.dp))
+                        .border(1.dp, CyberEmerald.copy(alpha = 0.5f), RoundedCornerShape(22.dp))
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "🔍 نتيجة تحليل الوسائط عبر gemini-4-argon:",
                             style = MaterialTheme.typography.titleMedium,
-                            color = CyberEmerald
+                            color = CyberEmerald,
+                            fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = mediaAnalysisOutput,
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = CyberTextPrimary
                         )
                     }
                 }
@@ -669,29 +1005,37 @@ private fun VisualMediaStudioSection(
 
         items(generatedAssets.filter { it.type == "IMAGE" || it.type == "VIDEO" }, key = { it.id }) { asset ->
             Card(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+                    .border(1.dp, CyberBorder, RoundedCornerShape(24.dp))
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "${if (asset.type == "VIDEO") "🎬 فيديو" else "🖼️ صورة"} • ${asset.modelUsed}",
                             style = MaterialTheme.typography.titleMedium,
-                            color = CyberCyan
+                            color = CyberCyan,
+                            fontWeight = FontWeight.Bold
                         )
-                        Text(
-                            text = asset.metadataLabel,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = CyberEmerald
-                        )
+                        Surface(
+                            color = CyberSurfaceElevated,
+                            shape = RoundedCornerShape(50)
+                        ) {
+                            Text(
+                                text = asset.metadataLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = CyberEmerald,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     val decodedBitmap = remember(asset.base64Data) {
                         if (asset.type == "IMAGE") AudioAndMediaHelper.decodeBase64ToBitmap(asset.base64Data) else null
                     }
@@ -701,8 +1045,8 @@ private fun VisualMediaStudioSection(
                             contentDescription = asset.prompt,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(190.dp)
-                                .clip(RoundedCornerShape(12.dp)),
+                                .height(200.dp)
+                                .clip(RoundedCornerShape(18.dp)),
                             contentScale = ContentScale.Crop
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -710,7 +1054,7 @@ private fun VisualMediaStudioSection(
                     Text(
                         text = asset.textSummary ?: asset.prompt,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = CyberTextSecondary
                     )
                 }
             }
@@ -757,29 +1101,31 @@ private fun VoiceAndMusicStudioSection(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1. Microphone Audio Transcription (gemini-3.5-transcribe) & Live API Voice (gemini-3.8-live)
+        // 1. Gemini Live Voice & Transcription
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CyberCyan.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                    .border(1.dp, GeminiBorderGradient, RoundedCornerShape(24.dp))
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "🎙️ المحادثة الصوتية الحية (gemini-3.8-live) ونسخ الصوت (gemini-3.5-transcribe)",
+                        text = "🎙️ Gemini Live الصوتية الحية ونسخ الميكروفون",
                         style = MaterialTheme.typography.titleMedium,
-                        color = CyberCyan
+                        color = CyberTextPrimary,
+                        fontWeight = FontWeight.Bold
                     )
 
                     OutlinedTextField(
                         value = liveVoicePrompt,
                         onValueChange = { liveVoicePrompt = it },
-                        label = { Text("رسالتك الصوتية أو النص المنسوخ من الميكروفون") },
+                        label = { Text("رسالتك الصوتية أو النص المنسوخ") },
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("live_voice_input")
@@ -808,15 +1154,17 @@ private fun VoiceAndMusicStudioSection(
                                     audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                 }
                             },
+                            shape = RoundedCornerShape(50),
+                            border = BorderStroke(1.dp, CyberBorder),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("record_transcribe_button")
                         ) {
                             Icon(Icons.Default.Mic, contentDescription = null, tint = CyberAmber)
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (isRecordingMic) "جاري التسجيل..." else "تسجيل ونسخ صوتي",
-                                color = CyberAmber
+                                text = if (isRecordingMic) "جاري التسجيل..." else "تسجيل ونسخ",
+                                color = CyberTextPrimary
                             )
                         }
 
@@ -824,20 +1172,21 @@ private fun VoiceAndMusicStudioSection(
                             onClick = {
                                 onSendLiveVoiceTurn(liveVoicePrompt, null)
                             },
+                            shape = RoundedCornerShape(50),
                             colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("live_voice_send_button")
                         ) {
                             Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = CyberBackground)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("تحدث مع Live API", color = CyberBackground, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("تحدث مع Gemini Live", color = CyberBackground, fontWeight = FontWeight.Bold)
                         }
                     }
 
                     if (lastTranscribedText.isNotBlank()) {
                         Text(
-                            text = "📝 آخر نص منسوخ (gemini-3.5-transcribe): $lastTranscribedText",
+                            text = "📝 النص المنسوخ: $lastTranscribedText",
                             style = MaterialTheme.typography.bodyMedium,
                             color = CyberEmerald
                         )
@@ -846,16 +1195,16 @@ private fun VoiceAndMusicStudioSection(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(CyberBackground)
-                            .padding(10.dp),
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(CyberSurfaceElevated)
+                            .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         liveVoiceHistory.takeLast(4).forEach { line ->
                             Text(
                                 text = line,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = CyberTextPrimary
                             )
                         }
                     }
@@ -866,25 +1215,27 @@ private fun VoiceAndMusicStudioSection(
         // 2. Text-to-Speech (gemini-3.8-flash-tts)
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CyberViolet.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                    .border(1.dp, CyberBorder, RoundedCornerShape(24.dp))
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "🔊 تحويل النص إلى كلام طبيعي (gemini-3.8-flash-tts)",
+                        text = "🔊 تحويل النص إلى كلام طبيعي (Gemini TTS)",
                         style = MaterialTheme.typography.titleMedium,
-                        color = CyberViolet
+                        color = CyberViolet,
+                        fontWeight = FontWeight.Bold
                     )
                     OutlinedTextField(
                         value = ttsText,
                         onValueChange = { ttsText = it },
                         label = { Text("النص المراد نطقه") },
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("tts_text_input")
@@ -894,47 +1245,54 @@ private fun VoiceAndMusicStudioSection(
                             FilterChip(
                                 selected = selectedVoice == voice,
                                 onClick = { selectedVoice = voice },
-                                label = { Text(voice) }
+                                label = { Text(voice) },
+                                shape = RoundedCornerShape(50)
                             )
                         }
                     }
                     Button(
                         onClick = { onSynthesizeSpeech(ttsText, selectedVoice) },
-                        colors = ButtonDefaults.buttonColors(containerColor = CyberViolet),
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GeminiPillSelectedContainer,
+                            contentColor = GeminiOnPillSelectedContainer
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("generate_tts_button")
                     ) {
-                        Icon(Icons.Default.VolumeUp, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("توليد وتشغيل النطق الصوتي (TTS)")
+                        Text("توليد وتشغيل النطق الصوتي", fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
 
-        // 3. Music Generation (lyria-3-clip-preview & lyria-3-pro-preview)
+        // 3. Music Generation (Lyria 3)
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CyberEmerald.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                    .border(1.dp, CyberBorder, RoundedCornerShape(24.dp))
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "🎵 توليد الموسيقى والمؤثرات الصوتية (Lyria 3 Clip & Pro)",
+                        text = "🎵 توليد الموسيقى والمؤثرات الصوتية (Lyria 3)",
                         style = MaterialTheme.typography.titleMedium,
-                        color = CyberEmerald
+                        color = CyberEmerald,
+                        fontWeight = FontWeight.Bold
                     )
                     OutlinedTextField(
                         value = musicPrompt,
                         onValueChange = { musicPrompt = it },
                         label = { Text("وصف المقطع الموسيقي المطلوب") },
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("music_prompt_input")
@@ -943,18 +1301,21 @@ private fun VoiceAndMusicStudioSection(
                         FilterChip(
                             selected = !useProFullTrack,
                             onClick = { useProFullTrack = false },
-                            label = { Text("lyria-3-clip-preview (مقطع 30 ثانية)") },
+                            label = { Text("Lyria Clip (30 ثانية)") },
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("music_model_clip")
                         )
                         FilterChip(
                             selected = useProFullTrack,
                             onClick = { useProFullTrack = true },
-                            label = { Text("lyria-3-pro-preview (مسار كامل)") },
+                            label = { Text("Lyria Pro (مسار كامل)") },
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("music_model_pro")
                         )
                     }
                     Button(
                         onClick = { onGenerateMusic(musicPrompt, useProFullTrack) },
+                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -970,20 +1331,23 @@ private fun VoiceAndMusicStudioSection(
 
         items(generatedAssets.filter { it.type.startsWith("AUDIO") }, key = { it.id }) { asset ->
             Card(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, CyberBorder, RoundedCornerShape(20.dp))
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(14.dp)) {
                     Text(
                         text = "🎧 ${asset.modelUsed} • ${asset.metadataLabel}",
                         style = MaterialTheme.typography.titleMedium,
-                        color = CyberCyan
+                        color = CyberCyan,
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = asset.textSummary ?: asset.prompt,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = CyberTextSecondary
                     )
                 }
             }

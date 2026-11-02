@@ -147,15 +147,15 @@ fun BioscienceLabTabScreen(
         // 1. Top Section Switcher & Overview Banner
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CyberCyan.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                    .border(1.dp, com.example.ui.theme.GeminiBorderGradient, RoundedCornerShape(24.dp))
             ) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -164,9 +164,10 @@ fun BioscienceLabTabScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "🧬 مختبر العلوم الحيوية ومحرك الألعاب الجزيئية 3D",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = CyberCyan,
+                                text = "🧬 مختبر Gemini الحيوي ومحرك الألعاب 3D",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    brush = com.example.ui.theme.GeminiSparkleGradient
+                                ),
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
@@ -185,18 +186,21 @@ fun BioscienceLabTabScreen(
                             selected = selectedSectionFilter == "ALL",
                             onClick = { selectedSectionFilter = "ALL" },
                             label = { Text("⚡ عرض متكامل (3D + المختبر)") },
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("bio_section_all")
                         )
                         FilterChip(
                             selected = selectedSectionFilter == "GAME_3D",
                             onClick = { selectedSectionFilter = "GAME_3D" },
                             label = { Text("🎮 لعبة الدفاع الخلوي ومستعرض 3D") },
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("bio_section_game3d")
                         )
                         FilterChip(
                             selected = selectedSectionFilter == "BIO_TOOLS",
                             onClick = { selectedSectionFilter = "BIO_TOOLS" },
                             label = { Text("🔬 المهارات الحيوية الأربعة") },
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("bio_section_tools")
                         )
                     }
@@ -208,15 +212,15 @@ fun BioscienceLabTabScreen(
         if (selectedSectionFilter == "ALL" || selectedSectionFilter == "GAME_3D") {
             item {
                 Card(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = CyberSurface),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, CyberEmerald.copy(alpha = 0.55f), RoundedCornerShape(16.dp))
+                        .border(1.dp, com.example.ui.theme.CyberBorder, RoundedCornerShape(24.dp))
                         .testTag("bio_3d_simulation_card")
                 ) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(

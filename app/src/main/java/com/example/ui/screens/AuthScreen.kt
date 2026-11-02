@@ -1,8 +1,8 @@
 package com.example.ui.screens
 
-import android.app.Activity
 import android.content.Context
 import android.util.Log
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -49,7 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -71,7 +71,11 @@ import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.CyberEmerald
 import com.example.ui.theme.CyberSurface
-import com.example.ui.theme.CyberViolet
+import com.example.ui.theme.CyberSurfaceElevated
+import com.example.ui.theme.CyberTextPrimary
+import com.example.ui.theme.CyberTextSecondary
+import com.example.ui.theme.GeminiBorderGradient
+import com.example.ui.theme.GeminiSparkleGradient
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -137,7 +141,6 @@ fun attemptAutoSignIn(
                 onUnauthenticated("نوع بيانات الاعتماد المستلمة غير مدعوم (${credential.type}).")
             }
         } catch (e: NoCredentialException) {
-            // Expected when the user has not previously authorized an account for auto-sign-in
             Log.i("Auth", "No pre-authorized credential found for auto sign-in; awaiting user tap.")
             onUnauthenticated(null)
         } catch (e: GetCredentialCancellationException) {
@@ -257,11 +260,7 @@ fun AuthScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(CyberBackground, CyberSurface, CyberBackground)
-                )
-            )
+            .background(CyberBackground)
             .windowInsetsPadding(WindowInsets.safeDrawing),
         contentAlignment = Alignment.Center
     ) {
@@ -273,23 +272,30 @@ fun AuthScreen(
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Image(
-                painter = painterResource(id = R.drawable.img_studio_hero),
-                contentDescription = "NovaForge AI Studio Banner",
+            // Gemini 4-point Sparkle Orb
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(175.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .border(1.dp, CyberCyan.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
-                contentScale = ContentScale.Crop
-            )
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(GeminiSparkleGradient),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(34.dp)
+                )
+            }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "NovaForge AI Studio",
-                style = MaterialTheme.typography.displayLarge,
-                color = CyberCyan,
+                text = "مرحباً بك في Gemini Studio",
+                style = MaterialTheme.typography.displayLarge.copy(
+                    brush = GeminiSparkleGradient
+                ),
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
 
@@ -298,46 +304,62 @@ fun AuthScreen(
             Text(
                 text = stringResource(id = R.string.studio_subtitle),
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = CyberTextSecondary,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Image(
+                painter = painterResource(id = R.drawable.img_studio_hero),
+                contentDescription = "Gemini Studio Banner",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(155.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .border(1.dp, GeminiBorderGradient, RoundedCornerShape(24.dp)),
+                contentScale = ContentScale.Crop
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
 
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, CyberBorder, RoundedCornerShape(24.dp)),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface)
             ) {
                 Column(
                     modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     FeatureRowItem(
+                        icon = Icons.Default.AutoAwesome,
+                        title = "محادثة Gemini و ChatGPT والوسائط المتعددة",
+                        subtitle = "تبديل فوري بين النماذج، توليد صور 4K وفيديو، ومحادثة صوتية حية"
+                    )
+                    FeatureRowItem(
                         icon = Icons.Default.Code,
-                        title = "بناء تطبيقات Full-Stack ومعاينة WebView فورية",
-                        subtitle = "دعم متعدد اللغات مع مراقبة لحظية للكود واقتراحات Gemini الذكية"
+                        title = "استوديو برمجة Full-Stack ومعاينة حية",
+                        subtitle = "كتابة الكود، تشغيل المعاينة الفورية، واقتراحات Gemini الذكية"
                     )
                     FeatureRowItem(
                         icon = Icons.Default.Storage,
-                        title = "إدارة قواعد بيانات Firestore مرنة وتحكم بالإصدارات",
-                        subtitle = "مصمم مخططات، استعلامات مرئية، ولقطات إصدار مع مقارنة الفروقات"
-                    )
-                    FeatureRowItem(
-                        icon = Icons.Default.AutoAwesome,
-                        title = "استوديو الوسائط المتعددة ومختبر العلوم الحيوية",
-                        subtitle = "توليد صور 4K، فيديو، صوت وموسيقى، وتحليل تسلسلات الجينوم والبروتين"
+                        title = "مزامنة Google Cloud Firestore والمختبر الحيوي 3D",
+                        subtitle = "حفظ المشاريع وتجارب طي البروتين وCRISPR تلقائياً في حسابك"
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
             if (errorMessage != null) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer
                     )
@@ -346,7 +368,7 @@ fun AuthScreen(
                         text = errorMessage!!,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(12.dp)
+                        modifier = Modifier.padding(14.dp)
                     )
                 }
             }
@@ -373,7 +395,7 @@ fun AuthScreen(
                     )
                 },
                 enabled = !isLoading,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -394,7 +416,7 @@ fun AuthScreen(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Sign in with Google • تسجيل الدخول الآمن",
+                        text = "المتابعة باستخدام حساب Google",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberBackground,
                         fontWeight = FontWeight.Bold
@@ -418,7 +440,7 @@ fun AuthScreen(
                 Text(
                     text = stringResource(id = R.string.security_warning_notice),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = CyberTextSecondary,
                     textAlign = TextAlign.Center
                 )
             }
@@ -438,10 +460,10 @@ private fun FeatureRowItem(
     ) {
         Box(
             modifier = Modifier
-                .size(42.dp)
+                .size(44.dp)
                 .clip(CircleShape)
-                .background(CyberViolet.copy(alpha = 0.2f))
-                .border(1.dp, CyberCyan.copy(alpha = 0.5f), CircleShape),
+                .background(CyberSurfaceElevated)
+                .border(1.dp, CyberBorder, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -451,17 +473,18 @@ private fun FeatureRowItem(
                 modifier = Modifier.size(22.dp)
             )
         }
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
+                color = CyberTextPrimary,
+                fontWeight = FontWeight.Bold
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = CyberTextSecondary
             )
         }
     }

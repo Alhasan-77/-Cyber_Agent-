@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -10,14 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Restore
@@ -29,11 +31,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -45,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -55,14 +60,18 @@ import com.example.data.model.DiffLine
 import com.example.data.model.DiffType
 import com.example.data.model.UiState
 import com.example.data.model.VersionSnapshot
-import com.example.ui.theme.CyberAmber
 import com.example.ui.theme.CyberBackground
 import com.example.ui.theme.CyberBorder
 import com.example.ui.theme.CyberCoral
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.CyberEmerald
 import com.example.ui.theme.CyberSurface
-import com.example.ui.theme.CyberViolet
+import com.example.ui.theme.CyberSurfaceElevated
+import com.example.ui.theme.CyberTextPrimary
+import com.example.ui.theme.CyberTextSecondary
+import com.example.ui.theme.GeminiBorderGradient
+import com.example.ui.theme.GeminiOnPillSelectedContainer
+import com.example.ui.theme.GeminiPillSelectedContainer
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.viewmodel.DataViewModel
 
@@ -89,34 +98,77 @@ fun DatabaseAndVcsTabScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        // Gemini Pill Segmented Bar
+        Surface(
+            color = CyberSurface,
+            shape = RoundedCornerShape(50),
+            border = BorderStroke(1.dp, CyberBorder),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            FilterChip(
-                selected = activeSubTab == 0,
-                onClick = { activeSubTab = 0 },
-                label = { Text("مدير مستندات Firestore الحي") },
-                leadingIcon = { Icon(Icons.Default.Storage, contentDescription = null) },
-                modifier = Modifier.testTag("subtab_firestore_manager")
-            )
-            FilterChip(
-                selected = activeSubTab == 1,
-                onClick = { activeSubTab = 1 },
-                label = { Text("مصمم المخططات وتوليد DAO") },
-                leadingIcon = { Icon(Icons.Default.Code, contentDescription = null) },
-                modifier = Modifier.testTag("subtab_database_studio")
-            )
-            FilterChip(
-                selected = activeSubTab == 2,
-                onClick = { activeSubTab = 2 },
-                label = { Text("التحكم بالإصدارات (VCS & Diff)") },
-                leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
-                modifier = Modifier.testTag("subtab_version_control")
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                FilterChip(
+                    selected = activeSubTab == 0,
+                    onClick = { activeSubTab = 0 },
+                    label = { Text("Firestore الحي") },
+                    leadingIcon = { Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    shape = RoundedCornerShape(50),
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.Transparent,
+                        labelColor = CyberTextSecondary,
+                        selectedContainerColor = GeminiPillSelectedContainer,
+                        selectedLabelColor = GeminiOnPillSelectedContainer,
+                        selectedLeadingIconColor = GeminiOnPillSelectedContainer
+                    ),
+                    border = null,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("subtab_firestore_manager")
+                )
+                FilterChip(
+                    selected = activeSubTab == 1,
+                    onClick = { activeSubTab = 1 },
+                    label = { Text("المخططات و DAO") },
+                    leadingIcon = { Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    shape = RoundedCornerShape(50),
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.Transparent,
+                        labelColor = CyberTextSecondary,
+                        selectedContainerColor = GeminiPillSelectedContainer,
+                        selectedLabelColor = GeminiOnPillSelectedContainer,
+                        selectedLeadingIconColor = GeminiOnPillSelectedContainer
+                    ),
+                    border = null,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("subtab_database_studio")
+                )
+                FilterChip(
+                    selected = activeSubTab == 2,
+                    onClick = { activeSubTab = 2 },
+                    label = { Text("الإصدارات و Git") },
+                    leadingIcon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    shape = RoundedCornerShape(50),
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.Transparent,
+                        labelColor = CyberTextSecondary,
+                        selectedContainerColor = GeminiPillSelectedContainer,
+                        selectedLabelColor = GeminiOnPillSelectedContainer,
+                        selectedLeadingIconColor = GeminiOnPillSelectedContainer
+                    ),
+                    border = null,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("subtab_version_control")
+                )
+            }
         }
 
         when (activeSubTab) {
@@ -143,7 +195,6 @@ fun DatabaseAndVcsTabScreen(
     }
 }
 
-
 @Composable
 private fun FlexibleDatabaseSection(
     collections: List<DbCollectionSchema>,
@@ -164,20 +215,21 @@ private fun FlexibleDatabaseSection(
     ) {
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CyberCyan.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                    .border(1.dp, GeminiBorderGradient, RoundedCornerShape(24.dp))
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
                         text = "مصمم المخططات ومجموعات البيانات السحابية",
                         style = MaterialTheme.typography.titleMedium,
-                        color = CyberCyan
+                        color = CyberTextPrimary,
+                        fontWeight = FontWeight.Bold
                     )
                     OutlinedTextField(
                         value = colName,
@@ -185,6 +237,7 @@ private fun FlexibleDatabaseSection(
                         label = { Text("اسم المجموعة / الجدول (Collection Name)") },
                         placeholder = { Text("مثال: orders_pipeline أو genomic_samples") },
                         singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("db_collection_name_input")
@@ -194,6 +247,7 @@ private fun FlexibleDatabaseSection(
                         onValueChange = { fieldsSpec = it },
                         label = { Text("تعريف الحقول والأنواع (Schema Fields)") },
                         singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("db_fields_spec_input")
@@ -209,6 +263,7 @@ private fun FlexibleDatabaseSection(
                             )
                             colName = ""
                         },
+                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -228,8 +283,9 @@ private fun FlexibleDatabaseSection(
                 value = visualQueryFilter,
                 onValueChange = { visualQueryFilter = it },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = CyberCyan) },
-                label = { Text("محرر الاستعلامات المرئي (Visual Query Filter - ابحث في السجلات أو الحقول)") },
+                label = { Text("ابحث في السجلات أو الحقول (Visual Query Filter)") },
                 singleLine = true,
+                shape = RoundedCornerShape(50),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("visual_query_filter_input")
@@ -246,15 +302,15 @@ private fun FlexibleDatabaseSection(
             key = { it.id }
         ) { schema ->
             Card(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+                    .border(1.dp, CyberBorder, RoundedCornerShape(24.dp))
             ) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -265,7 +321,8 @@ private fun FlexibleDatabaseSection(
                             Text(
                                 text = "📂 ${schema.collectionName}",
                                 style = MaterialTheme.typography.titleMedium,
-                                color = CyberCyan
+                                color = CyberCyan,
+                                fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = "الحقول: ${schema.fieldsSpec}",
@@ -275,7 +332,7 @@ private fun FlexibleDatabaseSection(
                             Text(
                                 text = schema.indexConfig,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = CyberTextSecondary
                             )
                         }
                         IconButton(onClick = { onDeleteCollection(schema.id) }) {
@@ -289,12 +346,12 @@ private fun FlexibleDatabaseSection(
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontFamily = JetBrainsMonoFontFamily
                             ),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = CyberTextPrimary,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(CyberBackground)
-                                .padding(10.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(CyberSurfaceElevated)
+                                .padding(12.dp)
                         )
                     }
 
@@ -308,22 +365,28 @@ private fun FlexibleDatabaseSection(
                             onValueChange = { newRecordJson = it },
                             label = { Text("إدراج سجل JSON") },
                             singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedButton(
                             onClick = { onAppendRecord(schema, newRecordJson) },
+                            shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("add_record_${schema.id}")
                         ) {
                             Text("+ سجل")
                         }
                         Button(
                             onClick = { onGenerateBackendDao(schema) },
-                            colors = ButtonDefaults.buttonColors(containerColor = CyberViolet),
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = GeminiPillSelectedContainer,
+                                contentColor = GeminiOnPillSelectedContainer
+                            ),
                             modifier = Modifier.testTag("generate_dao_code_${schema.id}")
                         ) {
-                            Icon(Icons.Default.Code, contentDescription = null)
+                            Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("توليد DAO")
+                            Text("توليد DAO", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -356,35 +419,37 @@ private fun VersionControlSection(
         // Branch Selector & Commit New Snapshot Card
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CyberEmerald.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                    .border(1.dp, GeminiBorderGradient, RoundedCornerShape(24.dp))
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "إدارة الفروع البرمجية وحفظ اللقطات السحابية الآمنة",
+                        text = "إدارة الفروع البرمجية وحفظ اللقطات السحابية",
                         style = MaterialTheme.typography.titleMedium,
-                        color = CyberEmerald
+                        color = CyberTextPrimary,
+                        fontWeight = FontWeight.Bold
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "الفرع النشط (Branch):",
+                            text = "الفرع:",
                             style = MaterialTheme.typography.labelMedium,
-                            color = CyberAmber
+                            color = CyberTextSecondary
                         )
                         listOf("main", "staging", "production", "ai-experimental").forEach { branch ->
                             FilterChip(
                                 selected = activeBranch == branch,
                                 onClick = { onSelectBranch(branch) },
                                 label = { Text(branch) },
+                                shape = RoundedCornerShape(50),
                                 modifier = Modifier.testTag("branch_chip_$branch")
                             )
                         }
@@ -396,8 +461,9 @@ private fun VersionControlSection(
                         OutlinedTextField(
                             value = versionTag,
                             onValueChange = { versionTag = it },
-                            label = { Text("رقم الإصدار") },
+                            label = { Text("الإصدار") },
                             singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
                                 .width(120.dp)
                                 .testTag("vcs_version_tag_input")
@@ -408,6 +474,7 @@ private fun VersionControlSection(
                             label = { Text("رسالة التوثيق (Commit Message)") },
                             placeholder = { Text("إضافة واجهة التفاعل وتحديث قاعدة البيانات...") },
                             singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("vcs_commit_message_input")
@@ -422,6 +489,7 @@ private fun VersionControlSection(
                             commitMessage = ""
                             versionTag = "v1.${snapshots.size + 2}.0"
                         },
+                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -439,14 +507,14 @@ private fun VersionControlSection(
         if (selectedDiffSnapshot != null) {
             item {
                 Card(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = CyberSurface),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, CyberCyan.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                        .border(1.dp, CyberBorder, RoundedCornerShape(24.dp))
                 ) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
@@ -455,9 +523,10 @@ private fun VersionControlSection(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "🔍 مقارنة الفروقات البرمجية (Diff) مع الإصدار ${selectedDiffSnapshot!!.versionTag}",
+                                text = "🔍 مقارنة الفروقات البرمجية مع ${selectedDiffSnapshot!!.versionTag}",
                                 style = MaterialTheme.typography.titleMedium,
-                                color = CyberCyan
+                                color = CyberCyan,
+                                fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = "+${selectedDiffSnapshot!!.addedLines} / -${selectedDiffSnapshot!!.deletedLines}",
@@ -470,7 +539,7 @@ private fun VersionControlSection(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .background(CyberBackground)
                                     .padding(10.dp),
                                 verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -484,7 +553,7 @@ private fun VersionControlSection(
                                     val txtColor = when (line.type) {
                                         DiffType.ADDED -> CyberEmerald
                                         DiffType.DELETED -> CyberCoral
-                                        DiffType.UNCHANGED -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        DiffType.UNCHANGED -> CyberTextSecondary
                                     }
                                     Text(
                                         text = "${line.lineNumber.toString().padStart(2, '0')} | ${line.content}",
@@ -509,67 +578,80 @@ private fun VersionControlSection(
         item {
             Text(
                 text = "سجل الإصدارات السحابية (Commit History)",
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleMedium,
+                color = CyberTextPrimary,
+                fontWeight = FontWeight.Bold
             )
         }
 
         items(snapshots, key = { it.id }) { snap ->
             Card(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, CyberBorder, RoundedCornerShape(14.dp))
+                    .border(1.dp, CyberBorder, RoundedCornerShape(22.dp))
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
+                        .padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = snap.versionTag,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = CyberCyan,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(CyberCyan.copy(alpha = 0.15f))
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
+                            Surface(
+                                color = GeminiPillSelectedContainer,
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text(
+                                    text = snap.versionTag,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = GeminiOnPillSelectedContainer,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                )
+                            }
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = snap.commitMessage,
-                                style = MaterialTheme.typography.titleMedium
+                                style = MaterialTheme.typography.titleMedium,
+                                color = CyberTextPrimary,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "الأسطر المضافة: +${snap.addedLines} • المحذوفة: -${snap.deletedLines} • SHA Verified",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = CyberTextSecondary
                         )
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         OutlinedButton(
                             onClick = { selectedDiffSnapshot = snap },
+                            shape = RoundedCornerShape(50),
+                            border = BorderStroke(1.dp, CyberBorder),
                             modifier = Modifier.testTag("diff_snapshot_${snap.id}")
                         ) {
-                            Icon(Icons.Default.CompareArrows, contentDescription = null, tint = CyberCyan)
+                            Icon(Icons.AutoMirrored.Filled.CompareArrows, contentDescription = null, tint = CyberCyan, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("مقارنة", color = CyberCyan)
                         }
                         Button(
                             onClick = { onRestoreSnapshot(snap) },
-                            colors = ButtonDefaults.buttonColors(containerColor = CyberViolet),
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = GeminiPillSelectedContainer,
+                                contentColor = GeminiOnPillSelectedContainer
+                            ),
                             modifier = Modifier.testTag("restore_snapshot_${snap.id}")
                         ) {
-                            Icon(Icons.Default.Restore, contentDescription = null)
+                            Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("استعادة")
+                            Text("استعادة", fontWeight = FontWeight.Bold)
                         }
                     }
                 }

@@ -27,14 +27,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SwitchAccount
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -77,6 +78,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -94,17 +96,24 @@ import com.example.ui.theme.CyberCoral
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.CyberEmerald
 import com.example.ui.theme.CyberSurface
+import com.example.ui.theme.CyberSurfaceElevated
+import com.example.ui.theme.CyberTextPrimary
+import com.example.ui.theme.CyberTextSecondary
 import com.example.ui.theme.CyberViolet
+import com.example.ui.theme.GeminiBorderGradient
+import com.example.ui.theme.GeminiOnPillSelectedContainer
+import com.example.ui.theme.GeminiPillSelectedContainer
+import com.example.ui.theme.GeminiSparkleGradient
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
 const val SKILLS_HUB_TAB_INDEX = 5
 
 /**
- * Defines the five primary bottom navigation tabs in the NovaForge AI Studio main screen layout.
+ * Defines the five primary bottom navigation tabs in the Gemini Studio main screen layout.
  */
 enum class StudioBottomTab(
     val index: Int,
-    @StringRes val labelResId: Int,
+    @param:StringRes val labelResId: Int,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
     val testTag: String
@@ -147,11 +156,11 @@ enum class StudioBottomTab(
 }
 
 /**
- * Main screen Scaffold layout providing:
- * 1. TopAppBar with studio branding, active branch info, a prominent 'Skills' action button,
- *    interactive Google User Profile & Cloud Sync status dialog, and sign-out action.
- * 2. Five-tab Material 3 Bottom NavigationBar (`Dashboard`, `IDE`, `DB & VCS`, `AI & Media`, `Bioscience`).
- * 3. Non-blocking dismissible status banner and BackHandler navigation to the primary Dashboard tab.
+ * Main screen Scaffold layout styled after the official Google Gemini Android app:
+ * 1. Flat Obsidian TopAppBar (`#131314`) with the Gemini 4-point sparkle emblem, gradient branding,
+ *    pill-shaped 'Skills' button, Google account avatar ring, and sign-out action.
+ * 2. Pill-shaped Gemini Model & Provider Switcher Bar (`#1E1F20`).
+ * 3. Five-tab Material 3 Gemini Bottom NavigationBar (`#1E1F20` with `#004A77` pill indicators).
  */
 @Composable
 fun MainScreenLayout(
@@ -248,31 +257,43 @@ fun MainScreenLayout(
                 onToggleAiProvider = onToggleAiProvider,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp)
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
             )
+
             AnimatedVisibility(visible = statusBanner != null) {
                 Surface(
-                    color = CyberSurface,
-                    shape = RoundedCornerShape(10.dp),
+                    color = CyberSurfaceElevated,
+                    shape = RoundedCornerShape(20.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                        .border(1.dp, CyberEmerald.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .border(1.dp, CyberCyan.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
                         .testTag("main_status_banner")
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = statusBanner.orEmpty(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = CyberEmerald,
-                            modifier = Modifier.weight(1f)
-                        )
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = CyberCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = statusBanner.orEmpty(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = CyberTextPrimary
+                            )
+                        }
                         TextButton(
                             onClick = onDismissStatusBanner,
                             modifier = Modifier
@@ -281,7 +302,8 @@ fun MainScreenLayout(
                         ) {
                             Text(
                                 text = stringResource(id = R.string.dismiss_banner),
-                                color = CyberCyan
+                                color = CyberCyan,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -314,72 +336,91 @@ fun StudioTopAppBar(
     onSignOutClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val activeAccent = if (isSkillsSelected) CyberCyan else CyberEmerald
-
     TopAppBar(
         modifier = modifier.testTag("main_top_app_bar"),
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = CyberSurface,
-            titleContentColor = CyberCyan
+            containerColor = CyberBackground,
+            titleContentColor = CyberTextPrimary
         ),
         title = {
-            Column(
+            Row(
                 modifier = Modifier
                     .clickable(onClick = onUserProfileClick)
-                    .testTag("top_bar_identity_header")
+                    .testTag("top_bar_identity_header"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = stringResource(id = R.string.studio_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = CyberCyan,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (isBusy) {
-                        Spacer(modifier = Modifier.width(10.dp))
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .testTag("top_bar_busy_indicator"),
-                            color = CyberCyan,
-                            strokeWidth = 2.dp
-                        )
-                    }
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                // Gemini 4-point Sparkle Orb
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(GeminiSparkleGradient),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.CloudDone,
+                        imageVector = Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        tint = CyberEmerald,
-                        modifier = Modifier.size(13.dp)
+                        tint = Color.White,
+                        modifier = Modifier.size(19.dp)
                     )
-                    Text(
-                        text = "$userEmail • branch: $activeBranch",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                }
+
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = stringResource(id = R.string.studio_title),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                brush = GeminiSparkleGradient
+                            ),
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (isBusy) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .size(15.dp)
+                                    .testTag("top_bar_busy_indicator"),
+                                color = CyberCyan,
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDone,
+                            contentDescription = null,
+                            tint = CyberEmerald,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "$userEmail • $activeBranch",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = CyberTextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         },
         actions = {
             FilledTonalButton(
                 onClick = onSkillsClick,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(50),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 border = BorderStroke(
-                    width = if (isSkillsSelected) 1.5.dp else 1.dp,
-                    color = activeAccent.copy(alpha = if (isSkillsSelected) 0.9f else 0.55f)
+                    width = 1.dp,
+                    color = if (isSkillsSelected) CyberCyan else CyberBorder
                 ),
                 colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = activeAccent.copy(alpha = if (isSkillsSelected) 0.22f else 0.12f),
-                    contentColor = activeAccent
+                    containerColor = if (isSkillsSelected) GeminiPillSelectedContainer else CyberSurface,
+                    contentColor = if (isSkillsSelected) GeminiOnPillSelectedContainer else CyberTextPrimary
                 ),
                 modifier = Modifier
                     .minimumInteractiveComponentSize()
@@ -389,30 +430,30 @@ fun StudioTopAppBar(
                 Icon(
                     imageVector = Icons.Default.Memory,
                     contentDescription = stringResource(id = R.string.skills_action_content_description),
-                    tint = activeAccent,
-                    modifier = Modifier.size(18.dp)
+                    tint = if (isSkillsSelected) GeminiOnPillSelectedContainer else CyberCyan,
+                    modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = stringResource(id = R.string.skills_action_button_format, skillsCount),
                     style = MaterialTheme.typography.labelMedium,
-                    color = activeAccent,
+                    color = if (isSkillsSelected) GeminiOnPillSelectedContainer else CyberTextPrimary,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1
                 )
                 if (pinnedSkillsCount > 0) {
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
                     Surface(
-                        color = CyberCyan.copy(alpha = 0.24f),
+                        color = CyberViolet.copy(alpha = 0.22f),
                         shape = RoundedCornerShape(50),
                         modifier = Modifier.testTag("top_skills_pinned_badge")
                     ) {
                         Text(
                             text = "★$pinnedSkillsCount",
                             style = MaterialTheme.typography.labelSmall,
-                            color = CyberCyan,
+                            color = CyberViolet,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
                         )
                     }
                 }
@@ -424,11 +465,21 @@ fun StudioTopAppBar(
                     .minimumInteractiveComponentSize()
                     .testTag("top_user_profile_button")
             ) {
-                Icon(
-                    imageVector = Icons.Default.AccountCircle,
-                    contentDescription = stringResource(id = R.string.cloud_profile_content_description),
-                    tint = CyberCyan
-                )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(CyberSurfaceElevated)
+                        .border(1.5.dp, GeminiSparkleGradient, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = stringResource(id = R.string.cloud_profile_content_description),
+                        tint = CyberCyan,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
 
             IconButton(
@@ -440,7 +491,7 @@ fun StudioTopAppBar(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Logout,
                     contentDescription = stringResource(id = R.string.sign_out),
-                    tint = MaterialTheme.colorScheme.onSurface
+                    tint = CyberTextSecondary
                 )
             }
         }
@@ -460,32 +511,32 @@ fun AiEngineControlBar(
     val activeProvider = AiEngineProvider.fromModelId(selectedAiModel)
     val activeAccent = when (activeProvider) {
         AiEngineProvider.CHATGPT -> CyberEmerald
-        AiEngineProvider.DUAL_ENGINE -> CyberAmber
+        AiEngineProvider.DUAL_ENGINE -> CyberViolet
         AiEngineProvider.GEMINI -> CyberCyan
     }
 
     Surface(
         color = CyberSurface,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(50),
         modifier = modifier
-            .border(1.dp, activeAccent.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+            .border(1.dp, CyberBorder, RoundedCornerShape(50))
             .testTag("ai_engine_control_bar")
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 14.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "🔷 Gemini",
+                    text = "✦ Gemini",
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (!isChatGptActive) CyberCyan else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (!isChatGptActive) CyberCyan else CyberTextSecondary,
                     fontWeight = if (!isChatGptActive) FontWeight.Bold else FontWeight.Normal
                 )
                 Switch(
@@ -502,66 +553,92 @@ fun AiEngineControlBar(
                     modifier = Modifier.testTag("ai_provider_toggle")
                 )
                 Text(
-                    text = "🟢 ChatGPT",
+                    text = "ChatGPT",
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (isChatGptActive) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (isChatGptActive) CyberEmerald else CyberTextSecondary,
                     fontWeight = if (isChatGptActive) FontWeight.Bold else FontWeight.Normal
                 )
             }
 
             Box {
-                OutlinedButton(
+                Surface(
                     onClick = { dropdownExpanded = true },
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    border = BorderStroke(1.dp, activeAccent.copy(alpha = 0.65f)),
+                    color = CyberSurfaceElevated,
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, activeAccent.copy(alpha = 0.5f)),
                     modifier = Modifier
                         .minimumInteractiveComponentSize()
                         .testTag("ai_model_dropdown_button")
                 ) {
-                    Text(
-                        text = if (isDualActive) "🤝 Dual Engine" else selectedAiModel,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = JetBrainsMonoFontFamily
-                        ),
-                        color = activeAccent,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "اختيار نموذج الذكاء الاصطناعي",
-                        tint = activeAccent,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = activeAccent,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isDualActive) "Dual Engine" else selectedAiModel,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = JetBrainsMonoFontFamily
+                            ),
+                            color = CyberTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "اختيار نموذج الذكاء الاصطناعي",
+                            tint = activeAccent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
 
                 DropdownMenu(
                     expanded = dropdownExpanded,
                     onDismissRequest = { dropdownExpanded = false },
                     modifier = Modifier
-                        .background(CyberSurface)
-                        .border(1.dp, CyberBorder, RoundedCornerShape(8.dp))
+                        .background(CyberSurfaceElevated)
+                        .border(1.dp, CyberBorder, RoundedCornerShape(16.dp))
                         .testTag("ai_model_dropdown_menu")
                 ) {
                     GeminiAiRepository.SUPPORTED_TEXT_MODELS.forEach { (modelId, label) ->
+                        val isCurrent = selectedAiModel == modelId
                         DropdownMenuItem(
                             text = {
-                                Column {
-                                    Text(
-                                        text = label,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = if (selectedAiModel == modelId) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (selectedAiModel == modelId) CyberCyan else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = modelId,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontFamily = JetBrainsMonoFontFamily
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (isCurrent) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = null,
+                                            tint = CyberCyan,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isCurrent) CyberCyan else CyberTextPrimary
+                                        )
+                                        Text(
+                                            text = modelId,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontFamily = JetBrainsMonoFontFamily
+                                            ),
+                                            color = CyberTextSecondary
+                                        )
+                                    }
                                 }
                             },
                             onClick = {
@@ -597,18 +674,18 @@ fun CloudUserProfileDialog(
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(28.dp),
             colors = CardDefaults.cardColors(containerColor = CyberSurface),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.5.dp, CyberCyan.copy(alpha = 0.55f), RoundedCornerShape(20.dp))
+                .border(1.dp, GeminiBorderGradient, RoundedCornerShape(28.dp))
                 .testTag("cloud_user_profile_dialog")
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -617,10 +694,10 @@ fun CloudUserProfileDialog(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(50.dp)
+                            .size(52.dp)
                             .clip(CircleShape)
-                            .background(CyberViolet.copy(alpha = 0.25f))
-                            .border(1.5.dp, CyberCyan, CircleShape),
+                            .background(CyberSurfaceElevated)
+                            .border(2.dp, GeminiSparkleGradient, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -634,9 +711,9 @@ fun CloudUserProfileDialog(
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = userDisplayName.ifBlank { "Google Cloud Developer" },
+                            text = userDisplayName.ifBlank { "Google Gemini Developer" },
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = CyberTextPrimary,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
@@ -650,21 +727,21 @@ fun CloudUserProfileDialog(
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontFamily = JetBrainsMonoFontFamily
                                 ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = CyberTextSecondary
                             )
                         }
                     }
                 }
 
                 Surface(
-                    color = CyberEmerald.copy(alpha = 0.14f),
-                    shape = RoundedCornerShape(12.dp),
+                    color = CyberSurfaceElevated,
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, CyberEmerald.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                        .border(1.dp, CyberEmerald.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -690,7 +767,7 @@ fun CloudUserProfileDialog(
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontFamily = JetBrainsMonoFontFamily
                             ),
-                            color = CyberCyan
+                            color = CyberTextSecondary
                         )
                     }
                 }
@@ -700,7 +777,7 @@ fun CloudUserProfileDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     ProfileMetricBox(
-                        label = "المشاريع المتزامنة",
+                        label = "المشاريع",
                         value = syncedProjectsCount.toString(),
                         accent = CyberCyan,
                         modifier = Modifier.weight(1f)
@@ -712,9 +789,9 @@ fun CloudUserProfileDialog(
                         modifier = Modifier.weight(1f)
                     )
                     ProfileMetricBox(
-                        label = "النموذج المفضل",
+                        label = "المحرك النشط",
                         value = selectedAiModel,
-                        accent = CyberAmber,
+                        accent = CyberViolet,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -735,6 +812,7 @@ fun CloudUserProfileDialog(
                 Button(
                     onClick = onForceCloudSync,
                     enabled = !isBusy,
+                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -755,6 +833,8 @@ fun CloudUserProfileDialog(
 
                 OutlinedButton(
                     onClick = onSwitchGoogleAccount,
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, CyberBorder),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("switch_google_account_button")
@@ -762,12 +842,12 @@ fun CloudUserProfileDialog(
                     Icon(
                         imageVector = Icons.Default.SwitchAccount,
                         contentDescription = null,
-                        tint = CyberEmerald
+                        tint = CyberTextPrimary
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = stringResource(id = R.string.switch_google_account_action),
-                        color = CyberEmerald,
+                        color = CyberTextPrimary,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -801,7 +881,8 @@ fun CloudUserProfileDialog(
                     ) {
                         Text(
                             text = stringResource(id = R.string.dismiss_banner),
-                            color = CyberCyan
+                            color = CyberCyan,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -814,15 +895,14 @@ fun CloudUserProfileDialog(
 private fun ProfileMetricBox(
     label: String,
     value: String,
-    accent: androidx.compose.ui.graphics.Color,
+    accent: Color,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(CyberBackground)
-            .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .clip(RoundedCornerShape(16.dp))
+            .background(CyberSurfaceElevated)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -832,13 +912,14 @@ private fun ProfileMetricBox(
             ),
             color = accent,
             fontWeight = FontWeight.Bold,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = CyberTextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -880,11 +961,11 @@ fun StudioBottomNavigationBar(
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = CyberCyan,
-                    selectedTextColor = CyberCyan,
-                    indicatorColor = CyberCyan.copy(alpha = 0.16f),
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    selectedIconColor = GeminiOnPillSelectedContainer,
+                    selectedTextColor = CyberTextPrimary,
+                    indicatorColor = GeminiPillSelectedContainer,
+                    unselectedIconColor = CyberTextSecondary,
+                    unselectedTextColor = CyberTextSecondary
                 ),
                 modifier = Modifier.testTag(tab.testTag)
             )
