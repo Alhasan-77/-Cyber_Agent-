@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.skills.BioscienceSimulationEngine
 import com.example.data.skills.BioscienceWorkflowMode
@@ -93,6 +94,57 @@ class ExampleRobolectricTest {
         // Click the Top Bar 'Skills' action button
         composeTestRule.onNodeWithTag("top_skills_memory_button").performClick()
         assertEquals(SKILLS_HUB_TAB_INDEX, activeTab)
+    }
+
+    @Test
+    fun `main screen layout supports minimalist navigation drawer and bottom centered sparkle prompt input`() {
+        var activeTab = StudioBottomTab.DASHBOARD.index
+        var submittedPrompt = ""
+
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                MainScreenLayout(
+                    selectedTab = activeTab,
+                    onSelectTab = { activeTab = it },
+                    userEmail = "developer@novaforge.ai",
+                    activeBranch = "main",
+                    skillsCount = 8,
+                    pinnedSkillsCount = 3,
+                    isBusy = false,
+                    statusBanner = null,
+                    onDismissStatusBanner = {},
+                    onSignOut = {},
+                    onSubmitPrompt = { submittedPrompt = it }
+                ) {
+                    // Content placeholder
+                }
+            }
+        }
+
+        // Verify bottom-centered prompt bar and sparkle icon are displayed
+        composeTestRule.onNodeWithTag("gemini_bottom_prompt_bar").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("bottom_prompt_sparkle_icon").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("bottom_prompt_input_field").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("bottom_prompt_send_button").assertIsDisplayed()
+
+        // Open minimalist navigation drawer via hamburger menu button
+        composeTestRule.onNodeWithTag("drawer_menu_button").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("gemini_navigation_drawer").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("drawer_new_prompt_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("drawer_nav_tab_bioscience").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+        assertEquals(StudioBottomTab.BIOSCIENCE.index, activeTab)
+
+        // Enter a prompt in the bottom-centered input bar and send it
+        composeTestRule.onNodeWithTag("bottom_prompt_input_field")
+            .performTextReplacement("Analyze ubiquitin folding stability")
+        composeTestRule.onNodeWithTag("bottom_prompt_send_button").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals("Analyze ubiquitin folding stability", submittedPrompt)
+        assertEquals(StudioBottomTab.AI_MEDIA.index, activeTab)
     }
 
     @Test

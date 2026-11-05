@@ -22,4 +22,12 @@
     <string name="save_bio_experiment_cloud">حفظ التجربة في السحابة (Firestore)</string>
     <string name="cloud_bio_experiments_title">☁️ سجل التجارب الحيوية المتزامنة سحابياً (Firestore)</string>
     <string name="restore_bio_experiment">استعادة التجربة</string>
+    <string name="open_navigation_drawer">فتح القائمة الجانبية</string>
+    <string name="close_navigation_drawer">إغلاق القائمة الجانبية</string>
+    <string name="drawer_new_chat">محادثة وأمر جديد</string>
+    <string name="drawer_section_workspaces">مساحات عمل Gemini</string>
+    <string name="drawer_section_memory_and_cloud">الذاكرة والسحابة</string>
+    <string name="bottom_prompt_placeholder">اسأل Gemini أو اكتب أمراً برمجياً...</string>
+    <string name="bottom_prompt_send_content_description">إرسال الأمر إلى النموذج الذكي</string>
+    <string name="bottom_prompt_sparkle_content_description">أيقونة بريق Gemini الذكي</string>
 </resources>

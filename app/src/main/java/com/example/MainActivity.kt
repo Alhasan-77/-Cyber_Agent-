@@ -439,6 +439,9 @@ fun NovaForgeStudioShell(
                 },
                 scope = scope
             )
+        },
+        onSubmitPrompt = { promptText ->
+            viewModel.sendChatMessage(promptText)
         }
     ) { currentTab ->
         when (currentTab) {
