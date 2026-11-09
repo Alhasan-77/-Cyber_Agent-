@@ -1101,16 +1101,8 @@ class GeminiAiRepository(
         prompt: String,
         useFullLengthPro: Boolean
     ): GeneratedMediaAsset = withContext(Dispatchers.IO) {
-        val model = if (useFullLengthPro) MODEL_LYRIA_PRO else MODEL_LYRIA_CLIP
-        val durationLabel = if (useFullLengthPro) "مسار كامل (Full-Length Track)" else "مقطع قصير (30s Clip)"
-
-        GeneratedMediaAsset(
-            id = UUID.randomUUID().toString(),
-            type = "AUDIO_MUSIC",
-            prompt = prompt,
-            modelUsed = model,
-            metadataLabel = durationLabel,
-            textSummary = "تم توليد وتوليف المقطع الموسيقي التفاعلي عبر $model ($durationLabel) وجاهز للتشغيل."
+        throw UnsupportedOperationException(
+            "توليد الموسيقى غير متاح في هذا الإصدار؛ لم يتم إعداد نقطة API فعلية لإنتاج الملفات الصوتية."
         )
     }
 
