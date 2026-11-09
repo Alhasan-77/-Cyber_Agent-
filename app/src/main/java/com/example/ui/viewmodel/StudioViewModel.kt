@@ -948,53 +948,61 @@ class StudioViewModel(
     }
 
     fun sendChatMessage(prompt: String) {
-        if (prompt.isBlank()) return
+        val cleanPrompt = prompt.trim()
+        if (cleanPrompt.isEmpty()) return
+
+        val currentHistory = _chatMessages.value
         val userMsg = ChatMessage(
             id = UUID.randomUUID().toString(),
             isUser = true,
-            text = prompt,
+            text = cleanPrompt,
             modelUsed = "User",
             timestampLabel = currentTimeLabel()
         )
-        val currentHistory = _chatMessages.value
         _chatMessages.value = currentHistory + userMsg
 
         viewModelScope.launch {
             _isBusy.value = true
-            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
-            val enrichedPrompt = if (skillsBlock.isNotBlank()) {
-                "$prompt\n\n$skillsBlock"
-            } else {
-                prompt
+            try {
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(cleanPrompt)
+                val enrichedPrompt = if (skillsBlock.isNotBlank()) {
+                    "$cleanPrompt\n\n$skillsBlock"
+                } else {
+                    cleanPrompt
+                }
+                val (replyText, sources) = aiRepository.sendMultiTurnChat(
+                    history = currentHistory,
+                    userPrompt = enrichedPrompt,
+                    selectedModel = _selectedChatModel.value,
+                    persona = _selectedPersona.value,
+                    useSearchGrounding = _useSearchGrounding.value,
+                    useHighThinking = _useHighThinking.value
+                )
+                val effectiveModel = when {
+                    GeminiAiRepository.isDualEngineModel(_selectedChatModel.value) ->
+                        GeminiAiRepository.MODEL_DUAL_ENGINE
+                    GeminiAiRepository.isOpenAiModel(_selectedChatModel.value) ->
+                        _selectedChatModel.value
+                    _useHighThinking.value -> GeminiAiRepository.MODEL_ARGON
+                    _useSearchGrounding.value -> GeminiAiRepository.MODEL_FLASH
+                    else -> _selectedChatModel.value
+                }
+                val aiMsg = ChatMessage(
+                    id = UUID.randomUUID().toString(),
+                    isUser = false,
+                    text = replyText,
+                    modelUsed = effectiveModel,
+                    timestampLabel = currentTimeLabel(),
+                    groundingSources = (appliedIds.map { "SkillMemory:$it" } + sources).distinct()
+                )
+                _chatMessages.value = _chatMessages.value + aiMsg
+                _statusBanner.value = "اكتملت الاستجابة بنجاح."
+            } catch (error: Exception) {
+                Log.e(TAG, "Chat request failed", error)
+                _statusBanner.value = "تعذر إرسال الطلب: ${error.localizedMessage ?: "تحقق من الاتصال وإعدادات مفتاح الخدمة"}"
+            } finally {
+                _isBusy.value = false
             }
-            val (replyText, sources) = aiRepository.sendMultiTurnChat(
-                history = currentHistory,
-                userPrompt = enrichedPrompt,
-                selectedModel = _selectedChatModel.value,
-                persona = _selectedPersona.value,
-                useSearchGrounding = _useSearchGrounding.value,
-                useHighThinking = _useHighThinking.value
-            )
-            val effectiveModel = when {
-                GeminiAiRepository.isDualEngineModel(_selectedChatModel.value) ->
-                    GeminiAiRepository.MODEL_DUAL_ENGINE
-                GeminiAiRepository.isOpenAiModel(_selectedChatModel.value) ->
-                    _selectedChatModel.value
-                _useHighThinking.value -> GeminiAiRepository.MODEL_ARGON
-                _useSearchGrounding.value -> GeminiAiRepository.MODEL_FLASH
-                else -> _selectedChatModel.value
-            }
-            val skillSources = appliedIds.map { "SkillMemory:$it" }
-            val aiMsg = ChatMessage(
-                id = UUID.randomUUID().toString(),
-                isUser = false,
-                text = replyText,
-                modelUsed = effectiveModel,
-                timestampLabel = currentTimeLabel(),
-                groundingSources = (skillSources + sources).distinct()
-            )
-            _chatMessages.value = _chatMessages.value + aiMsg
-            _isBusy.value = false
         }
     }
 
