@@ -550,60 +550,47 @@ class StudioViewModel(
     }
 
     private fun seedInitialWorkspace() {
+        if (hasSeededInitialData) return
+        hasSeededInitialData = true
         viewModelScope.launch {
-            val projRes = repository.createProject(
-                name = "منصة التجارة والتحليلات الذكية Full-Stack",
-                description = "تطبيق متكامل بواجهة تفاعلية وخادم خلفي وقاعدة بيانات مرنة",
-                language = "Full-Stack Web + Kotlin",
-                htmlCode = DEFAULT_HTML,
-                cssCode = DEFAULT_CSS,
-                jsCode = DEFAULT_JS,
-                backendCode = DEFAULT_BACKEND
-            )
-            val projectId = projRes.getOrNull() ?: return@launch
-            _selectedProjectId.value = projectId
-
-            repository.createSnapshot(
-                projectId = projectId,
-                commitMessage = "الإصدار التأسيسي للمنصة مع المعاينة الحية",
-                versionTag = "v1.0.0",
-                htmlCode = DEFAULT_HTML,
-                cssCode = DEFAULT_CSS,
-                jsCode = DEFAULT_JS,
-                backendCode = DEFAULT_BACKEND,
-                addedLines = (DEFAULT_HTML.lines().size + DEFAULT_CSS.lines().size + DEFAULT_JS.lines().size).toLong(),
-                deletedLines = 0L
-            )
-
-            repository.createCollectionSchema(
-                projectId = projectId,
-                collectionName = "users_directory",
-                fieldsSpec = "id:UUID, fullName:String, role:String, tier:String, active:Boolean",
-                sampleRecordsJson = """[{"id":"usr_01","fullName":"أحمد المنصور","role":"Full-Stack Lead","tier":"Enterprise","active":true},{"id":"usr_02","fullName":"سارة العلي","role":"Bioinformatics Researcher","tier":"Pro","active":true},{"id":"usr_03","fullName":"خالد الزهراني","role":"Database Architect","tier":"Enterprise","active":false}]""",
-                indexConfig = "Composite Index: (role ASC, active DESC)"
-            )
-
-            repository.createBuildLog(
-                projectId = projectId,
-                stage = "تهيئة بيئة السحابة وفحص الأمان",
-                status = "SUCCESS",
-                durationMs = 310L,
-                reportSummary = "تم التحقق من سلامة كود الواجهة الأمامية والخلفية وتفعيل قواعد أمان Firestore بنجاح."
-            )
-
-            repository.createBioExperiment(
-                title = "تحليل طي البروتين p53 واستهداف CRISPR-Cas9",
-                workflowMode = "PROTEIN_FOLDING",
-                fastaSequence = ">sp|P04637|P53_HUMAN Cellular tumor antigen p53\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP",
-                researchGoal = "Preset: p53 Tumor Suppressor | Goal: AlphaFold pLDDT & RMSD Validation",
-                plddtScore = 93L,
-                freeEnergyKcal = -12.4,
-                alphaHelixPct = 54L,
-                betaSheetPct = 22L,
-                aiReportSummary = "تم التحقق من استقرار النطاق الرابط للحمض النووي (DNA-binding domain) بدرجة ثقة pLDDT=93% وانحراف معياري RMSD=0.82Å مع رصد 4 مواقع استهداف PAM."
-            )
-
-            syncUserProfileToCloud(projectsCountOverride = 1, bioCountOverride = 1)
+            try {
+                repository.createProject(
+                    name = "مشروعي الأول",
+                    description = "مشروع بداية يمكنك تعديله أو استبداله.",
+                    language = "HTML / CSS / JavaScript",
+                    htmlCode = DEFAULT_HTML,
+                    cssCode = DEFAULT_CSS,
+                    jsCode = DEFAULT_JS,
+                    backendCode = DEFAULT_BACKEND
+                ).onSuccess { projectId ->
+                    _selectedProjectId.value = projectId
+                    repository.createSnapshot(
+                        projectId = projectId,
+                        commitMessage = "الإصدار الأولي",
+                        versionTag = "v1.0.0",
+                        htmlCode = DEFAULT_HTML,
+                        cssCode = DEFAULT_CSS,
+                        jsCode = DEFAULT_JS,
+                        backendCode = DEFAULT_BACKEND,
+                        addedLines = (
+                            DEFAULT_HTML.lines().size + DEFAULT_CSS.lines().size +
+                                DEFAULT_JS.lines().size + DEFAULT_BACKEND.lines().size
+                            ).toLong(),
+                        deletedLines = 0L
+                    ).onFailure { error ->
+                        Log.w(TAG, "Initial project snapshot failed", error)
+                    }
+                    _statusBanner.value = "تم إنشاء مشروع البداية."
+                }.onFailure { error ->
+                    hasSeededInitialData = false
+                    Log.w(TAG, "Initial workspace creation failed", error)
+                    _statusBanner.value = "تعذر إنشاء مشروع البداية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                hasSeededInitialData = false
+                Log.e(TAG, "Initial workspace creation failed", error)
+                _statusBanner.value = "تعذر إنشاء مشروع البداية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            }
         }
     }
 
