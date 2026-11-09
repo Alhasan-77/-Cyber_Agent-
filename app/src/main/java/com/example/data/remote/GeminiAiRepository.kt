@@ -1037,9 +1037,9 @@ class GeminiAiRepository(
             id = UUID.randomUUID().toString(),
             type = "AUDIO_TTS",
             prompt = text,
-            modelUsed = MODEL_TTS,
-            metadataLabel = "الصوت: $voiceName | AUDIO Modality",
-            textSummary = "تم تجهيز النطق الصوتي عبر $MODEL_TTS (الصوت: $voiceName) وتشغيل القارئ الصوتي."
+            modelUsed = "Android TextToSpeech",
+            metadataLabel = "الصوت: صوت النظام",
+            textSummary = "استخدم قارئ Android TTS لتحويل النص إلى كلام. لا يتم استدعاء نموذج TTS سحابي هنا."
         )
     }
 
