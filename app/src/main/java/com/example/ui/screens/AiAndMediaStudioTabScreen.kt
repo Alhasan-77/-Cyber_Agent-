@@ -946,31 +946,12 @@ private fun VisualMediaStudioSection(
                             )
                         }
 
-                        Button(
-                            onClick = {
-                                onGenerateVideo(
-                                    visualPrompt,
-                                    selectedVideoRatio,
-                                    if (!uploadedIsVideo) uploadedBase64 else null,
-                                    if (!uploadedIsVideo) uploadedMime else null
-                                )
-                            },
-                            shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = GeminiPillSelectedContainer,
-                                contentColor = GeminiOnPillSelectedContainer
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("generate_video_button")
-                        ) {
-                            Icon(Icons.Default.Movie, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (uploadedBase64 != null && !uploadedIsVideo) "تحريك لفيديو" else "توليد فيديو",
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        Text(
+                            text = "توليد الفيديو غير متاح حالياً. يمكنك استخدام تحليل الصورة أو الفيديو وقراءة وصف المشاهد.",
+                            color = CyberTextSecondary,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }
