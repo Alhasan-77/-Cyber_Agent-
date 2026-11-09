@@ -273,12 +273,13 @@ fun DashboardTabScreen(
                             )
                         }
 
-                        Button(
+                        OutlinedButton(
                             onClick = onTriggerCloudDeploy,
                             shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = CyberCyan,
-                                contentColor = CyberBackground
+                            border = BorderStroke(1.dp, CyberBorder),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = CyberSurfaceElevated,
+                                contentColor = CyberTextPrimary
                             ),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             modifier = Modifier
@@ -288,13 +289,13 @@ fun DashboardTabScreen(
                             Icon(
                                 imageVector = Icons.Default.CloudUpload,
                                 contentDescription = null,
-                                tint = CyberBackground,
+                                tint = CyberAmber,
                                 modifier = Modifier.size(17.dp)
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = "حالة النشر",
-                                color = CyberBackground,
+                                text = "النشر غير مهيأ",
+                                color = CyberTextPrimary,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1
                             )
