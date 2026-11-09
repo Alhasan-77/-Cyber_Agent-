@@ -779,30 +779,46 @@ class StudioViewModel(
     fun commitVersionSnapshot(commitMessage: String, versionTag: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            val previousSnap = (snapshotsState.value as? UiState.Success)?.data
-                ?.firstOrNull { it.projectId == projectId }
-
-            val prevLines = (previousSnap?.htmlCode.orEmpty() + "\n" + previousSnap?.jsCode.orEmpty()).lines()
-            val currLines = (_htmlBuffer.value + "\n" + _jsBuffer.value).lines()
-            val added = currLines.count { it !in prevLines }.toLong().coerceAtLeast(1L)
-            val deleted = prevLines.count { it !in currLines }.toLong()
-            val branchPrefix = "[${_activeBranch.value}] "
-
-            repository.createSnapshot(
-                projectId = projectId,
-                commitMessage = branchPrefix + commitMessage.ifBlank { "تحديث الكود والمخططات" },
-                versionTag = versionTag.ifBlank { "v1.${((snapshotsState.value as? UiState.Success)?.data?.size ?: 0) + 1}.0" },
-                htmlCode = _htmlBuffer.value,
-                cssCode = _cssBuffer.value,
-                jsCode = _jsBuffer.value,
-                backendCode = _backendBuffer.value,
-                addedLines = added,
-                deletedLines = deleted
-            )
-            appendConsoleLog("[VCS Commit] Saved snapshot $versionTag on branch ${_activeBranch.value} (+$added/-$deleted)")
-            _statusBanner.value = "تم حفظ اللقطة السحابية ($versionTag) على الفرع ${_activeBranch.value}"
-            _isBusy.value = false
+            try {
+                val projectId = _selectedProjectId.value
+                if (projectId.isNullOrBlank()) {
+                    _statusBanner.value = "احفظ المشروع أولاً قبل إنشاء لقطة إصدار."
+                    return@launch
+                }
+                val previousSnap = (snapshotsState.value as? UiState.Success)?.data
+                    ?.firstOrNull { it.projectId == projectId }
+                val prevLines = (previousSnap?.htmlCode.orEmpty() + "\n" + previousSnap?.cssCode.orEmpty() +
+                    "\n" + previousSnap?.jsCode.orEmpty() + "\n" + previousSnap?.backendCode.orEmpty()).lines()
+                val currLines = (_htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
+                    _jsBuffer.value + "\n" + _backendBuffer.value).lines()
+                val added = currLines.count { it !in prevLines }.toLong()
+                val deleted = prevLines.count { it !in currLines }.toLong()
+                val tag = versionTag.ifBlank {
+                    "v1.${((snapshotsState.value as? UiState.Success)?.data?.size ?: 0) + 1}.0"
+                }
+                repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = "[${_activeBranch.value}] " + commitMessage.ifBlank { "تحديث الكود والمخططات" },
+                    versionTag = tag,
+                    htmlCode = _htmlBuffer.value,
+                    cssCode = _cssBuffer.value,
+                    jsCode = _jsBuffer.value,
+                    backendCode = _backendBuffer.value,
+                    addedLines = added,
+                    deletedLines = deleted
+                ).onSuccess {
+                    appendConsoleLog("[Version Snapshot] Saved $tag (+$added/-$deleted)")
+                    _statusBanner.value = "تم حفظ لقطة الإصدار $tag."
+                }.onFailure { error ->
+                    Log.e(TAG, "Version snapshot failed", error)
+                    _statusBanner.value = "تعذر حفظ لقطة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Version snapshot failed", error)
+                _statusBanner.value = "تعذر حفظ لقطة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
