@@ -162,7 +162,12 @@ object BioscienceSimulationEngine {
             .joinToString("")
             .uppercase(Locale.US)
             .filter { it in 'A'..'Z' }
-            .ifEmpty { "ATGGTGACCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAAC" }
+
+        require(cleaned.isNotEmpty()) { "أدخل تسلسلاً حيوياً صالحاً للتحليل." }
+        val validProteinSymbols = "ACDEFGHIKLMNPQRSTVWY"
+        require(cleaned.all { it in validProteinSymbols || it in "ATGCUN" }) {
+            "يحتوي التسلسل على رموز غير مدعومة."
+        }
 
         val nucleotideCount = cleaned.count { it == 'A' || it == 'T' || it == 'G' || it == 'C' || it == 'U' || it == 'N' }
         val isNucleic = nucleotideCount.toDouble() / cleaned.length.toDouble() >= 0.85
@@ -236,19 +241,14 @@ object BioscienceSimulationEngine {
         val normalizedSheet = min(rawSheet, 90 - rawHelix)
         val coilPct = max(8, 100 - rawHelix - normalizedSheet)
 
-        val plddt = ((84.5 + (rawHelix * 0.14) - (coilPct * 0.08)).coerceIn(72.0, 98.4) * 10.0).roundToInt() / 10.0
+        // pLDDT is a model confidence score and cannot be inferred from sequence composition.
+        val plddt = 0.0
 
         // Scan CRISPR NGG PAM sites (both forward NGG and reverse CCN)
         val dnaForPam = if (isNucleic) {
             cleaned.replace('U', 'T')
         } else {
-            // Back-translate representative coding strand so CRISPR scanner always yields rich results
-            buildString {
-                for (aa in translatedProtein.take(60)) {
-                    val codon = codonTable.entries.firstOrNull { it.value == aa }?.key ?: "GGC"
-                    append(codon)
-                }
-            }
+            ""
         }
 
         val discoveredPams = mutableListOf<PamTargetSite>()
@@ -280,28 +280,11 @@ object BioscienceSimulationEngine {
             if (discoveredPams.size >= 6) break
         }
 
-        if (discoveredPams.isEmpty()) {
-            discoveredPams.add(
-                PamTargetSite(
-                    indexOneBased = 14,
-                    spacer20nt = "GTGCACCTGACTCCTGAGGA",
-                    pamTriplet = "AGG",
-                    strand = "+ (Sense)",
-                    gcPercent = 55.0,
-                    onTargetScore = 91,
-                    offTargetRisk = "منخفض جداً (Low Risk)"
-                )
-            )
-        }
-
-        val ic50Nm = ((max(1.8, 42.0 - (plddt - 70.0) * 1.15 - (gravy * 2.4))) * 10.0).roundToInt() / 10.0
-        val deltaG = ((-8.4 - (rawHelix * 0.06) - (if (gravy > 0) gravy * 0.7 else 0.35)) * 10.0).roundToInt() / 10.0
-        val therapeuticIdx = ((120.0 / max(2.0, ic50Nm) * 8.5) * 10.0).roundToInt() / 10.0
-        val phaseStatus = when {
-            ic50Nm <= 15.0 && therapeuticIdx >= 25.0 -> "Phase II/III Ready • مرشح واعد عالي الانتقائية"
-            ic50Nm <= 30.0 -> "Phase I Lead • جاهز لاختبارات السمية والحرائك الدوائية"
-            else -> "Pre-Clinical Optimization • يوصى بتحسين الألفة الجزيئية"
-        }
+        // No synthetic PAM site or clinical/binding prediction is inserted when no model is run.
+        val ic50Nm = 0.0
+        val deltaG = 0.0
+        val therapeuticIdx = 0.0
+        val phaseStatus = "غير محسوب — يتطلب أدوات تخصصية وبيانات تجريبية"
 
         return BioSequenceMetrics(
             headerTitle = header,
