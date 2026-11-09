@@ -610,63 +610,59 @@ class StudioViewModel(
     fun saveAndBuildCurrentProject() {
         viewModelScope.launch {
             _isBusy.value = true
-            val startMs = System.currentTimeMillis()
-            val currentList = (projectsState.value as? UiState.Success)?.data.orEmpty()
-            val existing = currentList.firstOrNull { it.id == _selectedProjectId.value }
-
-            val targetProjectId = if (existing != null && existing.createdAt != null) {
-                repository.updateProject(
-                    existing.copy(
+            try {
+                val startedAt = System.currentTimeMillis()
+                val projects = (projectsState.value as? UiState.Success)?.data.orEmpty()
+                val existing = projects.firstOrNull { it.id == _selectedProjectId.value }
+                val result = if (existing != null && existing.createdAt != null) {
+                    repository.updateProject(
+                        existing.copy(
+                            name = _editorName.value,
+                            language = _editorLanguage.value,
+                            htmlCode = _htmlBuffer.value,
+                            cssCode = _cssBuffer.value,
+                            jsCode = _jsBuffer.value,
+                            backendCode = _backendBuffer.value
+                        )
+                    ).map { existing.id }
+                } else {
+                    repository.createProject(
                         name = _editorName.value,
+                        description = "Full-Stack Project (${_editorLanguage.value})",
                         language = _editorLanguage.value,
                         htmlCode = _htmlBuffer.value,
                         cssCode = _cssBuffer.value,
                         jsCode = _jsBuffer.value,
                         backendCode = _backendBuffer.value
                     )
-                )
-                existing.id
-            } else {
-                val created = repository.createProject(
-                    name = _editorName.value,
-                    description = "Full-Stack Project (${_editorLanguage.value})",
-                    language = _editorLanguage.value,
-                    htmlCode = _htmlBuffer.value,
-                    cssCode = _cssBuffer.value,
-                    jsCode = _jsBuffer.value,
-                    backendCode = _backendBuffer.value
-                )
-                val newId = created.getOrNull() ?: "proj_default"
-                _selectedProjectId.value = newId
-                newId
+                }
+
+                result.onSuccess { projectId ->
+                    _selectedProjectId.value = projectId
+                    val duration = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
+                    val source = _htmlBuffer.value + _cssBuffer.value + _jsBuffer.value + _backendBuffer.value
+                    val checksum = computeSha256Short(source)
+                    val report = "تم حفظ ملفات المشروع في Firestore. لم يتم تشغيل مترجم أو بناء APK/حزمة نشر.\n" +
+                        "حجم المصدر: ${source.length} حرف؛ SHA-256 مختصر: $checksum"
+                    repository.createBuildLog(
+                        projectId = projectId,
+                        stage = "حفظ ملفات المشروع",
+                        status = "WARNING",
+                        durationMs = duration,
+                        reportSummary = report
+                    )
+                    appendConsoleLog("[Project Save] Files saved for project $projectId. No compiler/build was run.")
+                    _statusBanner.value = "تم حفظ المشروع سحابياً. لم يتم تشغيل بناء أو معاينة فعلية."
+                }.onFailure { error ->
+                    Log.e(TAG, "Project save failed", error)
+                    _statusBanner.value = "تعذر حفظ المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Project save failed", error)
+                _statusBanner.value = "تعذر حفظ المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-
-            val totalLines = _htmlBuffer.value.lines().size +
-                _cssBuffer.value.lines().size +
-                _jsBuffer.value.lines().size +
-                _backendBuffer.value.lines().size
-            val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(145L)
-            val checksum = computeSha256Short(_htmlBuffer.value + _jsBuffer.value + _backendBuffer.value)
-
-            val report = buildString {
-                appendLine("✅ اكتمل البناء السحابي وفحص الكود (${_editorLanguage.value}):")
-                appendLine("• إجمالي الأسطر البرمجية المترجمة: $totalLines سطر (SHA:$checksum)")
-                appendLine("• زمن الاستجابة والتجميع: ${elapsed}ms")
-                appendLine("• فحص الأمان: 0 ثغرات حرجة (Zero-Trust Verified)")
-                appendLine("• حالة نافذة المعاينة الحية (WebView): نشطة ومحدثة")
-            }
-
-            repository.createBuildLog(
-                projectId = targetProjectId,
-                stage = "بناء وتشغيل ${_editorName.value}",
-                status = "SUCCESS",
-                durationMs = elapsed,
-                reportSummary = report
-            )
-
-            appendConsoleLog("[Build Success] Compiled $totalLines lines in ${elapsed}ms (SHA:$checksum)")
-            _statusBanner.value = "تم حفظ المشروع وبناء المعاينة الحية وتوليد التقرير في ${elapsed}ms"
-            _isBusy.value = false
         }
     }
 
