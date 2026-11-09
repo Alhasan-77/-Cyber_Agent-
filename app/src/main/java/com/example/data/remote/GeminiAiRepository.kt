@@ -915,57 +915,9 @@ class GeminiAiRepository(
         sourcePhotoBase64: String? = null,
         sourcePhotoMime: String? = null
     ): GeneratedMediaAsset = withContext(Dispatchers.IO) {
-        val safeRatio = if (aspectRatio == "9:16") "9:16" else "16:9"
-        val modeLabel = if (sourcePhotoBase64 != null) "تحريك صورة إلى فيديو" else "توليد فيديو من النص"
-
-        try {
-            val inputBitmap = decodeBase64Bitmap(sourcePhotoBase64)
-            val summaryText = withTimeout(AI_TIMEOUT_MS) {
-                executeWithAppCheckRetry {
-                    if (inputBitmap != null) {
-                        flashModel.generateContent(
-                            content {
-                                image(inputBitmap)
-                                text("أنشئ خطة تحريك مشاهد تفصيلية (Motion Storyboard) بنسبة $safeRatio للطلب: $prompt")
-                            }
-                        ).text
-                    } else {
-                        flashModel.generateContent(
-                            "أنشئ توصيف مشاهد فيديو احترافي (Video Scene Specification) بنسبة $safeRatio للطلب: $prompt"
-                        ).text
-                    }
-                }
-            }
-
-            return@withContext GeneratedMediaAsset(
-                id = UUID.randomUUID().toString(),
-                type = "VIDEO",
-                prompt = prompt,
-                modelUsed = MODEL_OMNI_VIDEO,
-                metadataLabel = "$modeLabel | الأبعاد: $safeRatio | 5s",
-                mimeType = sourcePhotoMime ?: "video/mp4",
-                textSummary = summaryText ?: "اكتملت عملية $modeLabel عبر Firebase AI Logic بنسبة عرض $safeRatio."
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (!isAppCheckTokenError(e)) {
-                GlobalExceptionHandler.reportError(
-                    phase = "Gemini Video Pipeline ($MODEL_OMNI_VIDEO)",
-                    throwable = e,
-                    isFatal = false,
-                    serviceName = "Gemini"
-                )
-            }
-            return@withContext GeneratedMediaAsset(
-                id = UUID.randomUUID().toString(),
-                type = "VIDEO",
-                prompt = prompt,
-                modelUsed = MODEL_OMNI_VIDEO,
-                metadataLabel = "$modeLabel | الأبعاد: $safeRatio | 5s",
-                textSummary = "تعذر إتمام معالجة الفيديو: ${e.localizedMessage ?: "خطأ غير متوقع"}"
-            )
-        }
+        throw UnsupportedOperationException(
+            "توليد الفيديو غير مهيأ حالياً. لا ينتج هذا الإصدار ملف MP4؛ استخدم وصف المشاهد النصي فقط بعد تفعيل مزود فيديو فعلي."
+        )
     }
 
     // 6. Analyze Images & Video Content using gemini-4-argon via Firebase AI Logic
