@@ -272,7 +272,7 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("folding_contact_energy_canvas").assertIsDisplayed()
 
         // Switch coloring mode and step through residues
-        composeTestRule.onNodeWithTag("folding_color_PLDDT").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("folding_color_HYDROPATHY").performScrollTo().performClick()
         composeTestRule.onNodeWithTag("folding_selected_residue_detail").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("folding_next_residue_button").performClick()
         composeTestRule.onNodeWithTag("folding_residue_chip_2").assertIsDisplayed()
