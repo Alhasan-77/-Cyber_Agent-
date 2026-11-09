@@ -72,34 +72,42 @@ fun configureAppCheck(context: Context, intent: Intent?) {
             FirebaseApp.initializeApp(context)
         }
 
+        val appCheck = FirebaseAppCheck.getInstance()
         if (BuildConfig.DEBUG) {
             val debugToken = intent?.getStringExtra(DEBUG_TOKEN_EXTRA)
             val persistenceKey = FirebaseApp.getInstance().persistenceKey
-            if (!debugToken.isNullOrEmpty()) {
-                val prefs = context.getSharedPreferences(
+            if (!debugToken.isNullOrBlank()) {
+                context.getSharedPreferences(
                     "$DEBUG_STORE_PREFIX$persistenceKey",
                     Context.MODE_PRIVATE
-                )
-                prefs.edit()
+                ).edit()
                     .putString(DEBUG_SECRET_KEY, debugToken)
-                    .commit()
-                // Clear any stale cached App Check JWT token so DebugAppCheckProviderFactory mints a fresh token
+                    .apply()
+
                 context.getSharedPreferences(
                     "com.google.firebase.appcheck.store.$persistenceKey",
                     Context.MODE_PRIVATE
-                ).edit().clear().commit()
-                Log.d(TAG, "App Check debug secret configured successfully.")
+                ).edit().clear().apply()
+                Log.d(TAG, "App Check debug token configured.")
             } else {
-            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                Log.w(TAG, "No App Check debug token was provided.")
+            }
+
+            appCheck.installAppCheckProviderFactory(
+                DebugAppCheckProviderFactory.getInstance()
+            )
+            Log.d(TAG, "Debug App Check provider installed.")
+        } else {
+            appCheck.installAppCheckProviderFactory(
                 PlayIntegrityAppCheckProviderFactory.getInstance()
             )
-            Log.d(TAG, "PlayIntegrityAppCheckProviderFactory installed.")
+            Log.d(TAG, "Play Integrity App Check provider installed.")
         }
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize Firebase App Check", e)
+    } catch (error: Exception) {
+        Log.e(TAG, "Failed to initialize Firebase App Check", error)
         GlobalExceptionHandler.reportError(
             phase = "Firebase App Check Initialization",
-            throwable = e,
+            throwable = error,
             isFatal = false,
             serviceName = "Firebase"
         )
