@@ -310,28 +310,28 @@ object BioscienceSimulationEngine {
 # ============================================================================
 
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import Dict, Optional
 
 @dataclass
 class BioTargetReport:
     target_name: str = "${metrics.headerTitle.replace("\"", "'")}"
     sequence_type: str = "${metrics.sequenceType}"
     length: int = ${metrics.sequenceLength}
-    gc_percent: float = ${metrics.gcContentPct}
-    melting_temp_c: float = ${metrics.meltingTempC}
+    gc_percent: Optional[float] = ${if (metrics.sequenceType == "PROTEIN") "None" else metrics.gcContentPct.toString()}
+    melting_temp_c: Optional[float] = ${if (metrics.sequenceType == "PROTEIN") "None" else metrics.meltingTempC.toString()}
     molecular_weight_kda: float = ${metrics.molecularWeightKda}
-    plddt_confidence: float = ${metrics.plddtConfidence}
-    predicted_ic50_nm: float = ${metrics.predictedIc50Nm}
-    binding_energy_kcal: float = ${metrics.bindingAffinityKcal}
+    plddt_confidence: Optional[float] = None  # Not predicted by this pipeline
+    predicted_ic50_nm: Optional[float] = None  # Requires experimental validation
+    binding_energy_kcal: Optional[float] = None  # Requires a validated structure/model
 
 def run_novaforge_bio_pipeline() -> Dict[str, object]:
     seq = "${metrics.cleanedSequence.take(120)}"
     orf_protein = "${metrics.translatedProteinPreview.take(80)}"
     secondary_structure = {
-        "alpha_helix_pct": ${metrics.alphaHelixPct},
-        "beta_sheet_pct": ${metrics.betaSheetPct},
-        "random_coil_pct": ${metrics.randomCoilPct},
-        "gravy_hydropathy": ${metrics.gravyHydropathy}
+        "alpha_helix_pct": None,  # No secondary-structure prediction was run
+        "beta_sheet_pct": None,
+        "random_coil_pct": None,
+        "gravy_hydropathy": ${if (metrics.sequenceType == "PROTEIN") metrics.gravyHydropathy.toString() else "None"}
     }
     crispr_lead_guide = {
         "spacer_20nt": ${topPam?.spacer20nt?.let { "\"$it\"" } ?: "None"},
@@ -344,12 +344,12 @@ def run_novaforge_bio_pipeline() -> Dict[str, object]:
         "orf_translation": orf_protein,
         "secondary_structure": secondary_structure,
         "crispr_lead_guide": crispr_lead_guide,
-        "clinical_readiness": "${metrics.clinicalPhaseReadiness}"
+        "clinical_readiness": None
     }
 
 if __name__ == "__main__":
     result = run_novaforge_bio_pipeline()
-    print("[NovaForge BioLab] Pipeline Executed Successfully:", result["report"]["target_name"])
+    print("[NovaForge BioLab] Descriptive sequence summary created:", result["report"]["target_name"])
 """.trimIndent()
     }
 
