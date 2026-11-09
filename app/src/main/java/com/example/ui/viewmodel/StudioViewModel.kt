@@ -1401,41 +1401,19 @@ class StudioViewModel(
         private const val TAG = "StudioViewModel"
 
         val DEFAULT_HTML = """
-            <div class="nova-app">
-              <header class="top-bar">
-                <div>
-                  <span class="pill">⚡ NovaForge Full-Stack Runtime</span>
-                  <h1>لوحة المبيعات والعمليات السحابية</h1>
-                </div>
-                <button class="action-btn" onclick="triggerSync()">مزامنة فورية 🔄</button>
-              </header>
-              <div class="metrics-row">
-                <div class="metric-box">
-                  <span>المستخدمون النشطون</span>
-                  <strong id="active-users">1,420</strong>
-                </div>
-                <div class="metric-box">
-                  <span>معدل الاستجابة</span>
-                  <strong id="latency-val">18ms</strong>
-                </div>
-                <div class="metric-box">
-                  <span>حالة قاعدة البيانات</span>
-                  <strong class="ok">متصل • آمن</strong>
-                </div>
-              </div>
-              <div class="card">
-                <h3>إضافة عملية سحابية جديدة</h3>
-                <div class="form-row">
-                  <input id="op-title" placeholder="اسم العملية أو الخدمة..." />
-                  <button onclick="addOperation()">تشغيل +</button>
-                </div>
-                <ul id="ops-list">
-                  <li>✅ تشغيل محرك قواعد البيانات المرنة Firestore</li>
-                  <li>🧬 ربط خط أنابيب الذكاء الاصطناعي والعلوم الحيوية</li>
-                  <li>🔒 التحقق من لقطة الإصدار v1.0.0</li>
-                </ul>
-              </div>
-            </div>
+            <main class="workspace">
+              <p class="eyebrow">مشروع جديد</p>
+              <h1>مرحباً بك في مساحة العمل</h1>
+              <p class="intro">ابدأ بتعديل هذه الصفحة أو اطلب من المساعد إنشاء واجهتك الأولى.</p>
+              <section class="starter-card">
+                <h2>خطوات البدء</h2>
+                <ol>
+                  <li>عدّل HTML وCSS وJavaScript في المحرر.</li>
+                  <li>احفظ ملفات المشروع في حسابك.</li>
+                  <li>استخدم المعاينة المحلية لمراجعة الواجهة.</li>
+                </ol>
+              </section>
+            </main>
         """.trimIndent()
 
         val FINTECH_HTML = """
