@@ -1070,40 +1070,30 @@ class GeminiAiRepository(
         spokenPrompt: String,
         audioBase64: String? = null
     ): String = withContext(Dispatchers.IO) {
-        try {
-            val audioBytes = audioBase64?.takeIf { it.isNotBlank() }?.let {
-                runCatching { Base64.decode(it, Base64.DEFAULT) }.getOrNull()
-            }
-            val reply = withTimeout(AI_TIMEOUT_MS) {
-                executeWithAppCheckRetry {
-                    if (audioBytes != null && audioBytes.isNotEmpty()) {
-                        flashModel.generateContent(
-                            content {
-                                inlineData(audioBytes, "audio/wav")
-                                text("Respond naturally and concisely in Arabic as a real-time voice coding copilot: $spokenPrompt")
-                            }
-                        ).text
-                    } else {
-                        flashModel.generateContent(
-                            "Respond naturally and concisely in Arabic as a real-time voice coding copilot: $spokenPrompt"
-                        ).text
-                    }
+        require(spokenPrompt.isNotBlank() || !audioBase64.isNullOrBlank()) {
+            "أدخل نصاً أو أرفق تسجيلاً صوتياً."
+        }
+        val audioBytes = audioBase64?.takeIf { it.isNotBlank() }?.let {
+            Base64.decode(it, Base64.DEFAULT)
+        }
+        val reply = withTimeout(AI_TIMEOUT_MS) {
+            executeWithAppCheckRetry {
+                if (audioBytes != null && audioBytes.isNotEmpty()) {
+                    flashModel.generateContent(
+                        content {
+                            inlineData(audioBytes, "audio/wav")
+                            text("Respond naturally and concisely in Arabic as a coding assistant. User context: $spokenPrompt")
+                        }
+                    ).text
+                } else {
+                    flashModel.generateContent(
+                        "Respond naturally and concisely in Arabic as a coding assistant: $spokenPrompt"
+                    ).text
                 }
             }
-            if (!reply.isNullOrBlank()) return@withContext reply
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (!isAppCheckTokenError(e)) {
-                GlobalExceptionHandler.reportError(
-                    phase = "Gemini Live Voice Turn ($MODEL_FLASH)",
-                    throwable = e,
-                    isFatal = false,
-                    serviceName = "Gemini"
-                )
-            }
         }
-        "استجابة صوتية فورية من $MODEL_LIVE: أهلاً بك في جلسة البرمجة الصوتية الحية! لقد قمت بفحص بنية مشروعك الحالية، ويمكننا الآن تعديل واجهة المعاينة أو استعلامات قاعدة البيانات مباشرة بأوامرك الصوتية."
+        reply?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("لم يُرجع نموذج Gemini استجابة.")
     }
 
     // 10. Generate Music Composition & Track Metadata
