@@ -80,7 +80,9 @@ object SkillsMemoryEngine {
             cachedCatalog?.let { return it }
             return try {
                 val jsonText = context.assets.open(CATALOG_ASSET_NAME).use { stream ->
-                    BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).readText()
+                    BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { reader ->
+                        reader.readText()
+                    }
                 }
                 val parsed = parseCatalogJson(jsonText)
                 cachedCatalog = parsed
@@ -133,7 +135,7 @@ object SkillsMemoryEngine {
         allSkills: List<ExtractedSkillItem>,
         maxMatched: Int = 5
     ): List<ExtractedSkillItem> {
-        if (allSkills.isEmpty()) return emptyList()
+        if (allSkills.isEmpty() || maxMatched <= 0 || queryOrCode.isBlank()) return emptyList()
         val lower = queryOrCode.lowercase()
 
         val scored = allSkills.map { skill ->
