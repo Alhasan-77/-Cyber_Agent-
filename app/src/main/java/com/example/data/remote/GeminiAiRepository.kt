@@ -50,12 +50,6 @@ class GeminiAiRepository(
         const val MODEL_DUAL_ENGINE = "gemini+chatgpt-dual"
         const val MODEL_NANO_BANANA = "gemini-nano-banana-2.1"
         const val MODEL_PRO_IMAGE = "gemini-3-pro-image"
-        const val MODEL_OMNI_VIDEO = "gemini-omni-1.1-flash"
-        const val MODEL_TTS = "gemini-3.8-flash-tts"
-        const val MODEL_TRANSCRIBE = "gemini-3.5-transcribe"
-        const val MODEL_LIVE = "gemini-3.8-live"
-        const val MODEL_LYRIA_CLIP = "lyria-3-clip-preview"
-        const val MODEL_LYRIA_PRO = "lyria-3-pro-preview"
 
         val SUPPORTED_TEXT_MODELS: List<Pair<String, String>> = listOf(
             MODEL_DUAL_ENGINE to "🤝 مزدوج: Gemini + ChatGPT معاً",
@@ -865,21 +859,6 @@ class GeminiAiRepository(
 
         throw IllegalStateException("لم يُرجع النموذج نتيجة لتحليل الوسائط.")
 
-    }
-
-    // 7. Convert Text to Speech using Firebase AI Logic + Android TTS
-    suspend fun convertTextToSpeech(
-        text: String,
-        voiceName: String = "Kore"
-    ): GeneratedMediaAsset = withContext(Dispatchers.IO) {
-        GeneratedMediaAsset(
-            id = UUID.randomUUID().toString(),
-            type = "AUDIO_TTS",
-            prompt = text,
-            modelUsed = "Android TextToSpeech",
-            metadataLabel = "الصوت: صوت النظام",
-            textSummary = "استخدم قارئ Android TTS لتحويل النص إلى كلام. لا يتم استدعاء نموذج TTS سحابي هنا."
-        )
     }
 
     // 8. Transcribe Microphone Audio using Firebase AI Logic multimodal inlineData
