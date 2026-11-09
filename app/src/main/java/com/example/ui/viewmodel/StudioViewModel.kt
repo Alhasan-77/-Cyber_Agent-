@@ -1132,7 +1132,7 @@ class StudioViewModel(
                     sourcePhotoMime = sourcePhotoMime
                 )
                 _generatedAssets.value = listOf(asset) + _generatedAssets.value
-                _statusBanner.value = "تمت معالجة الفيديو عبر ${GeminiAiRepository.MODEL_OMNI_VIDEO} ($aspectRatio)"
+                _statusBanner.value = "تم إعداد ملف الفيديو عبر ${asset.modelUsed} ($aspectRatio)"
             } catch (error: Exception) {
                 Log.e(TAG, "Video generation failed", error)
                 _statusBanner.value = "تعذر توليد الفيديو: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1167,24 +1167,6 @@ class StudioViewModel(
         }
     }
 
-    fun synthesizeSpeechFromText(text: String, voiceName: String = "Kore", onAudioReady: (String?) -> Unit) {
-        viewModelScope.launch {
-            _isBusy.value = true
-            try {
-                val asset = aiRepository.convertTextToSpeech(text, voiceName)
-                _generatedAssets.value = listOf(asset) + _generatedAssets.value
-                onAudioReady(asset.base64Data)
-                _statusBanner.value = "تم تحويل النص إلى كلام عبر ${GeminiAiRepository.MODEL_TTS}"
-            } catch (error: Exception) {
-                Log.e(TAG, "Speech synthesis failed", error)
-                onAudioReady(null)
-                _statusBanner.value = "تعذر تحويل النص إلى كلام: ${error.localizedMessage ?: "خطأ غير معروف"}"
-            } finally {
-                _isBusy.value = false
-            }
-        }
-    }
-
     fun transcribeRecordedAudio(audioBase64: String, onTranscribed: (String) -> Unit) {
         viewModelScope.launch {
             _isBusy.value = true
@@ -1192,7 +1174,7 @@ class StudioViewModel(
                 val text = aiRepository.transcribeMicrophoneAudio(audioBase64)
                 _lastTranscribedText.value = text
                 onTranscribed(text)
-                _statusBanner.value = "تم نسخ الصوت عبر ${GeminiAiRepository.MODEL_TRANSCRIBE}"
+                _statusBanner.value = "تم نسخ الصوت عبر ${GeminiAiRepository.MODEL_FLASH}"
             } catch (error: Exception) {
                 Log.e(TAG, "Audio transcription failed", error)
                 _statusBanner.value = "تعذر نسخ الصوت: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1208,7 +1190,7 @@ class StudioViewModel(
             try {
                 val reply = aiRepository.sendLiveVoiceConversationTurn(spokenText, audioBase64)
                 _liveVoiceHistory.value = _liveVoiceHistory.value +
-                    listOf("👤 أنت: $spokenText", "🤖 ${GeminiAiRepository.MODEL_LIVE}: $reply")
+                    listOf("👤 أنت: $spokenText", "🤖 Gemini (رد صوتي): $reply")
                 onReplyReady(reply)
             } catch (error: Exception) {
                 Log.e(TAG, "Live voice turn failed", error)
