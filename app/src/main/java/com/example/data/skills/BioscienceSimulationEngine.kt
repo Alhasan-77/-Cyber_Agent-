@@ -54,7 +54,7 @@ data class PamTargetSite(
     val pamTriplet: String,
     val strand: String,
     val gcPercent: Double,
-    val onTargetScore: Int,
+    val onTargetScore: Int?,
     val offTargetRisk: String
 )
 
@@ -161,21 +161,27 @@ object BioscienceSimulationEngine {
             .filterNot { it.trim().startsWith(">") }
             .joinToString("")
             .uppercase(Locale.US)
-            .filter { it in 'A'..'Z' }
+            .filterNot { it.isWhitespace() || it.isDigit() }
 
         require(cleaned.isNotEmpty()) { "أدخل تسلسلاً حيوياً صالحاً للتحليل." }
         val validProteinSymbols = "ACDEFGHIKLMNPQRSTVWY"
-        require(cleaned.all { it in validProteinSymbols || it in "ATGCUN" }) {
-            "يحتوي التسلسل على رموز غير مدعومة."
+        val nucleotideWorkflow = workflowMode == BioscienceWorkflowMode.CRISPR_EDITING ||
+            workflowMode == BioscienceWorkflowMode.GENOMIC_ALIGNMENT
+        val seqType = if (nucleotideWorkflow) {
+            require(cleaned.all { it in "ATGCUN" }) {
+                "هذا المسار يتطلب تسلسلاً نووياً يحتوي فقط على A/T/G/C/U/N."
+            }
+            require(!(cleaned.contains('T') && cleaned.contains('U'))) {
+                "لا يمكن مزج T و U في التسلسل نفسه."
+            }
+            if (cleaned.contains('U')) "RNA" else "DNA"
+        } else {
+            require(cleaned.all { it in validProteinSymbols }) {
+                "هذا المسار يتطلب تسلسلاً بروتينياً بأحرف الأحماض الأمينية القياسية."
+            }
+            "PROTEIN"
         }
-
-        val nucleotideCount = cleaned.count { it == 'A' || it == 'T' || it == 'G' || it == 'C' || it == 'U' || it == 'N' }
-        val isNucleic = nucleotideCount.toDouble() / cleaned.length.toDouble() >= 0.85
-        val seqType = when {
-            isNucleic && cleaned.contains('U') && !cleaned.contains('T') -> "RNA"
-            isNucleic -> "DNA"
-            else -> "PROTEIN"
-        }
+        val isNucleic = seqType == "DNA" || seqType == "RNA"
 
         val length = cleaned.length
         val gcCount = cleaned.count { it == 'G' || it == 'C' }
@@ -183,9 +189,7 @@ object BioscienceSimulationEngine {
         val gcPct = if (isNucleic && length > 0) {
             ((gcCount.toDouble() / length.toDouble()) * 1000.0).roundToInt() / 10.0
         } else {
-            // Estimate equivalent codon GC bias for protein sequences
-            val highGcAa = cleaned.count { it in "GARP" }
-            (((0.42 + (highGcAa.toDouble() / max(1, length)) * 0.28) * 1000.0).roundToInt()) / 10.0
+            0.0
         }
 
         val meltingTemp = if (isNucleic) {
@@ -196,10 +200,7 @@ object BioscienceSimulationEngine {
                 ((rawTm * 10.0).roundToInt()) / 10.0
             }
         } else {
-            // Protein thermal melting midpoint Tm (°C)
-            val aliphatics = cleaned.count { it in "IVLAF" }
-            val rawTm = 56.0 + (aliphatics.toDouble() / max(1, length)) * 38.0
-            ((min(94.5, max(42.0, rawTm)) * 10.0).roundToInt()) / 10.0
+            0.0
         }
 
         val mwDaltons = if (isNucleic) {
@@ -211,43 +212,41 @@ object BioscienceSimulationEngine {
 
         val translatedProtein = if (isNucleic) {
             val dnaSeq = cleaned.replace('U', 'T')
-            val sb = StringBuilder()
-            var i = 0
-            while (i + 2 < dnaSeq.length && sb.length < 180) {
-                val codon = dnaSeq.substring(i, i + 3)
-                val aa = codonTable[codon] ?: 'X'
-                if (aa == '*') break
-                sb.append(aa)
-                i += 3
+            val startIndex = dnaSeq.indexOf("ATG")
+            if (startIndex < 0) {
+                ""
+            } else {
+                val sb = StringBuilder()
+                var i = startIndex
+                while (i + 2 < dnaSeq.length && sb.length < 180) {
+                    val aa = codonTable[dnaSeq.substring(i, i + 3)] ?: 'X'
+                    if (aa == '*') break
+                    sb.append(aa)
+                    i += 3
+                }
+                sb.toString()
             }
-            sb.toString()
         } else {
             cleaned.take(180)
         }
 
-        val gravy = if (translatedProtein.isNotEmpty()) {
+        val gravy = if (seqType == "PROTEIN" && translatedProtein.isNotEmpty()) {
             val sum = translatedProtein.sumOf { kyteDoolittle[it] ?: 0.0 }
             ((sum / translatedProtein.length.toDouble()) * 100.0).roundToInt() / 100.0
         } else {
             0.0
         }
 
-        // Secondary structure estimation (Chou-Fasman / Garnier heuristic)
-        val helixFavored = translatedProtein.count { it in "EAQLMKRH" }
-        val sheetFavored = translatedProtein.count { it in "VIFYWTC" }
-        val totalAa = max(1, translatedProtein.length)
-        val rawHelix = if (translatedProtein.isEmpty()) 0 else
-            ((helixFavored.toDouble() / totalAa) * 100).roundToInt().coerceIn(0, 100)
-        val rawSheet = if (translatedProtein.isEmpty()) 0 else
-            ((sheetFavored.toDouble() / totalAa) * 100).roundToInt().coerceIn(0, 100)
-        val normalizedSheet = if (translatedProtein.isEmpty()) 0 else min(rawSheet, 100 - rawHelix)
-        val coilPct = if (translatedProtein.isEmpty()) 0 else max(0, 100 - rawHelix - normalizedSheet)
+        // Structure fractions require a real structure-prediction tool and are not inferred here.
+        val rawHelix = 0
+        val normalizedSheet = 0
+        val coilPct = 0
 
         // pLDDT is a model confidence score and cannot be inferred from sequence composition.
         val plddt = 0.0
 
-        // Scan CRISPR NGG PAM sites (both forward NGG and reverse CCN)
-        val dnaForPam = if (isNucleic && seqType == "DNA") cleaned else ""
+        // Detect forward-strand NGG motifs only; no off-target or activity score is inferred.
+        val dnaForPam = if (seqType == "DNA") cleaned else ""
 
         val discoveredPams = mutableListOf<PamTargetSite>()
         for (idx in 20..(dnaForPam.length - 3)) {
@@ -255,14 +254,6 @@ object BioscienceSimulationEngine {
             if (window3.endsWith("GG")) {
                 val spacer = dnaForPam.substring(idx - 20, idx)
                 val spacerGc = ((spacer.count { it == 'G' || it == 'C' } / 20.0) * 1000.0).roundToInt() / 10.0
-                val seedG = if (spacer.takeLast(4).contains('G')) 12 else 4
-                val gcPenalty = if (spacerGc in 40.0..65.0) 18 else 5
-                val score = (64 + seedG + gcPenalty - (discoveredPams.size * 2)).coerceIn(58, 97)
-                val risk = when {
-                    score >= 88 -> "منخفض جداً (Low Risk)"
-                    score >= 76 -> "متوسط-منخفض (Moderate-Low)"
-                    else -> "يتطلب تحقق (Verify Loci)"
-                }
                 discoveredPams.add(
                     PamTargetSite(
                         indexOneBased = idx - 19,
@@ -270,8 +261,8 @@ object BioscienceSimulationEngine {
                         pamTriplet = window3,
                         strand = "+ (Sense)",
                         gcPercent = spacerGc,
-                        onTargetScore = score,
-                        offTargetRisk = risk
+                        onTargetScore = null,
+                        offTargetRisk = "غير محسوب — يلزم تحليل خارج الهدف"
                     )
                 )
             }
