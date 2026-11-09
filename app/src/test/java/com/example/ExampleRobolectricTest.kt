@@ -157,7 +157,25 @@ class ExampleRobolectricTest {
         assertTrue(crisprMetrics.sequenceLength > 100)
         assertTrue(crisprMetrics.gcContentPct in 30.0..80.0)
         assertTrue(crisprMetrics.pamSites.isNotEmpty())
-        assertEquals(100, crisprMetrics.alphaHelixPct + crisprMetrics.betaSheetPct + crisprMetrics.randomCoilPct)
+        assertEquals(0.0, crisprMetrics.plddtConfidence, 0.0)
+        assertEquals(0, crisprMetrics.alphaHelixPct + crisprMetrics.betaSheetPct + crisprMetrics.randomCoilPct)
+
+        val proteinMetrics = BioscienceSimulationEngine.analyzeSequenceMetrics(
+            rawInput = BioscienceWorkflowMode.PROTEIN_FOLDING.defaultSequence,
+            workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING
+        )
+        assertTrue(proteinMetrics.pamSites.isEmpty())
+        assertEquals(0.0, proteinMetrics.plddtConfidence, 0.0)
+
+        try {
+            BioscienceSimulationEngine.analyzeSequenceMetrics(
+                rawInput = "   ",
+                workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING
+            )
+            throw AssertionError("Blank sequence must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected: do not silently substitute a fabricated sequence.
+        }
 
         val html3d = BioscienceSimulationEngine.buildInteractive3dBioGameHtml("GAME", "DNA_HELIX")
         assertTrue(html3d.contains("bio3d-canvas"))
