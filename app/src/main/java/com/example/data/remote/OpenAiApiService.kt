@@ -117,7 +117,7 @@ interface OpenAiApiService {
 
 object OpenAiNetworkClient {
     private const val BASE_URL = "https://api.openai.com/"
-    const val PLACEHOLDER_KEY = "YOUR_OPENAI_API_KEY"
+    const val PLACEHOLDER_KEY = ""
     private const val DEFAULT_PLUGIN_PLACEHOLDER = "OPENAI_API_KEY_DEFAULT_VALUE"
 
     private val json = Json {
@@ -132,7 +132,10 @@ object OpenAiNetworkClient {
         val configuredKey = getConfiguredApiKey()
         val requestBuilder = original.newBuilder()
             .header("Content-Type", "application/json")
-        if (existingAuth.isNullOrBlank() && configuredKey.isNotBlank()) {
+        if (existingAuth.isNullOrBlank() && !isApiKeyConfigured()) {
+            throw IllegalStateException("مفتاح OpenAI غير مضبوط. أضف OPENAI_API_KEY في إعدادات الأسرار.")
+        }
+        if (existingAuth.isNullOrBlank()) {
             requestBuilder.header("Authorization", "Bearer $configuredKey")
         }
         chain.proceed(requestBuilder.build())
