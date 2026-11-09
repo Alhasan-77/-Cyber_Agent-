@@ -16,35 +16,35 @@ enum class BioscienceWorkflowMode(
 ) {
     PROTEIN_FOLDING(
         id = "PROTEIN_FOLDING",
-        titleAr = "طي البروتين وDNA ثلاثي الأبعاد",
-        subtitleAr = "تنبؤ البنية الثانوية Alpha-Helix / Beta-Sheet، درجة الثقة pLDDT، والاستقرار الحراري",
-        badgeText = "3D Folding • AlphaFold/ESMFold",
+        titleAr = "تحليل تسلسل البروتين",
+        subtitleAr = "حساب مؤشرات وصفية للتسلسل مع عارض هندسي توضيحي؛ لا يتوفر تنبؤ بنيوي متخصص أو pLDDT.",
+        badgeText = "Protein Sequence • Visual Demo",
         defaultSequence = ">Human_Hemoglobin_Subunit_Beta (HBB) | Deep Folding Target\nMVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVMGNPKVKAHGKKVLGAFSDGLAHLDNLKGTFATLSELHCDKLHVDPENFRLLGNVLVCVLAHHFGKEFTPPVQAAYQKVVAGVANALAHKYH",
-        defaultGoal = "تحليل طي البروتين ثلاثي الأبعاد، حساب نسب حلزون ألفا وصفائح بيتا ومؤشر الكراهية للماء GRAVY، وتحديد جيوب الارتباط الدوائي."
+        defaultGoal = "تحليل طول تسلسل البروتين والوزن الجزيئي التقريبي ومؤشر GRAVY؛ لا يتوفر هنا تنبؤ بنيوي أو كشف مثبت لجيوب الارتباط."
     ),
     CRISPR_EDITING(
         id = "CRISPR_EDITING",
         titleAr = "محاكي تعديل الجينات CRISPR-Cas9",
-        subtitleAr = "اكتشاف مواقع PAM (NGG)، تصميم gRNA بطول 20 نوكليوتيد، وحساب كفاءة القطع والـ Off-Target",
-        badgeText = "CRISPR-Cas9 • sgRNA Designer",
+        subtitleAr = "اكتشاف مواقع PAM (NGG) الأمامية واستخراج مقطع الدليل؛ كفاءة القطع ومخاطر Off-Target غير محسوبة.",
+        badgeText = "CRISPR-Cas9 • PAM Scan",
         defaultSequence = ">HBB_Exon1_Target_Region | Homo sapiens beta-globin locus\nATGGTGCACCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAGGCCCTGGGCAGGCTGCTGGTGGTCTACCCTTGGACCCAGAGGTTCTTTGAGTCCTTTGGGGATCTGTCCACTCCTGATGCTGTTATGGGCAACCCTAAGGTGAAGGCTCATGGCAAGAAAGTGCTCGGTGCCTTTAGTGATGGCCTGGCTCACCTGGACAACCTCAAGGGCACCTTTGCCACACTGAGTGAGCTGCACTGTGACAAGCTGCACGTGGATCCTGAGAACTTCAGG",
-        defaultGoal = "مسح مواقع PAM (NGG) لتصميم دليل sgRNA عالي الدقة لتصحيح طفرة بيتا-غلوبين مع تقليل احتمالية القطع خارج الهدف Off-target."
+        defaultGoal = "حصر مواقع PAM (NGG) المحتملة في التسلسل. يتطلب تقييم فعالية الدليل والقطع خارج الهدف أداة تخصصية وبيانات إضافية غير متاحة هنا."
     ),
     GENOMIC_ALIGNMENT(
         id = "GENOMIC_ALIGNMENT",
         titleAr = "محاذاة الجينوم واكتشاف الطفرات",
-        subtitleAr = "حساب محتوى GC%، درجة الانصهار Tm، ترجمة الإطار القرائي ORF، وتحليل المتغيرات الجينية",
-        badgeText = "Genomics • Variant Calling",
+        subtitleAr = "حساب GC% وTm التقريبية، واستخراج ORF يبدأ بـ ATG عند وجوده؛ لا يتوفر هنا تحليل متغيرات جينية.",
+        badgeText = "Genomics • Sequence Metrics",
         defaultSequence = ">BRCA1_RING_Domain_Amplicon | Genomic Reference Segment\nATGGATTTATCTGCTCTTCGCGTTGAAGAAGTACAAAATGTCATTAATGCTATGCAGAAAATCTTAGAGTGTCCCATCTGTCTGGAGTTGATCAAGGAACCTGTCTCCACAAAGTGTGACCACATATTTTGCAAATTTTGCATGCTGAAACTTCTCAACCAGAAGAAAGGGCCTTCACAGTGTCCTTTATGTAAGAATGATATAACCAAAAGGAGCCTACAAGAAAGTACGAGATTTAGTCAACTTGTTGAAGAGCTATTGAAAATCATTTGTGCTTTTCAGCTTGACACAGGTTTGGAGTATGCAAACAGCTATAAT",
-        defaultGoal = "تحليل خصائص الأمبليكون الجيني (GC%, Tm)، استخراج الإطار القرائي المفتوح ORF وترجمته إلى أحماض أمينية، وتقييم ثبات البادئات Primers."
+        defaultGoal = "تحليل GC% وTm التقريبية للتسلسل، واستخراج إطار قرائي يبدأ بـ ATG إن وجد؛ لا يتضمن هذا المسار Variant Calling أو تحليل ثبات البادئات."
     ),
     CLINICAL_TRIALS(
         id = "CLINICAL_TRIALS",
-        titleAr = "التجارب السريرية والمؤشرات الحيوية",
-        subtitleAr = "نمذجة الاستجابة للجرعة IC50، طاقة الارتباط الجزيئي ΔG، ومؤشر الأمان العلاجي لمراحل Phase I-III",
-        badgeText = "Clinical PK/PD • Biomarkers",
+        titleAr = "ملاحظات المرشح الحيوي (دون تقييم سريري)",
+        subtitleAr = "يمكن حفظ تسلسل المرشح وملاحظاته؛ IC50 وΔG ومؤشر الأمان والجاهزية السريرية غير محسوبة.",
+        badgeText = "Clinical Notes • Unscored",
         defaultSequence = ">GLP1R_Peptide_Agonist_Candidate | Clinical Lead Sequence\nHAEGTFTSDVSSYLEGQAAKEFIAWLVKGRG",
-        defaultGoal = "تقييم المرشح الببتيدي سريرياً: حساب الوزن الجزيئي kDa، تقدير تركيز التثبيط النصفي IC50، مؤشر الأمان العلاجي TI، وجاهزية التجارب السريرية."
+        defaultGoal = "حفظ وتحليل وصفي لتسلسل المرشح الببتيدي. يتطلب حساب IC50 وΔG ومؤشر الأمان والجاهزية السريرية بيانات وتجارب وأدوات تخصصية غير مهيأة في التطبيق."
     )
 }
 
