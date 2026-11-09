@@ -343,10 +343,10 @@ def run_novaforge_bio_pipeline() -> Dict[str, object]:
         "gravy_hydropathy": ${metrics.gravyHydropathy}
     }
     crispr_lead_guide = {
-        "spacer_20nt": "${topPam?.spacer20nt ?: "GTGCACCTGACTCCTGAGGA"}",
-        "pam": "${topPam?.pamTriplet ?: "AGG"}",
-        "on_target_score": ${topPam?.onTargetScore ?: 91},
-        "off_target_risk": "${topPam?.offTargetRisk ?: "Low Risk"}"
+        "spacer_20nt": ${topPam?.spacer20nt?.let { "\"$it\"" } ?: "None"},
+        "pam": ${topPam?.pamTriplet?.let { "\"$it\"" } ?: "None"},
+        "on_target_score": ${topPam?.onTargetScore ?: "None"},
+        "off_target_risk": ${topPam?.offTargetRisk?.let { "\"$it\"" } ?: "None"}
     }
     return {
         "report": BioTargetReport().__dict__,
