@@ -93,12 +93,11 @@ import kotlin.math.sqrt
 enum class FoldingVisualizationMode(val id: String, val titleAr: String) {
     BACKBONE_3D("BACKBONE_3D", "الهيكل ثلاثي الأبعاد 3D"),
     RAMACHANDRAN("RAMACHANDRAN", "مخطط راماشاندران (φ/ψ)"),
-    CONTACT_ENERGY("CONTACT_ENERGY", "خريطة التماس والطاقة")
+    CONTACT_ENERGY("CONTACT_ENERGY", "خريطة التلامس التوضيحية")
 }
 
 enum class FoldingColorScheme(val id: String, val titleAr: String) {
-    SECONDARY_STRUCTURE("STRUCTURE", "البنية الثانوية"),
-    PLDDT_CONFIDENCE("PLDDT", "ثقة الطي pLDDT"),
+    SECONDARY_STRUCTURE("STRUCTURE", "التركيب التوضيحي"),
     HYDROPATHY("HYDROPATHY", "الكراهية للماء GRAVY")
 }
 
@@ -160,8 +159,10 @@ fun buildSimulatedProteinStructure(metrics: BioSequenceMetrics): SimulatedProtei
     val rawProtein = metrics.translatedProteinPreview
         .uppercase(Locale.US)
         .filter { it in 'A'..'Z' }
-        .ifEmpty { "MVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVM" }
         .take(72)
+    require(rawProtein.isNotBlank()) {
+        "لا يوجد تسلسل بروتيني لبناء العرض التوضيحي. أدخل تسلسلاً بروتينياً صالحاً."
+    }
 
     val n = rawProtein.length
     val nodes = ArrayList<ResidueFoldingNode>(n)
@@ -226,16 +227,6 @@ fun buildSimulatedProteinStructure(metrics: BioSequenceMetrics): SimulatedProtei
         val unfoldedY = sin(i * 0.55f) * 3.2f
         val unfoldedZ = cos(i * 0.45f) * 2.6f
 
-        val deterministicWave = sin(i * 0.73 + aa.code * 0.17)
-        val localPlddt = (
-            metrics.plddtConfidence +
-                when (kind) {
-                    SecondaryStructureKind.ALPHA_HELIX -> 4.2
-                    SecondaryStructureKind.BETA_SHEET -> 2.8
-                    SecondaryStructureKind.RANDOM_COIL -> -7.5
-                } + deterministicWave * 3.6
-            ).coerceIn(52.0, 98.9)
-
         val (phi, psi) = when (kind) {
             SecondaryStructureKind.ALPHA_HELIX -> {
                 (-62f + (sin(i * 1.1f) * 9f)) to (-43f + (cos(i * 0.9f) * 8f))
@@ -262,7 +253,7 @@ fun buildSimulatedProteinStructure(metrics: BioSequenceMetrics): SimulatedProtei
                 oneLetterCode = aa,
                 threeLetterName = aminoAcidThreeLetterMap[aa] ?: "Xaa",
                 structureKind = kind,
-                plddtScore = (localPlddt * 10.0).roundToInt() / 10.0,
+                plddtScore = 0.0,
                 hydropathy = hydro,
                 nativePhi = phi,
                 nativePsi = psi,
@@ -404,13 +395,13 @@ fun ProteinFoldingVisualizer(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "🧊 المحلل التفاعلي لطي البروتين والبنية الفراغية (Protein Folding Lab)",
+                        text = "🧊 عارض توضيحي ثلاثي الأبعاد لتسلسل البروتين",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberCyan,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "معاينة ثلاثية الأبعاد لسلسلة Cα، مخطط زوايا راماشاندران (φ/ψ)، وخريطة الروابط الهيدروجينية والجيوب الدوائية",
+                        text = "تصور هندسي تعليمي مبني على قواعد مبسطة؛ لا يمثل تنبؤاً بنيوياً أو قياسات طاقة/ارتباط حقيقية.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -554,13 +545,13 @@ fun ProteinFoldingVisualizer(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LegendDot(color = CyberCyan, text = "α-Helix (${metrics.alphaHelixPct}%)")
-                    LegendDot(color = CyberViolet, text = "β-Sheet (${metrics.betaSheetPct}%)")
-                    LegendDot(color = CyberAmber, text = "Coil (${metrics.randomCoilPct}%)")
+                    LegendDot(color = CyberCyan, text = "α-Helix (توضيحي)")
+                    LegendDot(color = CyberViolet, text = "β-Sheet (توضيحي)")
+                    LegendDot(color = CyberAmber, text = "Coil (توضيحي)")
                 }
 
                 Text(
-                    text = "RMSD: ${currentRmsd}Å • Rg: ${currentRg}Å • ΔG: $currentDeltaG kcal/mol",
+                    text = "الإحداثيات والتلامسات المعروضة توضيحية؛ لا تمثل RMSD أو Rg أو ΔG محسوبة.",
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = JetBrainsMonoFontFamily,
                     color = CyberEmerald,
@@ -588,13 +579,13 @@ fun ProteinFoldingVisualizer(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "مسار محاكاة الطي الحراري (Folding Trajectory): ${(foldingProgress * 100).roundToInt()}%",
+                        text = "تقدم الحركة التوضيحية: ${(foldingProgress * 100).roundToInt()}%",
                         style = MaterialTheme.typography.labelMedium,
                         color = CyberCyan,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "الروابط النشطة: $activeContactsCount / ${structure.contacts.size}",
+                        text = "التلامسات المرسومة: $activeContactsCount / ${structure.contacts.size}",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = JetBrainsMonoFontFamily,
                         color = CyberEmerald
@@ -618,12 +609,12 @@ fun ProteinFoldingVisualizer(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "0% سلسلة غير مطوية (Denatured Coil)",
+                        text = "0% الشكل المفكوك في العرض",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "100% البنية الأصلية المستقرة (Native State)",
+                        text = "100% الشكل المرسوم في العرض",
                         style = MaterialTheme.typography.labelSmall,
                         color = CyberEmerald
                     )
@@ -771,39 +762,24 @@ fun ProteinFoldingVisualizer(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "زوايا الالتواء: φ = ${selectedNode.nativePhi.roundToInt()}° , ψ = ${selectedNode.nativePsi.roundToInt()}° • التماس الهيدروجيني: $residueContacts روابط",
+                                text = "زوايا φ/ψ والتلامسات المعروضة اصطناعية لأغراض التوضيح: $residueContacts تلامسات",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "الكراهية للماء: ${selectedNode.hydropathy} • التعرض للمذيب: ${selectedNode.solventAccessibilityPct}% " +
-                                    if (selectedNode.isBindingPocket) "• 🎯 جيب ارتباط دوائي نشط" else "• نطاق هيكلي قياسي",
+                                text = "مؤشر الكراهية للماء: ${selectedNode.hydropathy} • التعرض للمذيب (تقدير توضيحي): ${selectedNode.solventAccessibilityPct}% " +
+                                    if (selectedNode.isBindingPocket) "• موضع مرشح بصري غير مثبت" else "• لا يوجد موضع مرشح بصري",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (selectedNode.isBindingPocket) CyberAmber else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(CyberBackground)
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = "pLDDT",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "${selectedNode.plddtScore}%",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontFamily = JetBrainsMonoFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = CyberEmerald
-                            )
-                        }
+                        Text(
+                            text = "pLDDT غير متاح دون تشغيل نموذج تنبؤ بنيوي متخصص.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -817,12 +793,6 @@ private fun resolveResidueColor(
 ): Color {
     return when (scheme) {
         FoldingColorScheme.SECONDARY_STRUCTURE -> node.structureKind.color
-        FoldingColorScheme.PLDDT_CONFIDENCE -> when {
-            node.plddtScore >= 90.0 -> CyberEmerald
-            node.plddtScore >= 78.0 -> CyberCyan
-            node.plddtScore >= 65.0 -> CyberAmber
-            else -> Color(0xFFEF4444)
-        }
         FoldingColorScheme.HYDROPATHY -> when {
             node.hydropathy >= 1.5 -> CyberAmber
             node.hydropathy >= -0.8 -> CyberEmerald
