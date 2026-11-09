@@ -1048,34 +1048,21 @@ class GeminiAiRepository(
         audioBase64: String,
         mimeType: String = "audio/wav"
     ): String = withContext(Dispatchers.IO) {
-        if (audioBase64.isNotBlank()) {
-            try {
-                val audioBytes = Base64.decode(audioBase64, Base64.DEFAULT)
-                val text = withTimeout(AI_TIMEOUT_MS) {
-                    executeWithAppCheckRetry {
-                        flashModel.generateContent(
-                            content {
-                                inlineData(audioBytes, mimeType)
-                                text("Transcribe this audio recording accurately in Arabic or English:")
-                            }
-                        ).text
+        require(audioBase64.isNotBlank()) { "لم يتم توفير تسجيل صوتي." }
+        val audioBytes = Base64.decode(audioBase64, Base64.DEFAULT)
+        require(audioBytes.isNotEmpty()) { "ملف التسجيل الصوتي فارغ." }
+        val transcription = withTimeout(AI_TIMEOUT_MS) {
+            executeWithAppCheckRetry {
+                flashModel.generateContent(
+                    content {
+                        inlineData(audioBytes, mimeType)
+                        text("Transcribe this audio recording accurately in Arabic or English. Return only the transcription:")
                     }
-                }
-                if (!text.isNullOrBlank()) return@withContext text
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (!isAppCheckTokenError(e)) {
-                    GlobalExceptionHandler.reportError(
-                        phase = "Gemini Audio Transcription ($MODEL_FLASH)",
-                        throwable = e,
-                        isFatal = false,
-                        serviceName = "Gemini"
-                    )
-                }
+                ).text
             }
         }
-        "تم نسخ التسجيل الصوتي عبر $MODEL_TRANSCRIBE: «قم ببناء واجهة لوحة تحكم متفاعلة مع جدول قاعدة بيانات مرن ومعاينة حية»."
+        transcription?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("لم يُرجع نموذج Gemini نصاً للتسجيل.")
     }
 
     // 9. Live Voice Conversation using Firebase AI Logic
