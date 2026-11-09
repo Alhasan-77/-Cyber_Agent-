@@ -1,10 +1,9 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -47,6 +46,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -324,22 +324,26 @@ fun ProteinFoldingVisualizer(
     var selectedResidueIndex by remember(structure.residues.size) {
         mutableIntStateOf(0)
     }
-    var autoRotate by remember { mutableStateOf(true) }
+    var autoRotate by remember { mutableStateOf(false) }
     var rotationYaw by remember { mutableFloatStateOf(28f) }
     var rotationPitch by remember { mutableFloatStateOf(16f) }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "protein_folding_orbit")
-    val animatedSpinDeg by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 18000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "orbit_spin"
-    )
+    val spinAnimation = remember { Animatable(0f) }
+    LaunchedEffect(autoRotate) {
+        if (autoRotate) {
+            spinAnimation.animateTo(
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 18000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                )
+            )
+        } else {
+            spinAnimation.snapTo(0f)
+        }
+    }
 
-    val effectiveYawDeg = if (autoRotate) (rotationYaw + animatedSpinDeg) % 360f else rotationYaw
+    val effectiveYawDeg = if (autoRotate) (rotationYaw + spinAnimation.value) % 360f else rotationYaw
     val safeSelectedIdx = selectedResidueIndex.coerceIn(0, max(0, structure.residues.lastIndex))
     val selectedNode = structure.residues.getOrNull(safeSelectedIdx)
 
