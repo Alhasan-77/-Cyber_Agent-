@@ -608,7 +608,7 @@ fun BioscienceLabTabScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "🧬 التنبؤ بالبنية الثانوية ثلاثية الأبعاد (Alpha-Helix / Beta-Sheet / Coil)",
+                                text = "مؤشرات تركيبية تقريبية (ليست تنبؤاً بنيوياً متخصصاً)",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = CyberEmerald,
                                 fontWeight = FontWeight.Bold
@@ -851,7 +851,7 @@ fun BioscienceLabTabScreen(
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Text(
-                                                text = "${exp.workflowMode} • pLDDT: ${exp.plddtScore}% • ΔG: ${exp.freeEnergyKcal} kcal/mol • Helix: ${exp.alphaHelixPct}% • Sheet: ${exp.betaSheetPct}%",
+                                                text = "${exp.workflowMode} • ملخص محفوظ: ${exp.aiReportSummary.take(90)}",
                                                 style = MaterialTheme.typography.labelSmall.copy(
                                                     fontFamily = JetBrainsMonoFontFamily
                                                 ),
