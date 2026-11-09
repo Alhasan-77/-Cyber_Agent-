@@ -78,6 +78,7 @@ import com.example.ui.theme.CyberCoral
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.CyberEmerald
 import com.example.ui.theme.CyberSurface
+import com.example.ui.theme.CyberTextSecondary
 import com.example.ui.theme.CyberViolet
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
