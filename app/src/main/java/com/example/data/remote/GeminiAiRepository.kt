@@ -20,7 +20,6 @@ import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -102,12 +101,6 @@ class GeminiAiRepository(
                 "com.google.firebase.appcheck.store.$persistenceKey",
                 Context.MODE_PRIVATE
             ).edit().clear().commit()
-
-            if (BuildConfig.DEBUG) {
-                FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                    DebugAppCheckProviderFactory.getInstance()
-                )
-            }
 
             suspendCancellableCoroutine { cont ->
                 FirebaseAppCheck.getInstance().getAppCheckToken(true)
