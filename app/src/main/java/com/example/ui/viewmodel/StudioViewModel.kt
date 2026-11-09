@@ -478,15 +478,15 @@ class StudioViewModel(
                     _jsBuffer.value + "\n" + _backendBuffer.value
                 val checksum = computeSha256Short(source)
                 val report = buildString {
-                    appendLine("تقرير مراجعة أولية للكود (ليس فحصاً أمنياً ديناميكياً):")
+                    appendLine("مراجعة أولية للمصدر فقط، وليست فحصاً أمنياً ديناميكياً:")
                     appendLine("البصمة SHA-256 المختصرة: $checksum")
                     appendLine("حجم المصدر: ${source.length} حرف")
-                    appendLine("لم يتم تشغيل أدوات SAST/DAST أو اختبارات XSS/SQL injection.")
-                    appendLine("يلزم فحص خارجي وتشغيل اختبارات قبل اعتماد سلامة التطبيق.")
+                    appendLine("لم يتم تشغيل SAST/DAST أو اختبارات XSS/SQL injection.")
+                    appendLine("لا يمكن اعتماد سلامة التطبيق دون تشغيل أدوات اختبار مخصصة.")
                 }
                 val projectId = _selectedProjectId.value
                 if (projectId.isNullOrBlank()) {
-                    _statusBanner.value = "لا يوجد مشروع محدد لمراجعة الكود."
+                    _statusBanner.value = "لا يوجد مشروع محدد لمراجعته."
                     return@launch
                 }
                 repository.createBuildLog(
@@ -496,14 +496,14 @@ class StudioViewModel(
                     durationMs = 0L,
                     reportSummary = report
                 ).onSuccess {
-                    appendConsoleLog("[Code Review] Recorded preliminary review. No security scanner was run.")
-                    _statusBanner.value = "اكتملت المراجعة الأولية؛ لم يتم إجراء فحص أمني ديناميكي."
+                    appendConsoleLog("[Code Review] Preliminary source review saved; no security scanner was run.")
+                    _statusBanner.value = "اكتملت المراجعة الأولية. لم يتم إجراء فحص أمني فعلي."
                 }.onFailure { error ->
                     _statusBanner.value = "تعذر حفظ تقرير المراجعة: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
             } catch (error: Exception) {
-                _statusBanner.value = "تعذرت مراجعة الكود: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 Log.e(TAG, "Code review failed", error)
+                _statusBanner.value = "تعذرت مراجعة الكود: ${error.localizedMessage ?: "خطأ غير معروف"}"
             } finally {
                 _isBusy.value = false
             }
