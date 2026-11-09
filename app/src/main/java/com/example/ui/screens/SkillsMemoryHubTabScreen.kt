@@ -334,7 +334,7 @@ fun SkillsMemoryHubTabScreen(
             Tab(
                 selected = activeSectionTab == 0,
                 onClick = { activeSectionTab = 0 },
-                text = { Text("📚 دليل المهارات الـ 25 (${catalog.skills.size})") },
+                text = { Text("📚 دليل المهارات (${catalog.skills.size})") },
                 modifier = Modifier.testTag("skills_subtab_catalog")
             )
             Tab(
