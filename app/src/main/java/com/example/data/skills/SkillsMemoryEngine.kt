@@ -60,9 +60,8 @@ data class SkillsMemoryCatalog(
 )
 
 /**
- * Loads the complete 184-file / 25-skill archive from local assets (`skills_memory_catalog.json`
- * and `skills-main.zip`), provides on-demand raw file extraction, and performs semantic routing
- * to inject relevant skills and references automatically into AI Assistant and IDE prompts.
+ * Loads optional skill catalog and ZIP assets when bundled. Missing assets produce an empty catalog
+ * instead of reporting files or skills that are not present.
  */
 object SkillsMemoryEngine {
 
@@ -90,10 +89,10 @@ object SkillsMemoryEngine {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load skills_memory_catalog.json from assets", e)
                 SkillsMemoryCatalog(
-                    archiveName = "skills-main_b7d3bd06.zip",
-                    totalArchiveFiles = 184,
+                    archiveName = "",
+                    totalArchiveFiles = 0,
                     totalSkills = 0,
-                    mcpServerUrl = "https://mcp.expo.dev/mcp",
+                    mcpServerUrl = "",
                     skills = emptyList(),
                     globalToolsAndConfigs = emptyList(),
                     allFilePaths = emptyList()
@@ -186,7 +185,9 @@ object SkillsMemoryEngine {
         if (matchedSkills.isEmpty()) return ""
         return buildString {
             appendLine("=== [ACTIVE SKILLS & TOOLS MEMORY BANK — AUTO-INJECTED] ===")
-            appendLine("MCP Server Endpoint: $mcpServerUrl")
+            if (mcpServerUrl.isNotBlank()) {
+                appendLine("MCP endpoint listed in metadata only; this app does not establish a live MCP connection: $mcpServerUrl")
+            }
             appendLine("Active Skills Applied (${matchedSkills.size}): ${matchedSkills.joinToString(", ") { "${it.id} (${it.titleAr})" }}")
             appendLine()
             matchedSkills.forEach { skill ->
