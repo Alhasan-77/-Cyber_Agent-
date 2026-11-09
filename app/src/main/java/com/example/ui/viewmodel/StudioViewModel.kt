@@ -1174,26 +1174,35 @@ class StudioViewModel(
     fun runBioscienceAnalysis(fastaSequence: String, researchGoal: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val result = aiRepository.analyzeBioscienceSequence(
-                fastaOrSequence = fastaSequence,
-                researchGoal = researchGoal,
-                preferredModel = _selectedChatModel.value
-            )
-            _bioscienceOutput.value = result
-            repository.createBioExperiment(
-                title = researchGoal.take(80).ifBlank { "تحليل تسلسل حيوي (${_selectedChatModel.value})" },
-                workflowMode = "PROTEIN_FOLDING",
-                fastaSequence = fastaSequence,
-                researchGoal = researchGoal,
-                plddtScore = 91L,
-                freeEnergyKcal = -11.2,
-                alphaHelixPct = 52L,
-                betaSheetPct = 24L,
-                aiReportSummary = result
-            )
-            syncUserProfileToCloud()
-            _statusBanner.value = "اكتمل التحليل الحيوي وتم حفظ التجربة سحابياً في Firestore (${_selectedChatModel.value})"
-            _isBusy.value = false
+            try {
+                val result = aiRepository.analyzeBioscienceSequence(
+                    fastaOrSequence = fastaSequence,
+                    researchGoal = researchGoal,
+                    preferredModel = _selectedChatModel.value
+                )
+                _bioscienceOutput.value = result
+                repository.createBioExperiment(
+                    title = researchGoal.take(80).ifBlank { "تحليل تسلسل حيوي (${_selectedChatModel.value})" },
+                    workflowMode = "PROTEIN_FOLDING",
+                    fastaSequence = fastaSequence,
+                    researchGoal = researchGoal,
+                    plddtScore = 0L,
+                    freeEnergyKcal = 0.0,
+                    alphaHelixPct = 0L,
+                    betaSheetPct = 0L,
+                    aiReportSummary = result
+                ).onSuccess {
+                    syncUserProfileToCloud()
+                    _statusBanner.value = "اكتمل التحليل وحُفظت التجربة. المؤشرات البنيوية غير محسوبة ما لم يذكرها النموذج."
+                }.onFailure { error ->
+                    _statusBanner.value = "اكتمل التحليل لكن تعذر حفظه: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Bioscience analysis failed", error)
+                _statusBanner.value = "تعذر تحليل التسلسل: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
