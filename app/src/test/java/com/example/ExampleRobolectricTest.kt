@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.skills.BioscienceSimulationEngine
+import com.example.data.model.BioExperimentRecord
 import com.example.data.skills.BioscienceWorkflowMode
 import com.example.ui.components.MainScreenLayout
 import com.example.ui.components.SKILLS_HUB_TAB_INDEX
@@ -166,6 +167,14 @@ class ExampleRobolectricTest {
         )
         assertTrue(proteinMetrics.pamSites.isEmpty())
         assertEquals(0.0, proteinMetrics.plddtConfidence, 0.0)
+        assertEquals(0.0, proteinMetrics.gcContentPct, 0.0)
+        assertEquals(0.0, proteinMetrics.meltingTempC, 0.0)
+
+        val emptyBioRecord = BioExperimentRecord()
+        assertEquals(0L, emptyBioRecord.plddtScore)
+        assertEquals(0.0, emptyBioRecord.freeEnergyKcal, 0.0)
+        assertEquals(0L, emptyBioRecord.alphaHelixPct)
+        assertEquals(0L, emptyBioRecord.betaSheetPct)
 
         try {
             BioscienceSimulationEngine.analyzeSequenceMetrics(
