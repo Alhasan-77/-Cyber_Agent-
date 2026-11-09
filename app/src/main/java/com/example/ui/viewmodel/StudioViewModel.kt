@@ -1210,19 +1210,8 @@ class StudioViewModel(
 
     fun generateMusicTrack(prompt: String, useFullLengthPro: Boolean, onMusicReady: (String?) -> Unit) {
         viewModelScope.launch {
-            _isBusy.value = true
-            try {
-                val asset = aiRepository.generateMusic(prompt, useFullLengthPro)
-                _generatedAssets.value = listOf(asset) + _generatedAssets.value
-                onMusicReady(asset.base64Data)
-                _statusBanner.value = "تم توليد الموسيقى عبر ${asset.modelUsed}"
-            } catch (error: Exception) {
-                Log.e(TAG, "Music generation failed", error)
-                onMusicReady(null)
-                _statusBanner.value = "تعذر توليد الموسيقى: ${error.localizedMessage ?: "خطأ غير معروف"}"
-            } finally {
-                _isBusy.value = false
-            }
+            _statusBanner.value = "توليد الموسيقى غير متاح حالياً لأن مزود إنتاج الملفات الصوتية غير مهيأ."
+            onMusicReady(null)
         }
     }
 
