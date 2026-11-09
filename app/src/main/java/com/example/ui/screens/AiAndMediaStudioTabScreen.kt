@@ -1082,7 +1082,7 @@ private fun VoiceAndMusicStudioSection(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1. Gemini Live Voice & Transcription
+        // 1. Turn-based Gemini Voice Conversation & Transcription
         item {
             Card(
                 shape = RoundedCornerShape(24.dp),
@@ -1096,7 +1096,7 @@ private fun VoiceAndMusicStudioSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "🎙️ Gemini Live الصوتية الحية ونسخ الميكروفون",
+                        text = "🎙️ محادثة صوتية مع Gemini ونسخ الميكروفون",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberTextPrimary,
                         fontWeight = FontWeight.Bold
@@ -1161,7 +1161,7 @@ private fun VoiceAndMusicStudioSection(
                         ) {
                             Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = CyberBackground)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("تحدث مع Gemini Live", color = CyberBackground, fontWeight = FontWeight.Bold)
+                            Text("أرسل دوراً صوتياً إلى Gemini", color = CyberBackground, fontWeight = FontWeight.Bold)
                         }
                     }
 
