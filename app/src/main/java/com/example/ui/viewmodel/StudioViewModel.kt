@@ -192,7 +192,7 @@ class StudioViewModel(
             ChatMessage(
                 id = "welcome_1",
                 isUser = false,
-                text = "مرحباً بك في NovaForge AI Studio! تم تفعيل محركي **Gemini API** (عبر Firebase AI Logic) و **ChatGPT API** (عبر OpenAI API) للعمل جنباً إلى جنب لبناء تطبيقات Full-Stack المتكاملة، إدارة قواعد البيانات، وتوليد الكود والعلوم الحيوية. يمكنك اختيار أي محرك منفرداً أو تشغيل وضع المحرك المزدوج (Gemini + ChatGPT معاً).",
+                text = "مرحباً بك في NovaForge AI Studio. يمكن استخدام Gemini عبر Firebase AI Logic، ويتاح OpenAI بعد إعداد مفتاحه في بيئة البناء. يعتمد وضع المحرك المزدوج على تهيئة المزودين المتاحين.",
                 modelUsed = GeminiAiRepository.MODEL_DUAL_ENGINE,
                 timestampLabel = currentTimeLabel()
             )
@@ -219,9 +219,7 @@ class StudioViewModel(
     private val _mediaAnalysisOutput = MutableStateFlow<String?>(null)
     val mediaAnalysisOutput: StateFlow<String?> = _mediaAnalysisOutput.asStateFlow()
 
-    private val _liveVoiceHistory = MutableStateFlow<List<String>>(
-        listOf("🎙️ جلسة المحادثة الصوتية الحية (gemini-3.8-live) جاهزة للاستماع...")
-    )
+    private val _liveVoiceHistory = MutableStateFlow<List<String>>(emptyList())
     val liveVoiceHistory: StateFlow<List<String>> = _liveVoiceHistory.asStateFlow()
 
     private val _lastTranscribedText = MutableStateFlow("")
@@ -234,10 +232,10 @@ class StudioViewModel(
     // Skills & Tools Memory Hub state
     private val _skillsCatalog = MutableStateFlow(
         SkillsMemoryCatalog(
-            archiveName = "skills-main_b7d3bd06.zip",
-            totalArchiveFiles = 184,
-            totalSkills = 25,
-            mcpServerUrl = "https://mcp.expo.dev/mcp",
+            archiveName = "",
+            totalArchiveFiles = 0,
+            totalSkills = 0,
+            mcpServerUrl = "",
             skills = emptyList(),
             globalToolsAndConfigs = emptyList(),
             allFilePaths = emptyList()
@@ -245,9 +243,7 @@ class StudioViewModel(
     )
     val skillsCatalog: StateFlow<SkillsMemoryCatalog> = _skillsCatalog.asStateFlow()
 
-    private val _pinnedSkillIds = MutableStateFlow(
-        setOf("expo-overview", "expo-ui", "expo-design-system", "expo-router", "expo-module", "eas-workflows")
-    )
+    private val _pinnedSkillIds = MutableStateFlow(emptySet<String>())
     val pinnedSkillIds: StateFlow<Set<String>> = _pinnedSkillIds.asStateFlow()
 
     private val _autoInjectSkillsEnabled = MutableStateFlow(true)
@@ -283,10 +279,11 @@ class StudioViewModel(
 
     fun toggleAutoInjectSkills(enabled: Boolean) {
         _autoInjectSkillsEnabled.value = enabled
-        _statusBanner.value = if (enabled) {
-            "⚡ تم تفعيل الاستدعاء التلقائي للمهارات الـ 25 في المحرر والمساعد الذكي"
-        } else {
-            "تم إيقاف الحقن التلقائي للمهارات"
+        val availableSkills = _skillsCatalog.value.totalSkills
+        _statusBanner.value = when {
+            !enabled -> "تم إيقاف الاستدعاء التلقائي للمهارات."
+            availableSkills == 0 -> "تم تفعيل الخيار، لكن لا توجد مهارات محمّلة للاستدعاء."
+            else -> "تم تفعيل الاستدعاء التلقائي لـ $availableSkills مهارة محمّلة."
         }
     }
 
@@ -340,9 +337,17 @@ class StudioViewModel(
             result.onSuccess {
                 _isSkillsSyncedToFirestore.value = true
                 if (!silent) {
-                    _statusBanner.value = "☁️ تم حفظ ومزامنة كافة المهارات الـ 25 والأدوات في قاعدة بيانات Cloud Firestore بنجاح!"
+                    _statusBanner.value = "تمت مزامنة ${catalog.totalSkills} مهارة و${pinned.size} مهارة مثبتة مع Firestore."
                 }
-                appendConsoleLog("[Firestore Memory Sync] Synced 25 skills & ${pinned.size} pinned items to '${SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME}'.")
+                appendConsoleLog(
+                    "[Firestore Memory Sync] Synced ${catalog.totalSkills} skills & ${pinned.size} pinned items."
+                )
+            }.onFailure { error ->
+                _isSkillsSyncedToFirestore.value = false
+                Log.w(TAG, "Skills memory sync failed", error)
+                if (!silent) {
+                    _statusBanner.value = "تعذرت مزامنة المهارات: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
             }
         }
     }
@@ -1393,101 +1398,96 @@ class StudioViewModel(
             <div class="nova-app">
               <header class="top-bar">
                 <div>
-                  <span class="pill">💹 FinTech Quantum Engine</span>
-                  <h1>لوحة السيولة والتداول الخوارزمي المباشر</h1>
+                  <span class="pill">نموذج FinTech تجريبي • لا اتصال بمنصة تداول</span>
+                  <h1>واجهة محاكاة محلية للتداول</h1>
                 </div>
-                <button class="action-btn" onclick="simulateTrade()">تنفيذ صفقة ذكية ⚡</button>
+                <button class="action-btn" onclick="simulateTrade()">إضافة سجل محاكاة</button>
               </header>
               <div class="metrics-row">
                 <div class="metric-box">
-                  <span>حجم السيولة السحابية</span>
-                  <strong id="liquidity-val">$4.85M</strong>
+                  <span>السيولة الفعلية</span>
+                  <strong id="liquidity-val">غير متاحة</strong>
                 </div>
                 <div class="metric-box">
-                  <span>مؤشر المخاطر الذكي</span>
-                  <strong class="ok" id="risk-score">منخفض (0.12)</strong>
+                  <span>مؤشر المخاطر</span>
+                  <strong id="risk-score">غير محسوب</strong>
                 </div>
                 <div class="metric-box">
                   <span>سرعة التسوية</span>
-                  <strong>9.4ms</strong>
+                  <strong>غير متصلة</strong>
                 </div>
               </div>
               <div class="card">
-                <h3>سجل المعاملات المالية الفورية</h3>
+                <h3>سجل المحاكاة المحلي</h3>
                 <ul id="trades-list">
-                  <li>🟢 شراء عقد سحابي ذكي بقيمة $12,400 • تم التحقق</li>
-                  <li>🔵 إعادة توازن المحفظة الآلية عبر نموذج Gemini Argon</li>
+                  <li>لا توجد عمليات. الزر يضيف سجلاً تجريبياً فقط ولا ينفذ أوامر مالية.</li>
                 </ul>
               </div>
             </div>
         """.trimIndent()
 
         val FINTECH_JS = """
-            let liq = 4.85;
             function simulateTrade() {
-              liq = +(liq + 0.15).toFixed(2);
-              document.getElementById('liquidity-val').textContent = '$' + liq + 'M';
               const ul = document.getElementById('trades-list');
               const li = document.createElement('li');
-              li.textContent = '⚡ صفقة خوارزمية جديدة • السيولة المحدثة: $' + liq + 'M';
+              li.textContent = 'محاكاة محلية فقط: لم يتم إرسال أمر أو تنفيذ صفقة فعلية.';
               ul.prepend(li);
-              console.log('Executed algorithmic trade. Liquidity=' + liq + 'M');
+              console.info('Demo only: no trading order was sent.');
             }
         """.trimIndent()
 
         val FINTECH_BACKEND = """
-            // FinTech Risk & Ledger Microservice (Python FastAPI + SQL)
+            # Example only: this endpoint does not persist a ledger or settle funds.
             from fastapi import FastAPI
             app = FastAPI()
 
-            @app.post("/api/v1/ledger/settle")
-            async def settle_transaction(amount: float, asset: str):
-                return {"status": "SETTLED", "amount": amount, "asset": asset}
+            @app.post("/api/v1/ledger/preview")
+            async def preview_transaction(amount: float, asset: str):
+                return {"status": "SIMULATED_ONLY", "amount": amount, "asset": asset}
         """.trimIndent()
 
         val BIOMED_HTML = """
             <div class="nova-app">
               <header class="top-bar">
                 <div>
-                  <span class="pill">🧬 BioMed Cloud Lab</span>
-                  <h1>بوابة تحليل العينات الجينومية والسريرية</h1>
+                  <span class="pill">واجهة BioMed تجريبية • لا يوجد تحليل متصل</span>
+                  <h1>قائمة سجلات العينات</h1>
                 </div>
-                <button class="action-btn" onclick="runSeqBatch()">فحص عينة جديدة 🔬</button>
+                <button class="action-btn" onclick="addDemoSample()">إضافة سجل تجريبي</button>
               </header>
               <div class="metrics-row">
                 <div class="metric-box">
-                  <span>العينات المحللة</span>
-                  <strong id="sample-count">348</strong>
+                  <span>السجلات التجريبية</span>
+                  <strong id="sample-count">0</strong>
                 </div>
                 <div class="metric-box">
-                  <span>متوسط GC Content</span>
-                  <strong class="ok">54.8%</strong>
+                  <span>GC Content</span>
+                  <strong>غير محسوب</strong>
                 </div>
                 <div class="metric-box">
-                  <span>دقة التنبؤ البنيوي</span>
-                  <strong>99.4%</strong>
+                  <span>الثقة البنيوية</span>
+                  <strong>غير متاحة</strong>
                 </div>
               </div>
               <div class="card">
-                <h3>سجل العينات الجزيئية (FASTA Queue)</h3>
+                <h3>سجل العرض التجريبي</h3>
                 <ul id="bio-list">
-                  <li>🧬 عينة INS-204 • اكتمل تطابق السلسلة البروتينية</li>
-                  <li>🔬 عينة CRISPR-sgRNA • كفاءة استهداف 98.2%</li>
+                  <li>لا توجد سجلات بعد. إضافة سجل لا تشغّل Biopython أو أداة تحليل حيوية.</li>
                 </ul>
               </div>
             </div>
         """.trimIndent()
 
         val BIOMED_JS = """
-            let samples = 348;
-            function runSeqBatch() {
-              samples++;
-              document.getElementById('sample-count').textContent = String(samples);
+            let sampleRecords = 0;
+            function addDemoSample() {
+              sampleRecords++;
+              document.getElementById('sample-count').textContent = String(sampleRecords);
               const ul = document.getElementById('bio-list');
               const li = document.createElement('li');
-              li.textContent = '🧪 عينة جينومية #' + samples + ' • تم التحليل عبر Biopython';
+              li.textContent = 'سجل تجريبي #' + sampleRecords + ' • لم يتم تشغيل تحليل حيوي.';
               ul.prepend(li);
-              console.log('Processed genomic sample #' + samples);
+              console.info('Demo record added; no sequence analysis was performed.');
             }
         """.trimIndent()
 
@@ -1552,17 +1552,17 @@ class StudioViewModel(
         """.trimIndent()
 
         val DEFAULT_BACKEND = """
-            // Full-Stack Cloud Controller & Database Gateway
+            // Example Kotlin service only; it is not wired to Firebase or a database.
             package com.novaforge.cloud
 
             data class ApiOperation(val id: String, val title: String, val status: String)
 
             class FullStackEngine {
-                fun processTransaction(title: String): ApiOperation {
+                fun previewOperation(title: String): ApiOperation {
                     return ApiOperation(
-                        id = "tx_" + System.currentTimeMillis(),
+                        id = "local_" + System.currentTimeMillis(),
                         title = title,
-                        status = "COMMITTED_TO_FIRESTORE"
+                        status = "LOCAL_ONLY_NOT_PERSISTED"
                     )
                 }
             }
