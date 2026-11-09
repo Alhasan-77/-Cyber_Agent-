@@ -177,6 +177,32 @@ class ExampleRobolectricTest {
             // Expected: do not silently substitute a fabricated sequence.
         }
 
+        val proteinGcMetrics = BioscienceSimulationEngine.analyzeSequenceMetrics(
+            rawInput = "MVHLTPEEKSAV",
+            workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING
+        )
+        assertEquals("PROTEIN", proteinGcMetrics.sequenceType)
+        assertEquals(0.0, proteinGcMetrics.gcContentPct, 0.0)
+        assertEquals(0.0, proteinGcMetrics.meltingTempC, 0.0)
+        assertEquals(0.0, proteinGcMetrics.plddtConfidence, 0.0)
+
+        val ambiguousDna = BioscienceSimulationEngine.analyzeSequenceMetrics(
+            rawInput = "ATGGTGCACCTGACTCCTGAGGAG",
+            workflowMode = BioscienceWorkflowMode.GENOMIC_ALIGNMENT
+        )
+        assertEquals("DNA", ambiguousDna.sequenceType)
+        assertTrue(ambiguousDna.translatedProteinPreview.startsWith("MVH"))
+
+        try {
+            BioscienceSimulationEngine.analyzeSequenceMetrics(
+                rawInput = "MVHLTPEEKS@",
+                workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING
+            )
+            throw AssertionError("Unsupported symbols must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected: do not silently discard invalid sequence characters.
+        }
+
         val html3d = BioscienceSimulationEngine.buildInteractive3dBioGameHtml("GAME", "DNA_HELIX")
         assertTrue(html3d.contains("bio3d-canvas"))
         assertTrue(html3d.contains("CELLULAR DEFENSE 3D"))
