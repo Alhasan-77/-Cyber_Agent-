@@ -120,7 +120,7 @@ fun DashboardTabScreen(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Authentic Gemini Welcome Hero Card
+        // 1. Workspace welcome card
         item {
             Card(
                 shape = RoundedCornerShape(28.dp),
@@ -188,7 +188,7 @@ fun DashboardTabScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "مساحة عمل Google Gemini الموحدة لتطوير المشاريع Full-Stack، فحص الأمان، ومراقبة الأداء الفوري.",
+                            text = "مساحة عمل موحدة للمشاريع البرمجية، المحادثة الذكية، والبيانات السحابية.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = CyberTextSecondary
                         )
@@ -305,7 +305,7 @@ fun DashboardTabScreen(
             }
         }
 
-        // 2. Gemini Minimalist Metrics Strip
+        // 2. Workspace metrics
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -334,15 +334,15 @@ fun DashboardTabScreen(
                 )
                 MetricTile(
                     modifier = Modifier.weight(1f),
-                    icon = Icons.Default.Speed,
-                    label = "سرعة البناء",
-                    value = "${logs.firstOrNull()?.durationMs ?: 210}ms",
+                    icon = Icons.Default.History,
+                    label = "سجلات النشاط",
+                    value = "${logs.size}",
                     accent = CyberAmber
                 )
             }
         }
 
-        // 3. Gemini Segmented Section Filter
+        // 3. Workspace section filter
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
