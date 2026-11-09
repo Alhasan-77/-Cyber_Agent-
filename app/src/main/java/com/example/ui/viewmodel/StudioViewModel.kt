@@ -1278,16 +1278,39 @@ class StudioViewModel(
     fun forceManualCloudSync() {
         viewModelScope.launch {
             _isBusy.value = true
-            val latencyRes = repository.checkConnectionLatency()
-            latencyRes.onSuccess { ms ->
-                _syncLatencyMs.value = ms
+            try {
+                val latencyResult = repository.checkConnectionLatency()
+                latencyResult.onSuccess { _syncLatencyMs.value = it }
+                    .onFailure { error ->
+                        Log.w(TAG, "Cloud latency check failed", error)
+                        _statusBanner.value = "تعذر الاتصال بـ Firestore: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                        return@launch
+                    }
+
+                val profileCount = repository.upsertUserProfile(
+                    email = userEmail,
+                    displayName = userDisplayName,
+                    photoUrl = userPhotoUrl,
+                    activeBranch = _activeBranch.value,
+                    projectsCount = (projectsState.value as? UiState.Success)?.data?.size?.toLong() ?: 0L,
+                    bioExperimentsCount = (bioExperimentsState.value as? UiState.Success)?.data?.size?.toLong() ?: 0L,
+                    preferredAiModel = if (hasRestoredPreferredModelFromCloud) _selectedChatModel.value else null
+                )
+                profileCount.onFailure { error ->
+                    Log.w(TAG, "Cloud profile sync failed", error)
+                    _statusBanner.value = "فشل تحديث الملف الشخصي: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                    return@launch
+                }
+
+                syncSkillsMemoryToFirestore()
+                _lastSyncTimestampLabel.value = currentTimeLabel()
+                _statusBanner.value = "اكتملت مزامنة الملف الشخصي والمهارات مع Firestore. زمن الاستجابة ${_syncLatencyMs.value}ms."
+            } catch (error: Exception) {
+                Log.e(TAG, "Manual cloud sync failed", error)
+                _statusBanner.value = "فشلت المزامنة: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            syncUserProfileToCloud()
-            syncSkillsMemoryToFirestore()
-            _lastSyncTimestampLabel.value = currentTimeLabel()
-            val msLabel = _syncLatencyMs.value
-            _statusBanner.value = "☁️ تمت المزامنة السحابية الفورية مع Cloud Firestore بنجاح (${msLabel}ms)"
-            _isBusy.value = false
         }
     }
 
