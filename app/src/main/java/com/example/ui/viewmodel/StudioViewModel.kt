@@ -554,7 +554,7 @@ class StudioViewModel(
         hasSeededInitialData = true
         viewModelScope.launch {
             try {
-                repository.createProject(
+                val projectId = repository.createProject(
                     name = "مشروعي الأول",
                     description = "مشروع بداية يمكنك تعديله أو استبداله.",
                     language = "HTML / CSS / JavaScript",
@@ -562,30 +562,26 @@ class StudioViewModel(
                     cssCode = DEFAULT_CSS,
                     jsCode = DEFAULT_JS,
                     backendCode = DEFAULT_BACKEND
-                ).onSuccess { projectId ->
-                    _selectedProjectId.value = projectId
-                    repository.createSnapshot(
-                        projectId = projectId,
-                        commitMessage = "الإصدار الأولي",
-                        versionTag = "v1.0.0",
-                        htmlCode = DEFAULT_HTML,
-                        cssCode = DEFAULT_CSS,
-                        jsCode = DEFAULT_JS,
-                        backendCode = DEFAULT_BACKEND,
-                        addedLines = (
-                            DEFAULT_HTML.lines().size + DEFAULT_CSS.lines().size +
-                                DEFAULT_JS.lines().size + DEFAULT_BACKEND.lines().size
-                            ).toLong(),
-                        deletedLines = 0L
-                    ).onFailure { error ->
-                        Log.w(TAG, "Initial project snapshot failed", error)
-                    }
-                    _statusBanner.value = "تم إنشاء مشروع البداية."
-                }.onFailure { error ->
-                    hasSeededInitialData = false
-                    Log.w(TAG, "Initial workspace creation failed", error)
-                    _statusBanner.value = "تعذر إنشاء مشروع البداية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                ).getOrElse { error -> throw error }
+
+                _selectedProjectId.value = projectId
+                repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = "الإصدار الأولي",
+                    versionTag = "v1.0.0",
+                    htmlCode = DEFAULT_HTML,
+                    cssCode = DEFAULT_CSS,
+                    jsCode = DEFAULT_JS,
+                    backendCode = DEFAULT_BACKEND,
+                    addedLines = (
+                        DEFAULT_HTML.lines().size + DEFAULT_CSS.lines().size +
+                            DEFAULT_JS.lines().size + DEFAULT_BACKEND.lines().size
+                        ).toLong(),
+                    deletedLines = 0L
+                ).onFailure { error ->
+                    Log.w(TAG, "Initial project snapshot failed", error)
                 }
+                _statusBanner.value = "تم إنشاء مشروع البداية."
             } catch (error: Exception) {
                 hasSeededInitialData = false
                 Log.e(TAG, "Initial workspace creation failed", error)
