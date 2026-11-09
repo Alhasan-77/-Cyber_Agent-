@@ -214,7 +214,7 @@ fun SkillsMemoryHubTabScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "${catalog.totalSkills} مهارة • $totalReferencesCount مرجع تقني • $totalPackagesCount مكتبة • ${catalog.totalArchiveFiles} ملف مؤرشف • MCP: ${catalog.mcpServerUrl}",
+                                text = "${catalog.totalSkills} مهارة محمّلة • $totalReferencesCount مرجع • $totalPackagesCount مكتبة • ${catalog.totalArchiveFiles} ملف • MCP: ${catalog.mcpServerUrl.ifBlank { "غير مهيأ" }}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -470,7 +470,7 @@ private fun SkillsInteractiveExplorerSection(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
-                placeholder = { Text("ابحث في الـ 25 مهارة، الحزم، المراجع، أو الكلمات المفتاحية...") },
+                placeholder = { Text("ابحث في ${catalog.totalSkills} مهارة محمّلة أو في الحزم والمراجع...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = CyberCyan) },
                 singleLine = true,
                 modifier = Modifier
@@ -1196,7 +1196,7 @@ private fun GlobalToolsAndMcpSection(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "MCP Endpoint: $mcpServerUrl • Type: ${active.type}",
+                                text = "MCP (مرجع إعداد فقط): ${mcpServerUrl.ifBlank { "غير مهيأ" }} • Type: ${active.type}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = CyberEmerald
                             )
