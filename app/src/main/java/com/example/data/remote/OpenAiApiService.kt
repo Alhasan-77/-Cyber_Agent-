@@ -164,7 +164,6 @@ object OpenAiNetworkClient {
     fun isApiKeyConfigured(): Boolean {
         val key = getConfiguredApiKey()
         return key.isNotBlank() &&
-            key != PLACEHOLDER_KEY &&
             key != DEFAULT_PLUGIN_PLACEHOLDER &&
             !key.startsWith("YOUR_")
     }
