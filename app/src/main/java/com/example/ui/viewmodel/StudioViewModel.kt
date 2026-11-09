@@ -669,49 +669,58 @@ class StudioViewModel(
     fun createNewProject(name: String, description: String, language: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val generated = aiRepository.generateFullStackCodebase(
-                projectBrief = "$name - $description",
-                stackLanguage = language,
-                preferredModel = _selectedChatModel.value
-            )
-            val html = generated["html"] ?: DEFAULT_HTML
-            val css = generated["css"] ?: DEFAULT_CSS
-            val js = generated["js"] ?: DEFAULT_JS
-            val backend = generated["backend"] ?: DEFAULT_BACKEND
+            try {
+                val generated = aiRepository.generateFullStackCodebase(
+                    projectBrief = "$name - $description",
+                    stackLanguage = language,
+                    preferredModel = _selectedChatModel.value
+                )
+                val html = generated["html"] ?: DEFAULT_HTML
+                val css = generated["css"] ?: DEFAULT_CSS
+                val js = generated["js"] ?: DEFAULT_JS
+                val backend = generated["backend"] ?: DEFAULT_BACKEND
 
-            val result = repository.createProject(
-                name = name,
-                description = description,
-                language = language,
-                htmlCode = html,
-                cssCode = css,
-                jsCode = js,
-                backendCode = backend
-            )
-            result.onSuccess { id ->
-                _selectedProjectId.value = id
-                _editorName.value = name
-                _editorLanguage.value = language
-                _htmlBuffer.value = html
-                _cssBuffer.value = css
-                _jsBuffer.value = js
-                _backendBuffer.value = backend
-
-                repository.createSnapshot(
-                    projectId = id,
-                    commitMessage = "توليد معماري كامل عبر ${GeminiAiRepository.MODEL_ARGON}",
-                    versionTag = "v1.0.0",
+                repository.createProject(
+                    name = name,
+                    description = description,
+                    language = language,
                     htmlCode = html,
                     cssCode = css,
                     jsCode = js,
-                    backendCode = backend,
-                    addedLines = (html.lines().size + css.lines().size + js.lines().size + backend.lines().size).toLong(),
-                    deletedLines = 0L
-                )
-                appendConsoleLog("[AI Generator] Created new full-stack project '$name'")
-                _statusBanner.value = "تم إنشاء وبناء المشروع الجديد «$name» بنجاح!"
+                    backendCode = backend
+                ).onSuccess { id ->
+                    _selectedProjectId.value = id
+                    _editorName.value = name
+                    _editorLanguage.value = language
+                    _htmlBuffer.value = html
+                    _cssBuffer.value = css
+                    _jsBuffer.value = js
+                    _backendBuffer.value = backend
+                    repository.createSnapshot(
+                        projectId = id,
+                        commitMessage = "إنشاء مشروع بواسطة ${_selectedChatModel.value}",
+                        versionTag = "v1.0.0",
+                        htmlCode = html,
+                        cssCode = css,
+                        jsCode = js,
+                        backendCode = backend,
+                        addedLines = (html.lines().size + css.lines().size + js.lines().size + backend.lines().size).toLong(),
+                        deletedLines = 0L
+                    ).onFailure { error ->
+                        Log.w(TAG, "Project created but initial snapshot failed", error)
+                    }
+                    appendConsoleLog("[AI Generator] Created project '$name' (files saved; no compiler run).")
+                    _statusBanner.value = "تم إنشاء المشروع وحفظ ملفاته. لم يتم تشغيل مترجم أو نشر."
+                }.onFailure { error ->
+                    Log.e(TAG, "Project creation failed", error)
+                    _statusBanner.value = "تعذر إنشاء المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Project generation failed", error)
+                _statusBanner.value = "تعذر توليد المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            _isBusy.value = false
         }
     }
 
@@ -725,55 +734,58 @@ class StudioViewModel(
     fun triggerInlineCodeSuggestion(instruction: String = "أضف ميزة مراقبة فورية وتحسين أداء") {
         viewModelScope.launch {
             _isBusy.value = true
-            val currentTab = _activeCodeTab.value
-            val currentContent = when (currentTab) {
-                "HTML" -> _htmlBuffer.value
-                "CSS" -> _cssBuffer.value
-                "JS" -> _jsBuffer.value
-                else -> _backendBuffer.value
+            try {
+                val currentTab = _activeCodeTab.value
+                val currentContent = when (currentTab) {
+                    "HTML" -> _htmlBuffer.value
+                    "CSS" -> _cssBuffer.value
+                    "JS" -> _jsBuffer.value
+                    else -> _backendBuffer.value
+                }
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt("$instruction\n$currentContent")
+                val enrichedInstruction = if (skillsBlock.isNotBlank()) "$instruction\n\n$skillsBlock" else instruction
+                val snippet = aiRepository.generateLowLatencyCodeSuggestion(
+                    currentCode = currentContent,
+                    activeTab = currentTab,
+                    instruction = enrichedInstruction,
+                    preferredModel = _selectedChatModel.value
+                )
+                updateActiveBuffer(currentContent + "\n\n" + snippet)
+                val skillsNote = if (appliedIds.isNotEmpty()) " [Skills: ${appliedIds.joinToString(", ")}]" else ""
+                appendConsoleLog("[AI Copilot] Added suggestion to $currentTab via ${_selectedChatModel.value}$skillsNote")
+                _statusBanner.value = "تم إنشاء اقتراح برمجي وإضافته إلى المحرر."
+            } catch (error: Exception) {
+                Log.e(TAG, "Inline code suggestion failed", error)
+                _statusBanner.value = "تعذر إنشاء الاقتراح: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt("$instruction\n$currentContent")
-            val enrichedInstruction = if (skillsBlock.isNotBlank()) {
-                "$instruction\n\n$skillsBlock"
-            } else {
-                instruction
-            }
-            val snippet = aiRepository.generateLowLatencyCodeSuggestion(
-                currentCode = currentContent,
-                activeTab = currentTab,
-                instruction = enrichedInstruction,
-                preferredModel = _selectedChatModel.value
-            )
-            updateActiveBuffer(currentContent + "\n\n" + snippet)
-            val skillsNote = if (appliedIds.isNotEmpty()) " [Skills: ${appliedIds.joinToString(", ")}]" else ""
-            appendConsoleLog("[AI Copilot] Injected low-latency snippet into $currentTab via ${_selectedChatModel.value}$skillsNote")
-            _statusBanner.value = "⚡ تم إدراج اقتراح برمجي فوري (${_selectedChatModel.value}) مدعوم بذاكرة المهارات"
-            _isBusy.value = false
         }
     }
 
     fun generateFullStackWithHighThinking(prompt: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
-            val enrichedPrompt = if (skillsBlock.isNotBlank()) {
-                "$prompt\n\n$skillsBlock"
-            } else {
-                prompt
+            try {
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
+                val enrichedPrompt = if (skillsBlock.isNotBlank()) "$prompt\n\n$skillsBlock" else prompt
+                val generated = aiRepository.generateFullStackCodebase(
+                    projectBrief = enrichedPrompt,
+                    stackLanguage = _editorLanguage.value,
+                    preferredModel = _selectedChatModel.value
+                )
+                _htmlBuffer.value = generated["html"] ?: _htmlBuffer.value
+                _cssBuffer.value = generated["css"] ?: _cssBuffer.value
+                _jsBuffer.value = generated["js"] ?: _jsBuffer.value
+                _backendBuffer.value = generated["backend"] ?: _backendBuffer.value
+                saveAndBuildCurrentProject()
+                _statusBanner.value = "اكتمل توليد الكود باستخدام ${_selectedChatModel.value} والمهارات: ${appliedIds.take(3).joinToString(", ")}"
+            } catch (error: Exception) {
+                Log.e(TAG, "Full-stack generation failed", error)
+                _statusBanner.value = "تعذر توليد المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            appendConsoleLog("[High Thinking] Synthesizing full-stack architecture via ${_selectedChatModel.value} with skills ${appliedIds.joinToString(", ")}...")
-            val generated = aiRepository.generateFullStackCodebase(
-                projectBrief = enrichedPrompt,
-                stackLanguage = _editorLanguage.value,
-                preferredModel = _selectedChatModel.value
-            )
-            _htmlBuffer.value = generated["html"] ?: _htmlBuffer.value
-            _cssBuffer.value = generated["css"] ?: _cssBuffer.value
-            _jsBuffer.value = generated["js"] ?: _jsBuffer.value
-            _backendBuffer.value = generated["backend"] ?: _backendBuffer.value
-            saveAndBuildCurrentProject()
-            _statusBanner.value = "🧠 تم توليد البنية الكاملة عبر (${_selectedChatModel.value}) مع تطبيق المهارات (${appliedIds.take(3).joinToString(", ")})"
-            _isBusy.value = false
         }
     }
 
