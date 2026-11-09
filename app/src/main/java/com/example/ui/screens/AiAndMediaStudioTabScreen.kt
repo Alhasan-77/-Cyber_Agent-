@@ -289,7 +289,7 @@ private fun MultiTurnChatbotSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "✦ Gemini API متصل",
+                        text = "✦ Gemini عبر Firebase AI",
                         style = MaterialTheme.typography.labelMedium,
                         color = CyberCyan,
                         fontWeight = FontWeight.Bold
@@ -1212,7 +1212,7 @@ private fun VoiceAndMusicStudioSection(
             }
         }
 
-        // 2. Text-to-Speech (gemini-3.8-flash-tts)
+        // 2. Local Android text-to-speech
         item {
             Card(
                 shape = RoundedCornerShape(24.dp),
@@ -1226,7 +1226,7 @@ private fun VoiceAndMusicStudioSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "🔊 تحويل النص إلى كلام طبيعي (Gemini TTS)",
+                        text = "🔊 تحويل النص إلى كلام (قارئ Android)",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberViolet,
                         fontWeight = FontWeight.Bold
@@ -1241,7 +1241,7 @@ private fun VoiceAndMusicStudioSection(
                             .testTag("tts_text_input")
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Kore", "Puck", "Aoede", "Charon").forEach { voice ->
+                        listOf("صوت النظام").forEach { voice ->
                             FilterChip(
                                 selected = selectedVoice == voice,
                                 onClick = { selectedVoice = voice },
@@ -1283,7 +1283,7 @@ private fun VoiceAndMusicStudioSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "🎵 توليد الموسيقى والمؤثرات الصوتية (Lyria 3)",
+                        text = "🎵 توليد الموسيقى (غير متاح حالياً)",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberEmerald,
                         fontWeight = FontWeight.Bold
@@ -1301,20 +1301,20 @@ private fun VoiceAndMusicStudioSection(
                         FilterChip(
                             selected = !useProFullTrack,
                             onClick = { useProFullTrack = false },
-                            label = { Text("Lyria Clip (30 ثانية)") },
+                            label = { Text("مقطع قصير") },
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("music_model_clip")
                         )
                         FilterChip(
                             selected = useProFullTrack,
                             onClick = { useProFullTrack = true },
-                            label = { Text("Lyria Pro (مسار كامل)") },
+                            label = { Text("مسار كامل") },
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("music_model_pro")
                         )
                     }
                     Button(
-                        onClick = { onGenerateMusic(musicPrompt, useProFullTrack) },
+                        onClick = { /* Music generation provider is not configured in this build. */ },
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
                         modifier = Modifier
@@ -1323,7 +1323,7 @@ private fun VoiceAndMusicStudioSection(
                     ) {
                         Icon(Icons.Default.AudioFile, contentDescription = null, tint = CyberBackground)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("توليد وتشغيل الموسيقى الآن", color = CyberBackground, fontWeight = FontWeight.Bold)
+                        Text("غير متاح حالياً", color = CyberBackground, fontWeight = FontWeight.Bold)
                     }
                 }
             }
