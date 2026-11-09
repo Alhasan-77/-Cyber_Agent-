@@ -112,7 +112,6 @@ data class ResidueFoldingNode(
     val oneLetterCode: Char,
     val threeLetterName: String,
     val structureKind: SecondaryStructureKind,
-    val plddtScore: Double,
     val hydropathy: Double,
     val nativePhi: Float,
     val nativePsi: Float,
@@ -135,9 +134,7 @@ data class ResidueContactPair(
 
 data class SimulatedProteinStructure(
     val residues: List<ResidueFoldingNode>,
-    val contacts: List<ResidueContactPair>,
-    val nativeRadiusOfGyration: Float,
-    val unfoldedRadiusOfGyration: Float
+    val contacts: List<ResidueContactPair>
 )
 
 private val aminoAcidThreeLetterMap = mapOf(
@@ -253,7 +250,6 @@ fun buildSimulatedProteinStructure(metrics: BioSequenceMetrics): SimulatedProtei
                 oneLetterCode = aa,
                 threeLetterName = aminoAcidThreeLetterMap[aa] ?: "Xaa",
                 structureKind = kind,
-                plddtScore = 0.0,
                 hydropathy = hydro,
                 nativePhi = phi,
                 nativePsi = psi,
@@ -306,18 +302,9 @@ fun buildSimulatedProteinStructure(metrics: BioSequenceMetrics): SimulatedProtei
         }
     }
 
-    val nativeRg = sqrt(
-        centeredNodes.map { it.nativeX * it.nativeX + it.nativeY * it.nativeY + it.nativeZ * it.nativeZ }
-            .average()
-            .toFloat()
-    ).coerceAtLeast(8.5f)
-    val unfoldedRg = (nativeRg * 2.15f)
-
     return SimulatedProteinStructure(
         residues = centeredNodes,
-        contacts = contacts,
-        nativeRadiusOfGyration = (nativeRg * 10f).roundToInt() / 10f,
-        unfoldedRadiusOfGyration = (unfoldedRg * 10f).roundToInt() / 10f
+        contacts = contacts
     )
 }
 
@@ -327,7 +314,7 @@ fun ProteinFoldingVisualizer(
     metrics: BioSequenceMetrics,
     modifier: Modifier = Modifier
 ) {
-    val structure = remember(metrics.translatedProteinPreview, metrics.plddtConfidence) {
+    val structure = remember(metrics.translatedProteinPreview) {
         buildSimulatedProteinStructure(metrics)
     }
 
@@ -356,21 +343,6 @@ fun ProteinFoldingVisualizer(
     val safeSelectedIdx = selectedResidueIndex.coerceIn(0, max(0, structure.residues.lastIndex))
     val selectedNode = structure.residues.getOrNull(safeSelectedIdx)
 
-    // Live folding thermodynamics derived from foldingProgress
-    val currentRmsd = remember(foldingProgress) {
-        (((1f - foldingProgress) * 14.8f + 0.45f) * 100f).roundToInt() / 100f
-    }
-    val currentRg = remember(foldingProgress, structure) {
-        val rg = structure.unfoldedRadiusOfGyration +
-            (structure.nativeRadiusOfGyration - structure.unfoldedRadiusOfGyration) * foldingProgress
-        (rg * 10f).roundToInt() / 10f
-    }
-    val currentDeltaG = remember(foldingProgress, metrics.bindingAffinityKcal) {
-        val unfoldedG = 4.2
-        val nativeG = metrics.bindingAffinityKcal
-        val g = unfoldedG + (nativeG - unfoldedG) * foldingProgress.toDouble()
-        (g * 10.0).roundToInt() / 10.0
-    }
     val activeContactsCount = remember(foldingProgress, structure.contacts.size) {
         (structure.contacts.size * (foldingProgress * foldingProgress)).roundToInt()
     }
@@ -551,7 +523,7 @@ fun ProteinFoldingVisualizer(
                 }
 
                 Text(
-                    text = "الإحداثيات والتلامسات المعروضة توضيحية؛ لا تمثل RMSD أو Rg أو ΔG محسوبة.",
+                    text = "المسار الهندسي والتلامسات في هذا العرض توضيحية فقط، وليست قياسات فيزيائية.",
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = JetBrainsMonoFontFamily,
                     color = CyberEmerald,
@@ -1086,15 +1058,14 @@ private fun ContactMapAndEnergyCanvas(
         val h = size.height
         val n = max(1, structure.residues.size)
 
-        // Top half: Per-Residue pLDDT confidence & folding stability profile
+        // Top half: sequence-derived hydropathy trace (Kyte-Doolittle scale)
         val chartHeight = h * 0.45f
         val chartTop = 24f
         val path = Path()
 
         structure.residues.forEachIndexed { idx, node ->
             val x = (idx.toFloat() / max(1, n - 1)) * (w - 32f) + 16f
-            val effectivePlddt = 45.0 + (node.plddtScore - 45.0) * foldingProgress
-            val normalized = ((effectivePlddt - 40.0) / 60.0).toFloat().coerceIn(0f, 1f)
+            val normalized = ((node.hydropathy + 4.5) / 9.0).toFloat().coerceIn(0f, 1f)
             val y = chartTop + chartHeight * (1f - normalized)
             if (idx == 0) path.moveTo(x, y) else path.lineTo(x, y)
 
