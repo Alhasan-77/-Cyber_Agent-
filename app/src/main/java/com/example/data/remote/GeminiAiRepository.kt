@@ -193,7 +193,7 @@ class GeminiAiRepository(
                         withTimeout(AI_TIMEOUT_MS) {
                             executeWithAppCheckRetry {
                                 geminiModel.generateContent("$systemInstruction\n\n$userPrompt").text
-                            } ?: "تم إتمام التوليد عبر $targetModel"
+                            } ?: throw IllegalStateException("لم يُرجع مزود Gemini نصاً.")
                         }
                     }
                 }
@@ -536,14 +536,7 @@ class GeminiAiRepository(
                 isFatal = false,
                 serviceName = "Gemini"
             )
-            fallbackArchitecturalResponse(
-                prompt = userPrompt,
-                model = effectiveModel,
-                persona = persona,
-                useSearch = useSearchGrounding,
-                useThinking = useHighThinking,
-                errorDetail = "انتهت مهلة الطلب بعد 60 ثانية."
-            )
+            throw IllegalStateException("انتهت مهلة استجابة Gemini. لم يتم إنشاء رد بديل.", e)
         } catch (e: QuotaExceededException) {
             Log.e(TAG, "Quota exceeded ($effectiveModel)", e)
             GlobalExceptionHandler.reportError(
@@ -552,14 +545,7 @@ class GeminiAiRepository(
                 isFatal = false,
                 serviceName = "Gemini"
             )
-            fallbackArchitecturalResponse(
-                prompt = userPrompt,
-                model = effectiveModel,
-                persona = persona,
-                useSearch = useSearchGrounding,
-                useThinking = useHighThinking,
-                errorDetail = "تم تجاوز الحصة المسموحة (Quota Exceeded). يرجى المحاولة لاحقاً."
-            )
+            throw IllegalStateException("تم تجاوز حصة Gemini المتاحة. لم يتم إنشاء رد بديل.", e)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -610,7 +596,11 @@ class GeminiAiRepository(
                     }
                 }
             }
-            accumulated.toString()
+            accumulated.toString().also { result ->
+                if (result.isBlank()) {
+                    throw IllegalStateException("لم يُرجع بث Gemini أي محتوى.", null)
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -620,7 +610,11 @@ class GeminiAiRepository(
                 isFatal = false,
                 serviceName = "Gemini"
             )
-            accumulated.toString()
+            if (accumulated.isNotBlank()) {
+                accumulated.toString()
+            } else {
+                throw IllegalStateException("تعذر الحصول على محتوى من بث Gemini.", e)
+            }
         }
     }
 
@@ -701,7 +695,7 @@ class GeminiAiRepository(
     ): Map<String, String> = withContext(Dispatchers.IO) {
         val prompt = """
             Build a complete interactive Full-Stack web preview (HTML, CSS, JS) and Backend code ($stackLanguage) for: $projectBrief.
-            Return valid code blocks or structured sections.
+            Return fenced code blocks labelled html, css, javascript, and $stackLanguage. Do not claim any service is deployed or connected. Do not invent runtime metrics or backend status.
         """.trimIndent()
 
         if (isOpenAiModel(preferredModel) && OpenAiNetworkClient.isApiKeyConfigured()) {
@@ -1069,204 +1063,39 @@ class GeminiAiRepository(
         return Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
     }
 
-    private fun fallbackArchitecturalResponse(
-        prompt: String,
-        model: String,
-        persona: AiRolePersona,
-        useSearch: Boolean,
-        useThinking: Boolean,
-        errorDetail: String? = null
-    ): Pair<String, List<String>> {
-        val badges = buildList {
-            add("النموذج: $model")
-            if (useThinking) add("Deep Reasoning")
-            if (useSearch) add("Firebase AI Logic")
-        }.joinToString(" • ")
-
-        val reply = buildString {
-            appendLine("⚡ استجابة ${persona.titleAr} [$badges]")
-            appendLine()
-            appendLine("بناءً على طلبك: «$prompt»")
-            appendLine()
-            appendLine("1. **التصميم المعماري المتكامل (Full-Stack)**:")
-            appendLine("   - طبقة الواجهة التفاعلية: مبنية بهيكلة مكونات متجاوبة مع تحديث فوري في نافذة المعاينة الحية (WebView Preview).")
-            appendLine("   - طبقة البيانات والأمان: معزولة لكل مستخدم في Firestore مع التحقق الصارم من المخطط والأنواع.")
-            appendLine("2. **تحسين الأداء وسرعة التنفيذ**:")
-            appendLine("   - استخدام التدفقات التفاعلية (Kotlin Flows) والتخزين المؤقت الذكي لضمان زمن استجابة أقل من 50ms.")
-            if (errorDetail != null) {
-                appendLine()
-                appendLine("ℹ️ ملاحظة خدمة Firebase AI Logic: $errorDetail")
-            }
-        }
-
-        val sources = if (useSearch) {
-            listOf(
-                "Android Jetpack Compose Architecture Docs (https://developer.android.com/jetpack/compose/architecture)",
-                "Firebase AI Logic Docs (https://firebase.google.com/docs/ai-logic)"
-            )
-        } else {
-            emptyList()
-        }
-
-        return Pair(reply, sources)
-    }
-
+    @Suppress("UNUSED_PARAMETER")
     private fun buildGeneratedStackFromAiText(
         brief: String,
         language: String,
         aiRawText: String?
     ): Map<String, String> {
-        val html = """
-            <!DOCTYPE html>
-            <html lang="ar" dir="rtl">
-            <head>
-              <meta charset="UTF-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-              <title>$brief</title>
-            </head>
-            <body>
-              <div class="app-shell">
-                <header class="hero-header">
-                  <span class="badge">🚀 Full-Stack Live Preview • $language</span>
-                  <h1>$brief</h1>
-                  <p>تطبيق متكامل تم توليده وبناؤه عبر محرك NovaForge AI Studio ($MODEL_ARGON)</p>
-                </header>
-                <section class="stats-grid">
-                  <div class="stat-card">
-                    <span class="stat-label">حالة الخادم السحابي</span>
-                    <strong class="stat-value" id="server-status">متصل (99.98%)</strong>
-                  </div>
-                  <div class="stat-card">
-                    <span class="stat-label">السجلات النشطة</span>
-                    <strong class="stat-value" id="record-count">3</strong>
-                  </div>
-                </section>
-                <section class="interactive-panel">
-                  <h3>إدارة العمليات التفاعلية</h3>
-                  <div class="input-row">
-                    <input id="item-input" type="text" placeholder="أضف عنصراً أو عملية جديدة..." />
-                    <button onclick="addItem()">إضافة فورية +</button>
-                  </div>
-                  <ul id="items-list">
-                    <li>✅ تهيئة مخطط قاعدة البيانات السحابية</li>
-                    <li>⚡ ربط واجهة برمجة التطبيقات الخلفية ($language)</li>
-                    <li>🔒 تفعيل التحقق الأمني وإدارة الإصدارات</li>
-                  </ul>
-                </section>
-              </div>
-            </body>
-            </html>
-        """.trimIndent()
+        val raw = aiRawText?.trim().orEmpty()
+        require(raw.isNotBlank()) { "لم يتم استلام كود من مزود الذكاء الاصطناعي." }
 
-        val css = """
-            * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-            body {
-              margin: 0;
-              padding: 16px;
-              background: #0B0F17;
-              color: #E2E8F0;
-            }
-            .app-shell { max-width: 680px; margin: 0 auto; }
-            .hero-header {
-              background: linear-gradient(135deg, #131B2E 0%, #1F1638 100%);
-              border: 1px solid rgba(0, 229, 255, 0.35);
-              border-radius: 16px;
-              padding: 20px;
-              margin-bottom: 16px;
-            }
-            .badge {
-              display: inline-block;
-              background: rgba(0, 229, 255, 0.15);
-              color: #00E5FF;
-              padding: 4px 10px;
-              border-radius: 999px;
-              font-size: 12px;
-              font-weight: 700;
-            }
-            h1 { margin: 10px 0 6px; font-size: 22px; color: #FFFFFF; }
-            p { margin: 0; color: #94A3B8; font-size: 14px; }
-            .stats-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 12px;
-              margin-bottom: 16px;
-            }
-            .stat-card {
-              background: #131B2E;
-              border: 1px solid rgba(255,255,255,0.08);
-              border-radius: 12px;
-              padding: 14px;
-            }
-            .stat-label { display: block; font-size: 12px; color: #94A3B8; }
-            .stat-value { font-size: 18px; color: #00E676; margin-top: 4px; display: block; }
-            .interactive-panel {
-              background: #131B2E;
-              border-radius: 14px;
-              padding: 16px;
-              border: 1px solid rgba(124, 77, 255, 0.3);
-            }
-            .input-row { display: flex; gap: 8px; margin-bottom: 12px; }
-            input {
-              flex: 1;
-              padding: 10px 12px;
-              border-radius: 8px;
-              border: 1px solid #334155;
-              background: #0B0F17;
-              color: #FFF;
-            }
-            button {
-              background: #00E5FF;
-              color: #0B0F17;
-              border: none;
-              padding: 10px 16px;
-              border-radius: 8px;
-              font-weight: 700;
-              cursor: pointer;
-            }
-            ul { list-style: none; padding: 0; margin: 0; }
-            li {
-              background: #0B0F17;
-              padding: 10px 12px;
-              border-radius: 8px;
-              margin-bottom: 8px;
-              border-right: 3px solid #00E5FF;
-            }
-        """.trimIndent()
+        val blockPattern = Regex("(?s)```([A-Za-z0-9_+#.-]*)\\s*\\n(.*?)```")
+        val blocks = blockPattern.findAll(raw).map { match ->
+            match.groupValues[1].lowercase() to match.groupValues[2].trim()
+        }.filter { it.second.isNotBlank() }.toList()
+        require(blocks.isNotEmpty()) {
+            "لم يُرجع النموذج كتل كود محددة. لم يتم إنشاء ملفات افتراضية."
+        }
 
-        val js = """
-            let count = 3;
-            function addItem() {
-              const input = document.getElementById('item-input');
-              const value = input.value.trim();
-              if (!value) return;
-              const ul = document.getElementById('items-list');
-              const li = document.createElement('li');
-              li.textContent = '✨ ' + value;
-              ul.prepend(li);
-              count++;
-              document.getElementById('record-count').textContent = String(count);
-              input.value = '';
+        var html = ""
+        var css = ""
+        var js = ""
+        var backend = ""
+        blocks.forEach { (languageTag, code) ->
+            when (languageTag) {
+                "html", "htm", "xhtml" -> if (html.isBlank()) html = code
+                "css", "scss", "sass" -> if (css.isBlank()) css = code
+                "js", "javascript", "jsx", "ts", "typescript", "tsx" -> if (js.isBlank()) js = code
+                else -> if (backend.isBlank()) backend = code
             }
-        """.trimIndent()
+        }
 
-        val backend = aiRawText ?: """
-            // Full-Stack Backend Service ($language)
-            // Generated by $MODEL_ARGON via Firebase AI Logic
-            package com.novaforge.backend
-
-            data class ServiceResponse(val status: String, val recordsCount: Int, val engine: String)
-
-            class CloudController {
-                fun executePipeline(payload: Map<String, Any>): ServiceResponse {
-                    return ServiceResponse(
-                        status = "OK_200",
-                        recordsCount = payload.size,
-                        engine = "$MODEL_ARGON"
-                    )
-                }
-            }
-        """.trimIndent()
-
+        if (html.isBlank() && css.isBlank() && js.isBlank() && backend.isBlank()) {
+            throw IllegalStateException("لم يتم استخراج أي ملفات قابلة للاستخدام من استجابة النموذج.")
+        }
         return mapOf(
             "html" to html,
             "css" to css,
