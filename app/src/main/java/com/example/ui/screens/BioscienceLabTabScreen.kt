@@ -512,7 +512,7 @@ fun BioscienceLabTabScreen(
                         Button(
                             onClick = {
                                 val summaryText = bioscienceOutput
-                                    ?: "مؤشرات وصفية أولية (${activeWorkflow.badgeText}): نوع التسلسل=${liveMetrics.sequenceType}، الطول=${liveMetrics.sequenceLength}، GC=${liveMetrics.gcContentPct}%. لا توجد نتائج pLDDT أو ΔG أو IC50 أو جاهزية سريرية من نموذج تخصصي في هذه الجلسة."
+                                    ?: "مؤشرات وصفية أولية (${activeWorkflow.badgeText}): نوع التسلسل=${liveMetrics.sequenceType}، الطول=${liveMetrics.sequenceLength}، GC=${if (liveMetrics.sequenceType == "PROTEIN") "غير منطبق" else liveMetrics.gcContentPct.toString() + "%"}، ولا توجد نتائج pLDDT أو بنية ثانوية أو ΔG أو IC50 أو جاهزية سريرية من نموذج تخصصي في هذه الجلسة."
                                 onSaveBioExperiment(
                                     "${activeWorkflow.titleAr} (${liveMetrics.sequenceType})",
                                     activeWorkflow.name,
@@ -587,10 +587,22 @@ fun BioscienceLabTabScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             BioMetricBadge("الطول", "${liveMetrics.sequenceLength} ${if (liveMetrics.sequenceType == "PROTEIN") "aa" else "bp"}", CyberCyan)
-                            BioMetricBadge("نسبة GC%", "${liveMetrics.gcContentPct}%", CyberEmerald)
-                            BioMetricBadge("حرارة الانصهار Tm", "${liveMetrics.meltingTempC} °C", CyberAmber)
-                            BioMetricBadge("الوزن الجزيئي", "${liveMetrics.molecularWeightKda} kDa", CyberViolet)
-                            BioMetricBadge("مؤشر GRAVY", "${liveMetrics.gravyHydropathy}", CyberCyan)
+                            BioMetricBadge(
+                                "نسبة GC%",
+                                if (liveMetrics.sequenceType == "PROTEIN") "غير منطبق" else "${liveMetrics.gcContentPct}%",
+                                CyberEmerald
+                            )
+                            BioMetricBadge(
+                                "حرارة الانصهار Tm",
+                                if (liveMetrics.sequenceType == "PROTEIN") "غير محسوبة" else "${liveMetrics.meltingTempC} °C",
+                                CyberAmber
+                            )
+                            BioMetricBadge("الوزن الجزيئي التقريبي", "~${liveMetrics.molecularWeightKda} kDa", CyberViolet)
+                            BioMetricBadge(
+                                "مؤشر GRAVY",
+                                if (liveMetrics.sequenceType == "PROTEIN") "${liveMetrics.gravyHydropathy}" else "غير منطبق",
+                                CyberCyan
+                            )
                             BioMetricBadge(
                                 "ثقة الطي pLDDT",
                                 if (liveMetrics.plddtConfidence > 0) "${liveMetrics.plddtConfidence}%"
@@ -614,9 +626,11 @@ fun BioscienceLabTabScreen(
                                 color = CyberEmerald,
                                 fontWeight = FontWeight.Bold
                             )
-                            StructureBarRow("Alpha-Helix (حلزون ألفا)", liveMetrics.alphaHelixPct, CyberCyan)
-                            StructureBarRow("Beta-Sheet (صفائح بيتا)", liveMetrics.betaSheetPct, CyberViolet)
-                            StructureBarRow("Random Coil (حلقات مرنة)", liveMetrics.randomCoilPct, CyberAmber)
+                            Text(
+                                text = "توزيع البنية الثانوية غير متاح دون تشغيل أداة تنبؤ بنيوي متخصصة.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
 
                         // Section B: CRISPR-Cas9 PAM (NGG) Target Sites
@@ -629,7 +643,7 @@ fun BioscienceLabTabScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "✂️ مسح مواقع CRISPR-Cas9 PAM (NGG) وتقييم كفاءة الدليل sgRNA",
+                                text = "✂️ اكتشاف مواقع PAM (NGG) — لا يتضمن ذلك تقييم كفاءة القطع أو Off-Target",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = CyberViolet,
                                 fontWeight = FontWeight.Bold
@@ -652,16 +666,16 @@ fun BioscienceLabTabScreen(
                                             color = CyberCyan
                                         )
                                         Text(
-                                            text = "GC: ${pam.gcPercent}% • المخاطر: ${pam.offTargetRisk}",
+                                            text = "GC للدليل: ${pam.gcPercent}% • ${pam.offTargetRisk}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                     Text(
-                                        text = "Score ${pam.onTargetScore}%",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = CyberEmerald,
-                                        fontWeight = FontWeight.Bold
+                                        text = "فعالية غير محسوبة",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                             }
