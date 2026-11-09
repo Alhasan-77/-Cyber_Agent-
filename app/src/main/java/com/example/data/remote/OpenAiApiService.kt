@@ -166,13 +166,15 @@ object OpenAiNetworkClient {
             !key.startsWith("YOUR_")
     }
 
+    /**
+     * A locally present key is not proof that the remote API accepts it.
+     * Never expose even a partial API key in UI status text.
+     */
     fun getKeyStatusSummaryAr(): String {
-        val key = getConfiguredApiKey()
         return if (isApiKeyConfigured()) {
-            val tail = if (key.length >= 4) key.takeLast(4) else "****"
-            "متصل ونشط (•••$tail)"
+            "تم ضبط المفتاح محلياً؛ لم يتم التحقق من صلاحيته بعد"
         } else {
-            "بانتظار ضبط OPENAI_API_KEY في لوحة Secrets"
+            "مفتاح OpenAI غير مضبوط"
         }
     }
 }
