@@ -1056,10 +1056,10 @@ private fun VoiceAndMusicStudioSection(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var ttsText by remember { mutableStateOf("تم بناء تطبيقك المتكامل بنجاح وتفعيل قاعدة البيانات السحابية.") }
-    var selectedVoice by remember { mutableStateOf("Kore") }
+    var ttsText by remember { mutableStateOf("") }
+    var selectedVoice by remember { mutableStateOf("صوت النظام") }
     var liveVoicePrompt by remember { mutableStateOf("كيف أحسّن أداء استعلامات قاعدة البيانات في مشروعي؟") }
-    var musicPrompt by remember { mutableStateOf("موسيقى إلكترونية سينمائية ملهمة لبيئة تطوير مستقبلية") }
+    var musicPrompt by remember { mutableStateOf("") }
     var useProFullTrack by remember { mutableStateOf(false) }
     var isRecordingMic by remember { mutableStateOf(false) }
 
@@ -1232,7 +1232,7 @@ private fun VoiceAndMusicStudioSection(
                         }
                     }
                     Button(
-                        onClick = { onSynthesizeSpeech(ttsText, selectedVoice) },
+                        onClick = { if (ttsText.isNotBlank()) onSynthesizeSpeech(ttsText, selectedVoice) },
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = GeminiPillSelectedContainer,
