@@ -623,27 +623,26 @@ class StudioViewModel(
                         backendCode = _backendBuffer.value
                     )
                 }
-
-                result.onSuccess { projectId ->
-                    _selectedProjectId.value = projectId
-                    val duration = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
-                    val source = _htmlBuffer.value + _cssBuffer.value + _jsBuffer.value + _backendBuffer.value
-                    val checksum = computeSha256Short(source)
-                    val report = "تم حفظ ملفات المشروع في Firestore. لم يتم تشغيل مترجم أو بناء APK/حزمة نشر.\n" +
-                        "حجم المصدر: ${source.length} حرف؛ SHA-256 مختصر: $checksum"
-                    repository.createBuildLog(
-                        projectId = projectId,
-                        stage = "حفظ ملفات المشروع",
-                        status = "WARNING",
-                        durationMs = duration,
-                        reportSummary = report
-                    )
-                    appendConsoleLog("[Project Save] Files saved for project $projectId. No compiler/build was run.")
-                    _statusBanner.value = "تم حفظ المشروع سحابياً. لم يتم تشغيل بناء أو معاينة فعلية."
-                }.onFailure { error ->
-                    Log.e(TAG, "Project save failed", error)
-                    _statusBanner.value = "تعذر حفظ المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                val projectId = result.getOrElse { error ->
+                    throw error
                 }
+                _selectedProjectId.value = projectId
+                val duration = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
+                val source = _htmlBuffer.value + _cssBuffer.value + _jsBuffer.value + _backendBuffer.value
+                val checksum = computeSha256Short(source)
+                val report = "تم حفظ ملفات المشروع في Firestore. لم يتم تشغيل مترجم أو بناء APK/حزمة نشر.\n" +
+                    "حجم المصدر: ${source.length} حرف؛ SHA-256 مختصر: $checksum"
+                repository.createBuildLog(
+                    projectId = projectId,
+                    stage = "حفظ ملفات المشروع",
+                    status = "WARNING",
+                    durationMs = duration,
+                    reportSummary = report
+                ).onFailure { error ->
+                    Log.w(TAG, "Project saved but activity log failed", error)
+                }
+                appendConsoleLog("[Project Save] Files saved for project $projectId. No compiler/build was run.")
+                _statusBanner.value = "تم حفظ المشروع سحابياً. لم يتم تشغيل بناء أو معاينة فعلية."
             } catch (error: Exception) {
                 Log.e(TAG, "Project save failed", error)
                 _statusBanner.value = "تعذر حفظ المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -666,8 +665,7 @@ class StudioViewModel(
                 val css = generated["css"] ?: DEFAULT_CSS
                 val js = generated["js"] ?: DEFAULT_JS
                 val backend = generated["backend"] ?: DEFAULT_BACKEND
-
-                repository.createProject(
+                val projectId = repository.createProject(
                     name = name,
                     description = description,
                     language = language,
@@ -675,36 +673,33 @@ class StudioViewModel(
                     cssCode = css,
                     jsCode = js,
                     backendCode = backend
-                ).onSuccess { id ->
-                    _selectedProjectId.value = id
-                    _editorName.value = name
-                    _editorLanguage.value = language
-                    _htmlBuffer.value = html
-                    _cssBuffer.value = css
-                    _jsBuffer.value = js
-                    _backendBuffer.value = backend
-                    repository.createSnapshot(
-                        projectId = id,
-                        commitMessage = "إنشاء مشروع بواسطة ${_selectedChatModel.value}",
-                        versionTag = "v1.0.0",
-                        htmlCode = html,
-                        cssCode = css,
-                        jsCode = js,
-                        backendCode = backend,
-                        addedLines = (html.lines().size + css.lines().size + js.lines().size + backend.lines().size).toLong(),
-                        deletedLines = 0L
-                    ).onFailure { error ->
-                        Log.w(TAG, "Project created but initial snapshot failed", error)
-                    }
-                    appendConsoleLog("[AI Generator] Created project '$name' (files saved; no compiler run).")
-                    _statusBanner.value = "تم إنشاء المشروع وحفظ ملفاته. لم يتم تشغيل مترجم أو نشر."
-                }.onFailure { error ->
-                    Log.e(TAG, "Project creation failed", error)
-                    _statusBanner.value = "تعذر إنشاء المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                ).getOrElse { error -> throw error }
+
+                _selectedProjectId.value = projectId
+                _editorName.value = name
+                _editorLanguage.value = language
+                _htmlBuffer.value = html
+                _cssBuffer.value = css
+                _jsBuffer.value = js
+                _backendBuffer.value = backend
+                repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = "إنشاء مشروع بواسطة ${_selectedChatModel.value}",
+                    versionTag = "v1.0.0",
+                    htmlCode = html,
+                    cssCode = css,
+                    jsCode = js,
+                    backendCode = backend,
+                    addedLines = (html.lines().size + css.lines().size + js.lines().size + backend.lines().size).toLong(),
+                    deletedLines = 0L
+                ).onFailure { error ->
+                    Log.w(TAG, "Project created but initial snapshot failed", error)
                 }
+                appendConsoleLog("[AI Generator] Created project '$name' (files saved; no compiler run).")
+                _statusBanner.value = "تم إنشاء المشروع وحفظ ملفاته. لم يتم تشغيل مترجم أو نشر."
             } catch (error: Exception) {
-                Log.e(TAG, "Project generation failed", error)
-                _statusBanner.value = "تعذر توليد المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                Log.e(TAG, "Project creation failed", error)
+                _statusBanner.value = "تعذر إنشاء المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
             } finally {
                 _isBusy.value = false
             }
