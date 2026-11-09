@@ -542,9 +542,18 @@ fun BioscienceLabTabScreen(
                 }
             }
 
-            // 3b. Interactive Protein Folding Structural Visualizer
+            // Visualizer is illustrative and is only shown for a supplied protein sequence.
             item {
-                ProteinFoldingVisualizer(metrics = liveMetrics)
+                if (liveMetrics.sequenceType == "PROTEIN" && liveMetrics.translatedProteinPreview.isNotBlank()) {
+                    ProteinFoldingVisualizer(metrics = liveMetrics)
+                } else {
+                    Text(
+                        text = "عارض البروتين التوضيحي يتطلب تسلسلاً بروتينياً؛ لن يتم استبدال DNA/RNA بتسلسل افتراضي.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    )
+                }
             }
 
             // 4. Real-Time Computed Bioinformatics & Clinical Dashboard Card
