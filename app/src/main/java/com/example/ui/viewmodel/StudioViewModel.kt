@@ -1129,7 +1129,7 @@ class StudioViewModel(
                     prompt = prompt,
                     aspectRatio = aspectRatio,
                     sourcePhotoBase64 = sourcePhotoBase64,
-                    sourcePhotoMimeType = sourcePhotoMime
+                    sourcePhotoMime = sourcePhotoMime
                 )
                 _generatedAssets.value = listOf(asset) + _generatedAssets.value
                 _statusBanner.value = "تمت معالجة الفيديو عبر ${GeminiAiRepository.MODEL_OMNI_VIDEO} ($aspectRatio)"
