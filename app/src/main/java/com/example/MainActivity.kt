@@ -548,8 +548,19 @@ fun NovaForgeStudioShell(
                 },
                 onGenerateMusic = { prompt, isPro ->
                     viewModel.generateMusicTrack(prompt, isPro) { audioB64 ->
-                        scope.launch {
-                            AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = true)
+                        if (!audioB64.isNullOrBlank()) {
+                            scope.launch {
+                                runCatching {
+                                    AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = true)
+                                }.onFailure { error ->
+                                    GlobalExceptionHandler.reportError(
+                                        phase = "Music Playback",
+                                        throwable = error,
+                                        isFatal = false,
+                                        serviceName = "Audio"
+                                    )
+                                }
+                            }
                         }
                     }
                 },
