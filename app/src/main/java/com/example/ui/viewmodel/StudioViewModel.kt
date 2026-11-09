@@ -1566,23 +1566,15 @@ class StudioViewModel(
         """.trimIndent()
 
         val DEFAULT_JS = """
-            let users = 1420;
-            function triggerSync() {
-              users += Math.floor(Math.random() * 15) + 1;
-              document.getElementById('active-users').textContent = users.toLocaleString();
-              document.getElementById('latency-val').textContent = (12 + Math.floor(Math.random() * 9)) + 'ms';
-              console.log('Cloud sync completed. Active users=' + users);
-            }
+            // Local UI interactions only; this starter does not claim to sync with a cloud service.
             function addOperation() {
               const input = document.getElementById('op-title');
-              const val = input.value.trim();
-              if (!val) return;
-              const li = document.createElement('li');
-              li.textContent = '🚀 ' + val + ' (تم التنفيذ فوراً)';
-              document.getElementById('ops-list').prepend(li);
+              const value = input?.value?.trim();
+              if (!value) return;
+              const item = document.createElement('li');
+              item.textContent = value;
+              document.getElementById('ops-list')?.prepend(item);
               input.value = '';
-              console.log('Operation added: ' + val);
-              triggerSync();
             }
         """.trimIndent()
 
