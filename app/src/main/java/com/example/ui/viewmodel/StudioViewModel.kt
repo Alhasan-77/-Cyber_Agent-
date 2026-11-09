@@ -473,66 +473,51 @@ class StudioViewModel(
     fun runAiSecurityAndPerformanceAudit() {
         viewModelScope.launch {
             _isBusy.value = true
-            appendConsoleLog("[Security Auditor] Running static & dynamic code analysis via ${GeminiAiRepository.MODEL_ARGON}...")
-            delay(350L)
-            val totalChars = _htmlBuffer.value.length + _cssBuffer.value.length + _jsBuffer.value.length + _backendBuffer.value.length
-            val checksum = computeSha256Short(_htmlBuffer.value + _jsBuffer.value + _backendBuffer.value)
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            val auditReport = buildString {
-                appendLine("🛡️ تقرير الفحص الأمني وجودة الكود الشامل:")
-                appendLine("• البصمة الرقمية للكود (SHA-256): $checksum")
-                appendLine("• حجم الحزمة المصدرية: ${totalChars / 1024.0} KB")
-                appendLine("• فحص حقن الكود (XSS / SQLi): سليم 100% (محمي)")
-                appendLine("• توافق قواعد بيانات Firestore: متوافق مع المخطط المعزول للمستخدم")
-                appendLine("• توصية الأداء: تم تفعيل ضغط DOM وتسريع استجابة الأحداث التفاعلية.")
+            try {
+                val source = _htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
+                    _jsBuffer.value + "\n" + _backendBuffer.value
+                val checksum = computeSha256Short(source)
+                val report = buildString {
+                    appendLine("تقرير مراجعة أولية للكود (ليس فحصاً أمنياً ديناميكياً):")
+                    appendLine("البصمة SHA-256 المختصرة: $checksum")
+                    appendLine("حجم المصدر: ${source.length} حرف")
+                    appendLine("لم يتم تشغيل أدوات SAST/DAST أو اختبارات XSS/SQL injection.")
+                    appendLine("يلزم فحص خارجي وتشغيل اختبارات قبل اعتماد سلامة التطبيق.")
+                }
+                val projectId = _selectedProjectId.value
+                if (projectId.isNullOrBlank()) {
+                    _statusBanner.value = "لا يوجد مشروع محدد لمراجعة الكود."
+                    return@launch
+                }
+                repository.createBuildLog(
+                    projectId = projectId,
+                    stage = "مراجعة أولية للكود (SHA:$checksum)",
+                    status = "WARNING",
+                    durationMs = 0L,
+                    reportSummary = report
+                ).onSuccess {
+                    appendConsoleLog("[Code Review] Recorded preliminary review. No security scanner was run.")
+                    _statusBanner.value = "اكتملت المراجعة الأولية؛ لم يتم إجراء فحص أمني ديناميكي."
+                }.onFailure { error ->
+                    _statusBanner.value = "تعذر حفظ تقرير المراجعة: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                _statusBanner.value = "تعذرت مراجعة الكود: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                Log.e(TAG, "Code review failed", error)
+            } finally {
+                _isBusy.value = false
             }
-            repository.createBuildLog(
-                projectId = projectId,
-                stage = "فحص أمني وتدقيق أداء الكود (SHA:$checksum)",
-                status = "SUCCESS",
-                durationMs = 285L,
-                reportSummary = auditReport
-            )
-            appendConsoleLog("[Security Auditor] Passed 0 critical vulnerabilities. Checksum=$checksum")
-            _statusBanner.value = "🛡️ اكتمل التدقيق الأمني وفحص الأداء (البصمة: $checksum)"
-            _isBusy.value = false
         }
     }
 
     fun triggerCloudDeploymentPipeline() {
-        viewModelScope.launch {
-            _isBusy.value = true
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            appendConsoleLog("[Cloud CI/CD] Starting multi-stage deployment for '${_editorName.value}' on branch '${_activeBranch.value}'...")
-            delay(400L)
-            val checksum = computeSha256Short(_htmlBuffer.value + _cssBuffer.value + _jsBuffer.value + _backendBuffer.value)
-            val report = buildString {
-                appendLine("🚀 تقرير النشر السحابي المتكامل (Cloud CI/CD Pipeline):")
-                appendLine("• الفرع النشط: ${_activeBranch.value} | البصمة: $checksum")
-                appendLine("• المرحلة 1 (Build & Bundle): نجح تجميع الواجهة الأمامية والخلفية (${_editorLanguage.value})")
-                appendLine("• المرحلة 2 (Database Migration): تم التحقق من فهارس ومجموعات Firestore")
-                appendLine("• المرحلة 3 (Cloud Edge Deploy): تم النشر على عقدة السحابة عالية الأداء بزمن 340ms")
-            }
-            repository.createBuildLog(
-                projectId = projectId,
-                stage = "نشر سحابي كامل [${_activeBranch.value}]",
-                status = "SUCCESS",
-                durationMs = 340L,
-                reportSummary = report
-            )
-            appendConsoleLog("[Cloud CI/CD] Deployment LIVE! Checksum=$checksum")
-            _statusBanner.value = "🚀 تم تنفيذ خط أنابيب النشر السحابي وتوليد التقرير التفصيلي بنجاح!"
-            _isBusy.value = false
-        }
+        _statusBanner.value = "النشر السحابي غير مهيأ في هذا الإصدار. لم يتم تنفيذ نشر أو إنشاء سجل نجاح."
+        appendConsoleLog("[Cloud CI/CD] Deployment blocked: no deployment provider or credentials are configured.")
     }
 
     fun computeSha256Short(input: String): String {
-        return try {
-            val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
-            digest.take(5).joinToString("") { "%02x".format(it) }
-        } catch (_: Exception) {
-            "a9f4c2e18b"
-        }
+        val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
+        return digest.take(5).joinToString("") { "%02x".format(it) }
     }
 
     fun buildCombinedLivePreviewHtml(): String {
