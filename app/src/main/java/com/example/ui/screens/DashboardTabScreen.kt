@@ -155,7 +155,7 @@ fun DashboardTabScreen(
                                         .background(CyberEmerald)
                                 )
                                 Text(
-                                    text = "سحابة Gemini متصلة • الفرع: $activeBranch",
+                                    text = "الفرع: $activeBranch • بيانات الحساب السحابية",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = CyberTextPrimary
                                 )
@@ -267,7 +267,7 @@ fun DashboardTabScreen(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = "فحص أمني",
+                                text = "مراجعة الكود",
                                 color = CyberTextPrimary,
                                 maxLines = 1
                             )
@@ -293,7 +293,7 @@ fun DashboardTabScreen(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = "نشر سحابي",
+                                text = "حالة النشر",
                                 color = CyberBackground,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1
@@ -597,7 +597,7 @@ fun DashboardTabScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                                        contentDescription = "قراءة التقرير صوتياً عبر gemini-3.8-flash-tts",
+                                        contentDescription = "قراءة التقرير صوتياً باستخدام قارئ Android",
                                         tint = CyberCyan
                                     )
                                 }
