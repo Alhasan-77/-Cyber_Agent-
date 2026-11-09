@@ -463,11 +463,6 @@ fun NovaForgeStudioShell(
                 onDeleteProject = { id -> viewModel.deleteProject(id) },
                 onReadReportAloud = { reportText ->
                     ttsSpeaker?.speak(reportText)
-                    viewModel.synthesizeSpeechFromText(reportText, "Kore") { audioB64 ->
-                        scope.launch {
-                            AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = false)
-                        }
-                    }
                 },
                 onTriggerCloudDeploy = { viewModel.triggerCloudDeploymentPipeline() },
                 onRunSecurityAudit = { viewModel.runAiSecurityAndPerformanceAudit() }
@@ -540,13 +535,8 @@ fun NovaForgeStudioShell(
                 onAnalyzeMedia = { prompt, b64, mime, isVideo ->
                     viewModel.analyzeUploadedMedia(prompt, b64, mime, isVideo)
                 },
-                onSynthesizeSpeech = { text, voice ->
+                onSynthesizeSpeech = { text, _ ->
                     ttsSpeaker?.speak(text)
-                    viewModel.synthesizeSpeechFromText(text, voice) { audioB64 ->
-                        scope.launch {
-                            AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = false)
-                        }
-                    }
                 },
                 onTranscribeAudio = { b64, cb ->
                     viewModel.transcribeRecordedAudio(b64, cb)
