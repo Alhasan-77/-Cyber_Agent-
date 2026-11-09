@@ -773,12 +773,32 @@ class StudioViewModel(
                     stackLanguage = _editorLanguage.value,
                     preferredModel = _selectedChatModel.value
                 )
-                _htmlBuffer.value = generated["html"] ?: _htmlBuffer.value
-                _cssBuffer.value = generated["css"] ?: _cssBuffer.value
-                _jsBuffer.value = generated["js"] ?: _jsBuffer.value
-                _backendBuffer.value = generated["backend"] ?: _backendBuffer.value
-                saveAndBuildCurrentProject()
-                _statusBanner.value = "اكتمل توليد الكود باستخدام ${_selectedChatModel.value} والمهارات: ${appliedIds.take(3).joinToString(", ")}"
+                val html = generated["html"] ?: _htmlBuffer.value
+                val css = generated["css"] ?: _cssBuffer.value
+                val js = generated["js"] ?: _jsBuffer.value
+                val backend = generated["backend"] ?: _backendBuffer.value
+                val projectId = _selectedProjectId.value
+                if (projectId.isNullOrBlank()) {
+                    _statusBanner.value = "احفظ المشروع أولاً قبل تحديث ملفات المشروع المولدة."
+                    return@launch
+                }
+                val current = (projectsState.value as? UiState.Success)?.data
+                    ?.firstOrNull { it.id == projectId }
+                if (current == null || current.createdAt == null) {
+                    _statusBanner.value = "تعذر العثور على المشروع لحفظ الملفات المولدة."
+                    return@launch
+                }
+                repository.updateProject(
+                    current.copy(htmlCode = html, cssCode = css, jsCode = js, backendCode = backend)
+                ).onSuccess {
+                    _htmlBuffer.value = html
+                    _cssBuffer.value = css
+                    _jsBuffer.value = js
+                    _backendBuffer.value = backend
+                    _statusBanner.value = "تم توليد الملفات وحفظها. لم يتم تشغيل مترجم أو نشر. المهارات: ${appliedIds.take(3).joinToString(", ")}"
+                }.onFailure { error ->
+                    _statusBanner.value = "تم التوليد لكن تعذر حفظ الملفات: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
             } catch (error: Exception) {
                 Log.e(TAG, "Full-stack generation failed", error)
                 _statusBanner.value = "تعذر توليد المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
