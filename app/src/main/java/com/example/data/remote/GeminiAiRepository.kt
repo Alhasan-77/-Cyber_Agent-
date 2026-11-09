@@ -761,9 +761,9 @@ class GeminiAiRepository(
         sourceImageBase64: String? = null,
         sourceMimeType: String? = null
     ): GeneratedMediaAsset = withContext(Dispatchers.IO) {
+        require(prompt.isNotBlank()) { "اكتب وصفاً للصورة أولاً." }
         val modelName = if (useStudioProModel) MODEL_PRO_IMAGE else MODEL_NANO_BANANA
         val imageModel = if (useStudioProModel) proImageModel else nanoBananaImageModel
-
         try {
             val inputBitmap = decodeBase64Bitmap(sourceImageBase64)
             val response = withTimeout(AI_TIMEOUT_MS) {
@@ -780,89 +780,30 @@ class GeminiAiRepository(
                     }
                 }
             }
-
-            val imagePart = response.candidates.firstOrNull()
+            val outputBitmap = response.candidates.firstOrNull()
                 ?.content?.parts?.filterIsInstance<ImagePart>()
-                ?.firstOrNull()
-
-            val outputBitmap = imagePart?.image
-            if (outputBitmap != null) {
-                val encodedPng = encodeBitmapToBase64Png(outputBitmap)
-                return@withContext GeneratedMediaAsset(
-                    id = UUID.randomUUID().toString(),
-                    type = "IMAGE",
-                    prompt = prompt,
-                    modelUsed = modelName,
-                    metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
-                    base64Data = encodedPng,
-                    mimeType = "image/png",
-                    textSummary = response.text ?: "تم توليد الصورة بنجاح عبر Firebase AI Logic ($modelName • $aspectRatio • $imageSize)."
-                )
-            } else {
-                val errorMessage = "لم يتم إرجاع بيانات صورة من النموذج ($modelName)."
-                GlobalExceptionHandler.reportError(
-                    phase = "Gemini Image Synthesis ($modelName)",
-                    throwable = IllegalStateException(errorMessage),
-                    isFatal = false,
-                    serviceName = "Gemini"
-                )
-                return@withContext GeneratedMediaAsset(
-                    id = UUID.randomUUID().toString(),
-                    type = "IMAGE",
-                    prompt = prompt,
-                    modelUsed = modelName,
-                    metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
-                    textSummary = "تعذر توليد الصورة عبر $modelName: $errorMessage"
-                )
-            }
-        } catch (e: TimeoutCancellationException) {
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Image Timeout ($modelName)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
-            return@withContext GeneratedMediaAsset(
+                ?.firstOrNull()?.image
+                ?: throw IllegalStateException("لم يُرجع النموذج بيانات صورة فعلية.")
+            GeneratedMediaAsset(
                 id = UUID.randomUUID().toString(),
                 type = "IMAGE",
                 prompt = prompt,
                 modelUsed = modelName,
-                metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
-                textSummary = "انتهت مهلة توليد الصورة بعد 60 ثانية عبر $modelName."
-            )
-        } catch (e: QuotaExceededException) {
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Image Quota ($modelName)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
-            return@withContext GeneratedMediaAsset(
-                id = UUID.randomUUID().toString(),
-                type = "IMAGE",
-                prompt = prompt,
-                modelUsed = modelName,
-                metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
-                textSummary = "تم تجاوز حد الاستخدام المسموح لتوليد الصور عبر $modelName. يرجى المحاولة لاحقاً."
+                metadataLabel = "الأبعاد المطلوبة: $aspectRatio | الدقة المطلوبة: $imageSize",
+                base64Data = encodeBitmapToBase64Png(outputBitmap),
+                mimeType = "image/png",
+                textSummary = response.text ?: "تم استلام صورة من مزود الذكاء الاصطناعي."
             )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Image generation failed ($modelName)", e)
             GlobalExceptionHandler.reportError(
-                phase = "Gemini Image Generation ($modelName)",
+                phase = "Image Generation ($modelName)",
                 throwable = e,
                 isFatal = false,
                 serviceName = "Gemini"
             )
-            return@withContext GeneratedMediaAsset(
-                id = UUID.randomUUID().toString(),
-                type = "IMAGE",
-                prompt = prompt,
-                modelUsed = modelName,
-                metadataLabel = "الأبعاد: $aspectRatio | الدقة: $imageSize",
-                textSummary = "فشل توليد الصورة عبر $modelName: ${e.localizedMessage ?: "خطأ في الاتصال بخدمة Firebase AI Logic"}"
-            )
+            throw IllegalStateException("تعذر توليد الصورة: ${e.localizedMessage ?: "تحقق من إعدادات Firebase AI والحصة المتاحة."}", e)
         }
     }
 
