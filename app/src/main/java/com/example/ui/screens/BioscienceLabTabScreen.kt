@@ -700,38 +700,15 @@ fun BioscienceLabTabScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "🏥 مؤشرات التجارب السريرية (IC50 / ΔG) وترجمة الإطار القرائي (ORF)",
+                                text = "🏥 المؤشرات السريرية والدوائية",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = CyberAmber,
                                 fontWeight = FontWeight.Bold
                             )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "IC50: ${liveMetrics.predictedIc50Nm} nM",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CyberCyan,
-                                    fontFamily = JetBrainsMonoFontFamily
-                                )
-                                Text(
-                                    text = "ΔG: ${liveMetrics.bindingAffinityKcal} kcal/mol",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CyberEmerald,
-                                    fontFamily = JetBrainsMonoFontFamily
-                                )
-                                Text(
-                                    text = "TI: ${liveMetrics.therapeuticIndex}x",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CyberAmber,
-                                    fontFamily = JetBrainsMonoFontFamily
-                                )
-                            }
                             Text(
-                                text = "الحالة السريرية: ${liveMetrics.clinicalPhaseReadiness}",
+                                text = "IC50 وΔG وTI والجاهزية السريرية غير محسوبة. لا يجوز تفسير القيم الصفرية على أنها نتائج؛ يتطلب ذلك بيانات تجريبية وأدوات تخصصية.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
                                 text = "ORF Protein: ${liveMetrics.translatedProteinPreview.take(64)}...",
