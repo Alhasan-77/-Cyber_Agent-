@@ -158,7 +158,9 @@ object OpenAiNetworkClient {
     }
 
     fun getConfiguredApiKey(): String {
-        return runCatching { BuildConfig.OPENAI_API_KEY.trim() }.getOrDefault("")
+        return runCatching {
+            BuildConfig.OPENAI_API_KEY.trim().removeSurrounding("\"").trim()
+        }.getOrDefault("")
     }
 
     fun isApiKeyConfigured(): Boolean {
