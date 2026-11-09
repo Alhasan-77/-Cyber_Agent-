@@ -202,6 +202,14 @@ class ExampleRobolectricTest {
         assertEquals("DNA", ambiguousDna.sequenceType)
         assertTrue(ambiguousDna.translatedProteinPreview.startsWith("MVH"))
 
+        val exportedPipeline = BioscienceSimulationEngine.generateExportablePipelineCode(
+            workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING,
+            metrics = proteinGcMetrics
+        )
+        assertTrue(exportedPipeline.contains("plddt_confidence: Optional[float] = None"))
+        assertTrue(exportedPipeline.contains("predicted_ic50_nm: Optional[float] = None"))
+        assertTrue(exportedPipeline.contains("\"clinical_readiness\": None"))
+
         try {
             BioscienceSimulationEngine.analyzeSequenceMetrics(
                 rawInput = "MVHLTPEEKS@",
