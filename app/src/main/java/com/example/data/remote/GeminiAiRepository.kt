@@ -1020,12 +1020,8 @@ class GeminiAiRepository(
             return@withContext "تحليل $mediaTypeAr عبر $MODEL_ARGON:\n• نوع الملف: $mimeType\n• حجم البيانات المرفوعة: ${(mediaBase64.length * 3) / 4 / 1024} كيلوبايت\n• ملاحظة الاتصال: ${e.localizedMessage}"
         }
 
-        """
-        تحليل متقدم لـ$mediaTypeAr بواسطة $MODEL_ARGON:
-        • نوع الوسائط: $mimeType (${(mediaBase64.length * 3) / 4 / 1024} KB)
-        • الاستنتاج المعماري: تم استخراج العناصر البصرية والهيكلية بنجاح.
-        • التوصيات البرمجية: يمكن تحويل مكونات الواجهة المكتشفة مباشرة إلى مكونات Jetpack Compose أو HTML/CSS متجاوبة داخل محرر المشروع.
-        """.trimIndent()
+        throw IllegalStateException("لم يُرجع النموذج نتيجة لتحليل الوسائط.")
+
     }
 
     // 7. Convert Text to Speech using Firebase AI Logic + Android TTS
