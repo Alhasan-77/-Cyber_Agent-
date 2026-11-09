@@ -264,7 +264,6 @@ class GeminiAiRepository(
         useHighThinking: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            val apiKey = OpenAiNetworkClient.getConfiguredApiKey()
             if (!OpenAiNetworkClient.isApiKeyConfigured()) {
                 throw IllegalStateException(
                     "مفتاح OPENAI_API_KEY غير مضبوط بعد في لوحة الأسرار (Secrets Panel) في AI Studio. " +
@@ -295,7 +294,6 @@ class GeminiAiRepository(
 
             val response = withTimeout(AI_TIMEOUT_MS) {
                 openAiService.createChatCompletion(
-                    authorization = "Bearer $apiKey",
                     request = OpenAiChatCompletionRequest(
                         model = openAiModel,
                         messages = messages,
