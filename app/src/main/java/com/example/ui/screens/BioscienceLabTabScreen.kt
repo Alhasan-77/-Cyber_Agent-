@@ -511,7 +511,7 @@ fun BioscienceLabTabScreen(
                         Button(
                             onClick = {
                                 val summaryText = bioscienceOutput
-                                    ?: "تحليل فوري (${activeWorkflow.badgeText}): الطول=${liveMetrics.sequenceLength}، pLDDT=${liveMetrics.plddtConfidence}%، ΔG=${liveMetrics.bindingAffinityKcal} kcal/mol، مواقع PAM=${liveMetrics.pamSites.size}، الجاهزية=${liveMetrics.clinicalPhaseReadiness}"
+                                    ?: "مؤشرات وصفية أولية (${activeWorkflow.badgeText}): نوع التسلسل=${liveMetrics.sequenceType}، الطول=${liveMetrics.sequenceLength}، GC=${liveMetrics.gcContentPct}%. لا توجد نتائج pLDDT أو ΔG أو IC50 أو جاهزية سريرية من نموذج تخصصي في هذه الجلسة."
                                 onSaveBioExperiment(
                                     "${activeWorkflow.titleAr} (${liveMetrics.sequenceType})",
                                     activeWorkflow.name,
@@ -590,7 +590,12 @@ fun BioscienceLabTabScreen(
                             BioMetricBadge("حرارة الانصهار Tm", "${liveMetrics.meltingTempC} °C", CyberAmber)
                             BioMetricBadge("الوزن الجزيئي", "${liveMetrics.molecularWeightKda} kDa", CyberViolet)
                             BioMetricBadge("مؤشر GRAVY", "${liveMetrics.gravyHydropathy}", CyberCyan)
-                            BioMetricBadge("ثقة الطي pLDDT", "${liveMetrics.plddtConfidence}%", CyberEmerald)
+                            BioMetricBadge(
+                                "ثقة الطي pLDDT",
+                                if (liveMetrics.plddtConfidence > 0) "${liveMetrics.plddtConfidence}%"
+                                else "غير محسوبة",
+                                CyberTextSecondary
+                            )
                         }
 
                         // Section A: 3D Protein Folding Secondary Structure Distribution
