@@ -713,8 +713,20 @@ class StudioViewModel(
 
     fun deleteProject(projectId: String) {
         viewModelScope.launch {
-            repository.deleteProject(projectId)
-            _statusBanner.value = "تم حذف المشروع من السحابة."
+            try {
+                repository.deleteProject(projectId).onSuccess {
+                    if (_selectedProjectId.value == projectId) {
+                        _selectedProjectId.value = null
+                    }
+                    _statusBanner.value = "تم حذف المشروع من السحابة."
+                }.onFailure { error ->
+                    Log.e(TAG, "Project deletion failed", error)
+                    _statusBanner.value = "تعذر حذف المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Project deletion failed", error)
+                _statusBanner.value = "تعذر حذف المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            }
         }
     }
 
@@ -823,13 +835,45 @@ class StudioViewModel(
     }
 
     fun restoreVersionSnapshot(snapshot: VersionSnapshot) {
-        _htmlBuffer.value = snapshot.htmlCode
-        _cssBuffer.value = snapshot.cssCode
-        _jsBuffer.value = snapshot.jsCode
-        _backendBuffer.value = snapshot.backendCode
-        saveAndBuildCurrentProject()
-        appendConsoleLog("[VCS Restore] Rolled back workspace to ${snapshot.versionTag}")
-        _statusBanner.value = "تمت استعادة الإصدار ${snapshot.versionTag} (${snapshot.commitMessage}) بنجاح!"
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                val projectId = _selectedProjectId.value
+                if (projectId.isNullOrBlank()) {
+                    _statusBanner.value = "اختر مشروعاً قبل استعادة الإصدار."
+                    return@launch
+                }
+                val current = (projectsState.value as? UiState.Success)?.data
+                    ?.firstOrNull { it.id == projectId }
+                if (current == null || current.createdAt == null) {
+                    _statusBanner.value = "تعذر العثور على المشروع الحالي لحفظ النسخة المستعادة."
+                    return@launch
+                }
+                repository.updateProject(
+                    current.copy(
+                        htmlCode = snapshot.htmlCode,
+                        cssCode = snapshot.cssCode,
+                        jsCode = snapshot.jsCode,
+                        backendCode = snapshot.backendCode
+                    )
+                ).onSuccess {
+                    _htmlBuffer.value = snapshot.htmlCode
+                    _cssBuffer.value = snapshot.cssCode
+                    _jsBuffer.value = snapshot.jsCode
+                    _backendBuffer.value = snapshot.backendCode
+                    appendConsoleLog("[VCS Restore] Restored ${snapshot.versionTag} to cloud project.")
+                    _statusBanner.value = "تمت استعادة الإصدار ${snapshot.versionTag} وحفظه."
+                }.onFailure { error ->
+                    Log.e(TAG, "Version restore failed", error)
+                    _statusBanner.value = "تعذرت استعادة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Version restore failed", error)
+                _statusBanner.value = "تعذرت استعادة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
+        }
     }
 
     fun computeDiffAgainstCurrent(snapshot: VersionSnapshot): List<DiffLine> {
@@ -1230,38 +1274,49 @@ class StudioViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            repository.createBioExperiment(
-                title = title,
-                workflowMode = workflowMode,
-                fastaSequence = fastaSequence,
-                researchGoal = researchGoal,
-                plddtScore = plddtScore.toLong(),
-                freeEnergyKcal = freeEnergyKcal,
-                alphaHelixPct = alphaHelixPct.toLong(),
-                betaSheetPct = betaSheetPct.toLong(),
-                aiReportSummary = aiReportSummary
-            ).onSuccess { expId ->
-                _lastSyncTimestampLabel.value = currentTimeLabel()
-                syncUserProfileToCloud()
-                _statusBanner.value = "☁️ تم حفظ تجربة المختبر الحيوي ($expId) في Cloud Firestore بنجاح"
-            }.onFailure { err ->
-                _statusBanner.value = "تعذر حفظ التجربة الحيوية سحابياً: ${err.localizedMessage}"
+            try {
+                repository.createBioExperiment(
+                    title = title,
+                    workflowMode = workflowMode,
+                    fastaSequence = fastaSequence,
+                    researchGoal = researchGoal,
+                    plddtScore = plddtScore.toLong(),
+                    freeEnergyKcal = freeEnergyKcal,
+                    alphaHelixPct = alphaHelixPct.toLong(),
+                    betaSheetPct = betaSheetPct.toLong(),
+                    aiReportSummary = aiReportSummary
+                ).onSuccess { expId ->
+                    _lastSyncTimestampLabel.value = currentTimeLabel()
+                    _statusBanner.value = "تم حفظ تجربة المختبر الحيوي ($expId) في Firestore."
+                    syncUserProfileToCloud()
+                }.onFailure { error ->
+                    _statusBanner.value = "تعذر حفظ التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Bio experiment save failed", error)
+                _statusBanner.value = "تعذر حفظ التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            _isBusy.value = false
         }
     }
 
     fun deleteBioExperimentFromCloud(experimentId: String) {
         viewModelScope.launch {
-            repository.deleteBioExperiment(experimentId)
-                .onSuccess {
-                    _lastSyncTimestampLabel.value = currentTimeLabel()
-                    syncUserProfileToCloud()
-                    _statusBanner.value = "تم حذف التجربة الحيوية من السحابة"
-                }
-                .onFailure { err ->
-                    _statusBanner.value = "تعذر حذف التجربة الحيوية: ${err.localizedMessage}"
-                }
+            try {
+                repository.deleteBioExperiment(experimentId)
+                    .onSuccess {
+                        _lastSyncTimestampLabel.value = currentTimeLabel()
+                        _statusBanner.value = "تم حذف التجربة الحيوية من السحابة."
+                        syncUserProfileToCloud()
+                    }
+                    .onFailure { error ->
+                        _statusBanner.value = "تعذر حذف التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                    }
+            } catch (error: Exception) {
+                Log.e(TAG, "Bio experiment deletion failed", error)
+                _statusBanner.value = "تعذر حذف التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            }
         }
     }
 
