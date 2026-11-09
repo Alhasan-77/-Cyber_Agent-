@@ -220,36 +220,34 @@ object BioscienceSimulationEngine {
                 sb.append(aa)
                 i += 3
             }
-            sb.toString().ifEmpty { "MVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFF" }
+            sb.toString()
         } else {
             cleaned.take(180)
         }
 
         val gravy = if (translatedProtein.isNotEmpty()) {
-            val sum = translatedProtein.sumOf { kyteDoolittle[it] ?: -0.2 }
+            val sum = translatedProtein.sumOf { kyteDoolittle[it] ?: 0.0 }
             ((sum / translatedProtein.length.toDouble()) * 100.0).roundToInt() / 100.0
         } else {
-            -0.15
+            0.0
         }
 
         // Secondary structure estimation (Chou-Fasman / Garnier heuristic)
         val helixFavored = translatedProtein.count { it in "EAQLMKRH" }
         val sheetFavored = translatedProtein.count { it in "VIFYWTC" }
         val totalAa = max(1, translatedProtein.length)
-        val rawHelix = ((helixFavored.toDouble() / totalAa) * 100).roundToInt().coerceIn(22, 68)
-        val rawSheet = ((sheetFavored.toDouble() / totalAa) * 100).roundToInt().coerceIn(12, 46)
-        val normalizedSheet = min(rawSheet, 90 - rawHelix)
-        val coilPct = max(8, 100 - rawHelix - normalizedSheet)
+        val rawHelix = if (translatedProtein.isEmpty()) 0 else
+            ((helixFavored.toDouble() / totalAa) * 100).roundToInt().coerceIn(0, 100)
+        val rawSheet = if (translatedProtein.isEmpty()) 0 else
+            ((sheetFavored.toDouble() / totalAa) * 100).roundToInt().coerceIn(0, 100)
+        val normalizedSheet = if (translatedProtein.isEmpty()) 0 else min(rawSheet, 100 - rawHelix)
+        val coilPct = if (translatedProtein.isEmpty()) 0 else max(0, 100 - rawHelix - normalizedSheet)
 
         // pLDDT is a model confidence score and cannot be inferred from sequence composition.
         val plddt = 0.0
 
         // Scan CRISPR NGG PAM sites (both forward NGG and reverse CCN)
-        val dnaForPam = if (isNucleic) {
-            cleaned.replace('U', 'T')
-        } else {
-            ""
-        }
+        val dnaForPam = if (isNucleic && seqType == "DNA") cleaned else ""
 
         val discoveredPams = mutableListOf<PamTargetSite>()
         for (idx in 20..(dnaForPam.length - 3)) {
