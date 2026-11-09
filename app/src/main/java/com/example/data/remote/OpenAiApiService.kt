@@ -10,7 +10,6 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.http.Body
-import retrofit2.http.Header
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
 
@@ -110,7 +109,6 @@ data class OpenAiErrorDetail(
 interface OpenAiApiService {
     @POST("v1/chat/completions")
     suspend fun createChatCompletion(
-        @Header("Authorization") authorization: String = "Bearer ${OpenAiNetworkClient.getConfiguredApiKey()}",
         @Body request: OpenAiChatCompletionRequest
     ): OpenAiChatCompletionResponse
 }
