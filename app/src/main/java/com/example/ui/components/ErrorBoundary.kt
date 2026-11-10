@@ -217,14 +217,15 @@ object GlobalExceptionHandler : Thread.UncaughtExceptionHandler {
                 "قيمة firestore_database_id فارغة؛ لا يمكن الاتصال بقاعدة بيانات Firestore المسماة."
             }
 
-            val webClientId = runCatching {
-                appContext.getString(R.string.default_web_client_id)
-            }.getOrElse { e ->
-                throw IllegalStateException(
-                    "المورد R.string.default_web_client_id مفقود؛ يلزم لتسجيل الدخول عبر Google Sign-In.",
-                    e
-                )
+            val webClientIdResourceId = appContext.resources.getIdentifier(
+                "default_web_client_id",
+                "string",
+                appContext.packageName
+            )
+            check(webClientIdResourceId != 0) {
+                "مورد default_web_client_id غير موجود؛ تحقق من إعداد Google Services."
             }
+            val webClientId = appContext.getString(webClientIdResourceId)
             check(webClientId.isNotBlank()) {
                 "قيمة default_web_client_id فارغة في موارد التطبيق."
             }

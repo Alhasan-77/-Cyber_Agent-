@@ -78,6 +78,7 @@ import com.example.ui.theme.CyberCoral
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.CyberEmerald
 import com.example.ui.theme.CyberSurface
+import com.example.ui.theme.CyberTextSecondary
 import com.example.ui.theme.CyberViolet
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
@@ -511,7 +512,7 @@ fun BioscienceLabTabScreen(
                         Button(
                             onClick = {
                                 val summaryText = bioscienceOutput
-                                    ?: "تحليل فوري (${activeWorkflow.badgeText}): الطول=${liveMetrics.sequenceLength}، pLDDT=${liveMetrics.plddtConfidence}%، ΔG=${liveMetrics.bindingAffinityKcal} kcal/mol، مواقع PAM=${liveMetrics.pamSites.size}، الجاهزية=${liveMetrics.clinicalPhaseReadiness}"
+                                    ?: "مؤشرات وصفية أولية (${activeWorkflow.badgeText}): نوع التسلسل=${liveMetrics.sequenceType}، الطول=${liveMetrics.sequenceLength}، GC=${if (liveMetrics.sequenceType == "PROTEIN") "غير منطبق" else liveMetrics.gcContentPct.toString() + "%"}، ولا توجد نتائج pLDDT أو بنية ثانوية أو ΔG أو IC50 أو جاهزية سريرية من نموذج تخصصي في هذه الجلسة."
                                 onSaveBioExperiment(
                                     "${activeWorkflow.titleAr} (${liveMetrics.sequenceType})",
                                     activeWorkflow.name,
@@ -541,9 +542,18 @@ fun BioscienceLabTabScreen(
                 }
             }
 
-            // 3b. Interactive Protein Folding Structural Visualizer
+            // Visualizer is illustrative and is only shown for a supplied protein sequence.
             item {
-                ProteinFoldingVisualizer(metrics = liveMetrics)
+                if (liveMetrics.sequenceType == "PROTEIN" && liveMetrics.translatedProteinPreview.isNotBlank()) {
+                    ProteinFoldingVisualizer(metrics = liveMetrics)
+                } else {
+                    Text(
+                        text = "عارض البروتين التوضيحي يتطلب تسلسلاً بروتينياً؛ لن يتم استبدال DNA/RNA بتسلسل افتراضي.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    )
+                }
             }
 
             // 4. Real-Time Computed Bioinformatics & Clinical Dashboard Card
@@ -586,11 +596,28 @@ fun BioscienceLabTabScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             BioMetricBadge("الطول", "${liveMetrics.sequenceLength} ${if (liveMetrics.sequenceType == "PROTEIN") "aa" else "bp"}", CyberCyan)
-                            BioMetricBadge("نسبة GC%", "${liveMetrics.gcContentPct}%", CyberEmerald)
-                            BioMetricBadge("حرارة الانصهار Tm", "${liveMetrics.meltingTempC} °C", CyberAmber)
-                            BioMetricBadge("الوزن الجزيئي", "${liveMetrics.molecularWeightKda} kDa", CyberViolet)
-                            BioMetricBadge("مؤشر GRAVY", "${liveMetrics.gravyHydropathy}", CyberCyan)
-                            BioMetricBadge("ثقة الطي pLDDT", "${liveMetrics.plddtConfidence}%", CyberEmerald)
+                            BioMetricBadge(
+                                "نسبة GC%",
+                                if (liveMetrics.sequenceType == "PROTEIN") "غير منطبق" else "${liveMetrics.gcContentPct}%",
+                                CyberEmerald
+                            )
+                            BioMetricBadge(
+                                "حرارة الانصهار Tm",
+                                if (liveMetrics.sequenceType == "PROTEIN") "غير محسوبة" else "${liveMetrics.meltingTempC} °C",
+                                CyberAmber
+                            )
+                            BioMetricBadge("الوزن الجزيئي التقريبي", "~${liveMetrics.molecularWeightKda} kDa", CyberViolet)
+                            BioMetricBadge(
+                                "مؤشر GRAVY",
+                                if (liveMetrics.sequenceType == "PROTEIN") "${liveMetrics.gravyHydropathy}" else "غير منطبق",
+                                CyberCyan
+                            )
+                            BioMetricBadge(
+                                "ثقة الطي pLDDT",
+                                if (liveMetrics.plddtConfidence > 0) "${liveMetrics.plddtConfidence}%"
+                                else "غير محسوبة",
+                                CyberTextSecondary
+                            )
                         }
 
                         // Section A: 3D Protein Folding Secondary Structure Distribution
@@ -603,14 +630,16 @@ fun BioscienceLabTabScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "🧬 التنبؤ بالبنية الثانوية ثلاثية الأبعاد (Alpha-Helix / Beta-Sheet / Coil)",
+                                text = "مؤشرات تركيبية تقريبية (ليست تنبؤاً بنيوياً متخصصاً)",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = CyberEmerald,
                                 fontWeight = FontWeight.Bold
                             )
-                            StructureBarRow("Alpha-Helix (حلزون ألفا)", liveMetrics.alphaHelixPct, CyberCyan)
-                            StructureBarRow("Beta-Sheet (صفائح بيتا)", liveMetrics.betaSheetPct, CyberViolet)
-                            StructureBarRow("Random Coil (حلقات مرنة)", liveMetrics.randomCoilPct, CyberAmber)
+                            Text(
+                                text = "توزيع البنية الثانوية غير متاح دون تشغيل أداة تنبؤ بنيوي متخصصة.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
 
                         // Section B: CRISPR-Cas9 PAM (NGG) Target Sites
@@ -623,7 +652,7 @@ fun BioscienceLabTabScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "✂️ مسح مواقع CRISPR-Cas9 PAM (NGG) وتقييم كفاءة الدليل sgRNA",
+                                text = "✂️ اكتشاف مواقع PAM (NGG) — لا يتضمن ذلك تقييم كفاءة القطع أو Off-Target",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = CyberViolet,
                                 fontWeight = FontWeight.Bold
@@ -646,16 +675,16 @@ fun BioscienceLabTabScreen(
                                             color = CyberCyan
                                         )
                                         Text(
-                                            text = "GC: ${pam.gcPercent}% • المخاطر: ${pam.offTargetRisk}",
+                                            text = "GC للدليل: ${pam.gcPercent}% • ${pam.offTargetRisk}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                     Text(
-                                        text = "Score ${pam.onTargetScore}%",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = CyberEmerald,
-                                        fontWeight = FontWeight.Bold
+                                        text = "فعالية غير محسوبة",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                             }
@@ -671,38 +700,15 @@ fun BioscienceLabTabScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "🏥 مؤشرات التجارب السريرية (IC50 / ΔG) وترجمة الإطار القرائي (ORF)",
+                                text = "🏥 المؤشرات السريرية والدوائية",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = CyberAmber,
                                 fontWeight = FontWeight.Bold
                             )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "IC50: ${liveMetrics.predictedIc50Nm} nM",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CyberCyan,
-                                    fontFamily = JetBrainsMonoFontFamily
-                                )
-                                Text(
-                                    text = "ΔG: ${liveMetrics.bindingAffinityKcal} kcal/mol",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CyberEmerald,
-                                    fontFamily = JetBrainsMonoFontFamily
-                                )
-                                Text(
-                                    text = "TI: ${liveMetrics.therapeuticIndex}x",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CyberAmber,
-                                    fontFamily = JetBrainsMonoFontFamily
-                                )
-                            }
                             Text(
-                                text = "الحالة السريرية: ${liveMetrics.clinicalPhaseReadiness}",
+                                text = "IC50 وΔG وTI والجاهزية السريرية غير محسوبة. لا يجوز تفسير القيم الصفرية على أنها نتائج؛ يتطلب ذلك بيانات تجريبية وأدوات تخصصية.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
                                 text = "ORF Protein: ${liveMetrics.translatedProteinPreview.take(64)}...",
@@ -846,7 +852,7 @@ fun BioscienceLabTabScreen(
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Text(
-                                                text = "${exp.workflowMode} • pLDDT: ${exp.plddtScore}% • ΔG: ${exp.freeEnergyKcal} kcal/mol • Helix: ${exp.alphaHelixPct}% • Sheet: ${exp.betaSheetPct}%",
+                                                text = "${exp.workflowMode} • ملخص محفوظ: ${exp.aiReportSummary.take(90)}",
                                                 style = MaterialTheme.typography.labelSmall.copy(
                                                     fontFamily = JetBrainsMonoFontFamily
                                                 ),

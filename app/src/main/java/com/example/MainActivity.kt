@@ -51,7 +51,7 @@ import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
-import com.google.firebase.appcheck.recaptcha.RecaptchaAppCheckProviderFactory
+import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
@@ -65,7 +65,6 @@ private const val TAG = "AppCheckInit"
 private const val DEBUG_TOKEN_EXTRA = "FIREBASE_APPCHECK_DEBUG_TOKEN"
 private const val DEBUG_STORE_PREFIX = "com.google.firebase.appcheck.debug.store."
 private const val DEBUG_SECRET_KEY = "com.google.firebase.appcheck.debug.DEBUG_SECRET"
-private const val RECAPTCHA_SITE_KEY_RES = "recaptcha_site_key"
 
 fun configureAppCheck(context: Context, intent: Intent?) {
     try {
@@ -73,52 +72,42 @@ fun configureAppCheck(context: Context, intent: Intent?) {
             FirebaseApp.initializeApp(context)
         }
 
+        val appCheck = FirebaseAppCheck.getInstance()
         if (BuildConfig.DEBUG) {
             val debugToken = intent?.getStringExtra(DEBUG_TOKEN_EXTRA)
             val persistenceKey = FirebaseApp.getInstance().persistenceKey
-            if (!debugToken.isNullOrEmpty()) {
-                val prefs = context.getSharedPreferences(
+            if (!debugToken.isNullOrBlank()) {
+                context.getSharedPreferences(
                     "$DEBUG_STORE_PREFIX$persistenceKey",
                     Context.MODE_PRIVATE
-                )
-                prefs.edit()
+                ).edit()
                     .putString(DEBUG_SECRET_KEY, debugToken)
-                    .commit()
-                // Clear any stale cached App Check JWT token so DebugAppCheckProviderFactory mints a fresh token
+                    .apply()
+
                 context.getSharedPreferences(
                     "com.google.firebase.appcheck.store.$persistenceKey",
                     Context.MODE_PRIVATE
-                ).edit().clear().commit()
-                Log.d(TAG, "App Check debug secret configured successfully.")
+                ).edit().clear().apply()
+                Log.d(TAG, "App Check debug token configured.")
             } else {
-                Log.w(TAG, "No debug token found in Intent extra.")
+                Log.w(TAG, "No App Check debug token was provided.")
             }
 
-            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+            appCheck.installAppCheckProviderFactory(
                 DebugAppCheckProviderFactory.getInstance()
             )
-            Log.d(TAG, "DebugAppCheckProviderFactory installed.")
+            Log.d(TAG, "Debug App Check provider installed.")
         } else {
-            val resId = context.resources.getIdentifier(RECAPTCHA_SITE_KEY_RES, "string", context.packageName)
-            if (resId != 0) {
-                val siteKey = context.getString(resId)
-                if (siteKey.isNotBlank()) {
-                    FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                        RecaptchaAppCheckProviderFactory.getInstance(siteKey)
-                    )
-                    Log.d(TAG, "RecaptchaAppCheckProviderFactory installed.")
-                } else {
-                    Log.e(TAG, "recaptcha_site_key resource string is blank.")
-                }
-            } else {
-                Log.e(TAG, "recaptcha_site_key string resource not found in package.")
-            }
+            appCheck.installAppCheckProviderFactory(
+                PlayIntegrityAppCheckProviderFactory.getInstance()
+            )
+            Log.d(TAG, "Play Integrity App Check provider installed.")
         }
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize Firebase App Check", e)
+    } catch (error: Exception) {
+        Log.e(TAG, "Failed to initialize Firebase App Check", error)
         GlobalExceptionHandler.reportError(
             phase = "Firebase App Check Initialization",
-            throwable = e,
+            throwable = error,
             isFatal = false,
             serviceName = "Firebase"
         )
@@ -463,11 +452,6 @@ fun NovaForgeStudioShell(
                 onDeleteProject = { id -> viewModel.deleteProject(id) },
                 onReadReportAloud = { reportText ->
                     ttsSpeaker?.speak(reportText)
-                    viewModel.synthesizeSpeechFromText(reportText, "Kore") { audioB64 ->
-                        scope.launch {
-                            AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = false)
-                        }
-                    }
                 },
                 onTriggerCloudDeploy = { viewModel.triggerCloudDeploymentPipeline() },
                 onRunSecurityAudit = { viewModel.runAiSecurityAndPerformanceAudit() }
@@ -490,7 +474,8 @@ fun NovaForgeStudioShell(
                 onLoadTemplate = { viewModel.loadStarterTemplate(it) },
                 onRunSecurityAudit = { viewModel.runAiSecurityAndPerformanceAudit() },
                 onAppendConsoleLog = { viewModel.appendConsoleLog(it) },
-                onClearConsoleLogs = { viewModel.clearConsoleLogs() }
+                onClearConsoleLogs = { viewModel.clearConsoleLogs() },
+                isBusy = isBusy
             )
             StudioBottomTab.DB_VCS.index -> DatabaseAndVcsTabScreen(
                 dataViewModel = dataViewModel,
@@ -540,13 +525,8 @@ fun NovaForgeStudioShell(
                 onAnalyzeMedia = { prompt, b64, mime, isVideo ->
                     viewModel.analyzeUploadedMedia(prompt, b64, mime, isVideo)
                 },
-                onSynthesizeSpeech = { text, voice ->
+                onSynthesizeSpeech = { text, _ ->
                     ttsSpeaker?.speak(text)
-                    viewModel.synthesizeSpeechFromText(text, voice) { audioB64 ->
-                        scope.launch {
-                            AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = false)
-                        }
-                    }
                 },
                 onTranscribeAudio = { b64, cb ->
                     viewModel.transcribeRecordedAudio(b64, cb)
@@ -558,12 +538,24 @@ fun NovaForgeStudioShell(
                 },
                 onGenerateMusic = { prompt, isPro ->
                     viewModel.generateMusicTrack(prompt, isPro) { audioB64 ->
-                        scope.launch {
-                            AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = true)
+                        if (!audioB64.isNullOrBlank()) {
+                            scope.launch {
+                                runCatching {
+                                    AudioAndMediaHelper.playAudioOrSynthesizedTrack(audioB64, isMusic = true)
+                                }.onFailure { error ->
+                                    GlobalExceptionHandler.reportError(
+                                        phase = "Music Playback",
+                                        throwable = error,
+                                        isFatal = false,
+                                        serviceName = "Audio"
+                                    )
+                                }
+                            }
                         }
                     }
                 },
-                onSpeakText = { text -> ttsSpeaker?.speak(text) }
+                onSpeakText = { text -> ttsSpeaker?.speak(text) },
+                isBusy = isBusy
             )
             StudioBottomTab.BIOSCIENCE.index -> BioscienceLabTabScreen(
                 bioscienceOutput = bioscienceOutput,

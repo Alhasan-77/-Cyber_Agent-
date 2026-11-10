@@ -10,7 +10,6 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.http.Body
-import retrofit2.http.Header
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
 
@@ -110,14 +109,13 @@ data class OpenAiErrorDetail(
 interface OpenAiApiService {
     @POST("v1/chat/completions")
     suspend fun createChatCompletion(
-        @Header("Authorization") authorization: String = "Bearer ${OpenAiNetworkClient.getConfiguredApiKey()}",
         @Body request: OpenAiChatCompletionRequest
     ): OpenAiChatCompletionResponse
 }
 
 object OpenAiNetworkClient {
     private const val BASE_URL = "https://api.openai.com/"
-    const val PLACEHOLDER_KEY = "YOUR_OPENAI_API_KEY"
+    const val PLACEHOLDER_KEY = ""
     private const val DEFAULT_PLUGIN_PLACEHOLDER = "OPENAI_API_KEY_DEFAULT_VALUE"
 
     private val json = Json {
@@ -132,7 +130,10 @@ object OpenAiNetworkClient {
         val configuredKey = getConfiguredApiKey()
         val requestBuilder = original.newBuilder()
             .header("Content-Type", "application/json")
-        if (existingAuth.isNullOrBlank() && configuredKey.isNotBlank()) {
+        if (existingAuth.isNullOrBlank() && !isApiKeyConfigured()) {
+            throw IllegalStateException("مفتاح OpenAI غير مضبوط. أضف OPENAI_API_KEY في إعدادات الأسرار.")
+        }
+        if (existingAuth.isNullOrBlank()) {
             requestBuilder.header("Authorization", "Bearer $configuredKey")
         }
         chain.proceed(requestBuilder.build())
@@ -155,24 +156,27 @@ object OpenAiNetworkClient {
     }
 
     fun getConfiguredApiKey(): String {
-        return runCatching { BuildConfig.OPENAI_API_KEY.trim() }.getOrDefault("")
+        return runCatching {
+            BuildConfig.OPENAI_API_KEY.trim().removeSurrounding("\"").trim()
+        }.getOrDefault("")
     }
 
     fun isApiKeyConfigured(): Boolean {
         val key = getConfiguredApiKey()
         return key.isNotBlank() &&
-            key != PLACEHOLDER_KEY &&
             key != DEFAULT_PLUGIN_PLACEHOLDER &&
             !key.startsWith("YOUR_")
     }
 
+    /**
+     * A locally present key is not proof that the remote API accepts it.
+     * Never expose even a partial API key in UI status text.
+     */
     fun getKeyStatusSummaryAr(): String {
-        val key = getConfiguredApiKey()
         return if (isApiKeyConfigured()) {
-            val tail = if (key.length >= 4) key.takeLast(4) else "****"
-            "متصل ونشط (•••$tail)"
+            "تم ضبط المفتاح محلياً؛ لم يتم التحقق من صلاحيته بعد"
         } else {
-            "بانتظار ضبط OPENAI_API_KEY في لوحة Secrets"
+            "مفتاح OpenAI غير مضبوط"
         }
     }
 }

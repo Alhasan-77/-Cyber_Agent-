@@ -12,7 +12,7 @@ import org.junit.Assert.fail
 import org.junit.Test
 import org.robolectric.annotation.Config
 
-@Config(sdk = [36])
+@Config(sdk = [35])
 class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
 
     @Test
@@ -191,6 +191,52 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
             repository.observeBioExperiments().first { list -> list.any { it.id == expId } }
         }
         assertTrue(emittedExperiments.any { it.id == expId })
+    }
+
+    @Test
+    fun createUpdateAndDeleteCollection_authenticatedOwner_succeeds() = runBlocking {
+        signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+
+        val collectionId = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.createCollectionSchema(
+                projectId = "project-test",
+                collectionName = "agent_records",
+                fieldsSpec = "name:string, enabled:boolean",
+                sampleRecordsJson = """[{"name":"first","enabled":true}]""",
+                indexConfig = "name_ascending"
+            ).getOrThrow()
+        }
+
+        val created = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeCollections().first { list -> list.any { it.id == collectionId } }
+                .first { it.id == collectionId }
+        }
+        assertNotNull(created.createdAt)
+
+        val updateResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.updateCollectionSchema(
+                created.copy(sampleRecordsJson = """[{"name":"second","enabled":false}]""")
+            )
+        }
+        assertTrue(updateResult.isSuccess)
+
+        val updated = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeCollections().first { list ->
+                list.any { it.id == collectionId && it.sampleRecordsJson.contains("second") }
+            }.first { it.id == collectionId }
+        }
+        assertTrue(updated.sampleRecordsJson.contains("second"))
+
+        val deleteResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.deleteCollectionSchema(collectionId)
+        }
+        assertTrue(deleteResult.isSuccess)
+
+        val remaining = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeCollections().first { list -> list.none { it.id == collectionId } }
+        }
+        assertTrue(remaining.none { it.id == collectionId })
     }
 
     private companion object {

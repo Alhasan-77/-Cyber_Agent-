@@ -3,6 +3,8 @@ package com.example.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.agent.AgentTaskRouter
+import com.example.data.agent.AgentTaskType
 import com.example.data.model.AiRolePersona
 import com.example.data.model.BioExperimentRecord
 import com.example.data.model.BuildExecutionLog
@@ -23,6 +25,7 @@ import com.example.data.skills.ExtractedSkillItem
 import com.example.data.skills.SkillsMemoryCatalog
 import com.example.data.skills.SkillsMemoryEngine
 import com.google.firebase.Timestamp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,6 +35,11 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -192,7 +200,7 @@ class StudioViewModel(
             ChatMessage(
                 id = "welcome_1",
                 isUser = false,
-                text = "مرحباً بك في NovaForge AI Studio! تم تفعيل محركي **Gemini API** (عبر Firebase AI Logic) و **ChatGPT API** (عبر OpenAI API) للعمل جنباً إلى جنب لبناء تطبيقات Full-Stack المتكاملة، إدارة قواعد البيانات، وتوليد الكود والعلوم الحيوية. يمكنك اختيار أي محرك منفرداً أو تشغيل وضع المحرك المزدوج (Gemini + ChatGPT معاً).",
+                text = "مرحباً بك في NovaForge AI Studio. يمكن استخدام Gemini عبر Firebase AI Logic، ويتاح OpenAI بعد إعداد مفتاحه في بيئة البناء. يعتمد وضع المحرك المزدوج على تهيئة المزودين المتاحين.",
                 modelUsed = GeminiAiRepository.MODEL_DUAL_ENGINE,
                 timestampLabel = currentTimeLabel()
             )
@@ -219,9 +227,7 @@ class StudioViewModel(
     private val _mediaAnalysisOutput = MutableStateFlow<String?>(null)
     val mediaAnalysisOutput: StateFlow<String?> = _mediaAnalysisOutput.asStateFlow()
 
-    private val _liveVoiceHistory = MutableStateFlow<List<String>>(
-        listOf("🎙️ جلسة المحادثة الصوتية الحية (gemini-3.8-live) جاهزة للاستماع...")
-    )
+    private val _liveVoiceHistory = MutableStateFlow<List<String>>(emptyList())
     val liveVoiceHistory: StateFlow<List<String>> = _liveVoiceHistory.asStateFlow()
 
     private val _lastTranscribedText = MutableStateFlow("")
@@ -234,10 +240,10 @@ class StudioViewModel(
     // Skills & Tools Memory Hub state
     private val _skillsCatalog = MutableStateFlow(
         SkillsMemoryCatalog(
-            archiveName = "skills-main_b7d3bd06.zip",
-            totalArchiveFiles = 184,
-            totalSkills = 25,
-            mcpServerUrl = "https://mcp.expo.dev/mcp",
+            archiveName = "",
+            totalArchiveFiles = 0,
+            totalSkills = 0,
+            mcpServerUrl = "",
             skills = emptyList(),
             globalToolsAndConfigs = emptyList(),
             allFilePaths = emptyList()
@@ -245,9 +251,7 @@ class StudioViewModel(
     )
     val skillsCatalog: StateFlow<SkillsMemoryCatalog> = _skillsCatalog.asStateFlow()
 
-    private val _pinnedSkillIds = MutableStateFlow(
-        setOf("expo-overview", "expo-ui", "expo-design-system", "expo-router", "expo-module", "eas-workflows")
-    )
+    private val _pinnedSkillIds = MutableStateFlow(emptySet<String>())
     val pinnedSkillIds: StateFlow<Set<String>> = _pinnedSkillIds.asStateFlow()
 
     private val _autoInjectSkillsEnabled = MutableStateFlow(true)
@@ -283,10 +287,11 @@ class StudioViewModel(
 
     fun toggleAutoInjectSkills(enabled: Boolean) {
         _autoInjectSkillsEnabled.value = enabled
-        _statusBanner.value = if (enabled) {
-            "⚡ تم تفعيل الاستدعاء التلقائي للمهارات الـ 25 في المحرر والمساعد الذكي"
-        } else {
-            "تم إيقاف الحقن التلقائي للمهارات"
+        val availableSkills = _skillsCatalog.value.totalSkills
+        _statusBanner.value = when {
+            !enabled -> "تم إيقاف الاستدعاء التلقائي للمهارات."
+            availableSkills == 0 -> "تم تفعيل الخيار، لكن لا توجد مهارات محمّلة للاستدعاء."
+            else -> "تم تفعيل الاستدعاء التلقائي لـ $availableSkills مهارة محمّلة."
         }
     }
 
@@ -310,41 +315,65 @@ class StudioViewModel(
 
     fun syncSkillsMemoryToFirestore(silent: Boolean = false) {
         viewModelScope.launch {
-            val catalog = _skillsCatalog.value
-            if (catalog.skills.isEmpty()) return@launch
-            val pinned = _pinnedSkillIds.value
-            val projectId = _selectedProjectId.value ?: "proj_skills_memory"
-            val fieldsSpec = "skillId:string, titleAr:string, category:string, isPinned:boolean, referencesCount:int, scriptsCount:int | Pinned=${pinned.joinToString(",")}"
-            val recordsJson = SkillsMemoryEngine.buildFirestoreRegistryJson(pinned, catalog)
-            val existingList = (collectionsState.value as? UiState.Success)?.data.orEmpty()
-            val existingDoc = existingList.find { it.collectionName == SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME }
+            syncSkillsMemoryToFirestoreNow(silent)
+        }
+    }
 
-            val result = if (existingDoc != null && existingDoc.createdAt != null) {
-                repository.updateCollectionSchema(
-                    existingDoc.copy(
-                        fieldsSpec = fieldsSpec.take(5000),
-                        sampleRecordsJson = recordsJson.take(20000),
-                        indexConfig = "MCP:${catalog.mcpServerUrl} | TotalSkills:${catalog.totalSkills} | Files:${catalog.totalArchiveFiles}"
-                    )
-                )
-            } else {
-                repository.createCollectionSchema(
-                    projectId = projectId,
-                    collectionName = SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME,
+    private suspend fun syncSkillsMemoryToFirestoreNow(silent: Boolean = false): Boolean {
+        val catalog = _skillsCatalog.value
+        if (catalog.skills.isEmpty()) {
+            _isSkillsSyncedToFirestore.value = false
+            if (!silent) _statusBanner.value = "لا توجد مهارات محملة لمزامنتها."
+            return false
+        }
+
+        val pinned = _pinnedSkillIds.value
+        val projectId = _selectedProjectId.value ?: "proj_skills_memory"
+        val fieldsSpec = "skillId:string, titleAr:string, category:string, isPinned:boolean, referencesCount:int, scriptsCount:int | Pinned=${pinned.joinToString(",")}"
+        val recordsJson = SkillsMemoryEngine.buildFirestoreRegistryJson(pinned, catalog)
+        val existingList = (collectionsState.value as? UiState.Success)?.data.orEmpty()
+        val existingDoc = existingList.find {
+            it.collectionName == SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME
+        }
+
+        val result = if (existingDoc != null && existingDoc.createdAt != null) {
+            repository.updateCollectionSchema(
+                existingDoc.copy(
                     fieldsSpec = fieldsSpec.take(5000),
                     sampleRecordsJson = recordsJson.take(20000),
                     indexConfig = "MCP:${catalog.mcpServerUrl} | TotalSkills:${catalog.totalSkills} | Files:${catalog.totalArchiveFiles}"
-                ).map { }
-            }
+                )
+            )
+        } else {
+            repository.createCollectionSchema(
+                projectId = projectId,
+                collectionName = SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME,
+                fieldsSpec = fieldsSpec.take(5000),
+                sampleRecordsJson = recordsJson.take(20000),
+                indexConfig = "MCP:${catalog.mcpServerUrl} | TotalSkills:${catalog.totalSkills} | Files:${catalog.totalArchiveFiles}"
+            ).map { }
+        }
 
-            result.onSuccess {
+        return result.fold(
+            onSuccess = {
                 _isSkillsSyncedToFirestore.value = true
                 if (!silent) {
-                    _statusBanner.value = "☁️ تم حفظ ومزامنة كافة المهارات الـ 25 والأدوات في قاعدة بيانات Cloud Firestore بنجاح!"
+                    _statusBanner.value = "تمت مزامنة ${catalog.totalSkills} مهارة و${pinned.size} مهارة مثبتة مع Firestore."
                 }
-                appendConsoleLog("[Firestore Memory Sync] Synced 25 skills & ${pinned.size} pinned items to '${SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME}'.")
+                appendConsoleLog(
+                    "[Firestore Memory Sync] Synced ${catalog.totalSkills} skills & ${pinned.size} pinned items."
+                )
+                true
+            },
+            onFailure = { error ->
+                _isSkillsSyncedToFirestore.value = false
+                Log.w(TAG, "Skills memory sync failed", error)
+                if (!silent) {
+                    _statusBanner.value = "تعذرت مزامنة المهارات: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+                false
             }
-        }
+        )
     }
 
     private fun restorePinnedSkillsFromFirestoreDoc(doc: DbCollectionSchema) {
@@ -417,6 +446,17 @@ class StudioViewModel(
             "CSS" -> _cssBuffer.value = newContent
             "JS" -> _jsBuffer.value = newContent
             "Backend" -> _backendBuffer.value = newContent
+            else -> throw IllegalArgumentException("تبويب المحرر غير معروف: ${_activeCodeTab.value}")
+        }
+    }
+
+    private fun updateCodeBuffer(tab: String, newContent: String) {
+        when (tab) {
+            "HTML" -> _htmlBuffer.value = newContent
+            "CSS" -> _cssBuffer.value = newContent
+            "JS" -> _jsBuffer.value = newContent
+            "Backend" -> _backendBuffer.value = newContent
+            else -> throw IllegalArgumentException("تبويب المحرر غير مدعوم: $tab")
         }
     }
 
@@ -473,66 +513,51 @@ class StudioViewModel(
     fun runAiSecurityAndPerformanceAudit() {
         viewModelScope.launch {
             _isBusy.value = true
-            appendConsoleLog("[Security Auditor] Running static & dynamic code analysis via ${GeminiAiRepository.MODEL_ARGON}...")
-            delay(350L)
-            val totalChars = _htmlBuffer.value.length + _cssBuffer.value.length + _jsBuffer.value.length + _backendBuffer.value.length
-            val checksum = computeSha256Short(_htmlBuffer.value + _jsBuffer.value + _backendBuffer.value)
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            val auditReport = buildString {
-                appendLine("🛡️ تقرير الفحص الأمني وجودة الكود الشامل:")
-                appendLine("• البصمة الرقمية للكود (SHA-256): $checksum")
-                appendLine("• حجم الحزمة المصدرية: ${totalChars / 1024.0} KB")
-                appendLine("• فحص حقن الكود (XSS / SQLi): سليم 100% (محمي)")
-                appendLine("• توافق قواعد بيانات Firestore: متوافق مع المخطط المعزول للمستخدم")
-                appendLine("• توصية الأداء: تم تفعيل ضغط DOM وتسريع استجابة الأحداث التفاعلية.")
+            try {
+                val source = _htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
+                    _jsBuffer.value + "\n" + _backendBuffer.value
+                val checksum = computeSha256Short(source)
+                val report = buildString {
+                    appendLine("مراجعة أولية للمصدر فقط، وليست فحصاً أمنياً ديناميكياً:")
+                    appendLine("البصمة SHA-256 المختصرة: $checksum")
+                    appendLine("حجم المصدر: ${source.length} حرف")
+                    appendLine("لم يتم تشغيل SAST/DAST أو اختبارات XSS/SQL injection.")
+                    appendLine("لا يمكن اعتماد سلامة التطبيق دون تشغيل أدوات اختبار مخصصة.")
+                }
+                val projectId = _selectedProjectId.value
+                if (projectId.isNullOrBlank()) {
+                    _statusBanner.value = "لا يوجد مشروع محدد لمراجعته."
+                    return@launch
+                }
+                repository.createBuildLog(
+                    projectId = projectId,
+                    stage = "مراجعة أولية للكود (SHA:$checksum)",
+                    status = "WARNING",
+                    durationMs = 0L,
+                    reportSummary = report
+                ).onSuccess {
+                    appendConsoleLog("[Code Review] Preliminary source review saved; no security scanner was run.")
+                    _statusBanner.value = "اكتملت المراجعة الأولية. لم يتم إجراء فحص أمني فعلي."
+                }.onFailure { error ->
+                    _statusBanner.value = "تعذر حفظ تقرير المراجعة: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Code review failed", error)
+                _statusBanner.value = "تعذرت مراجعة الكود: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            repository.createBuildLog(
-                projectId = projectId,
-                stage = "فحص أمني وتدقيق أداء الكود (SHA:$checksum)",
-                status = "SUCCESS",
-                durationMs = 285L,
-                reportSummary = auditReport
-            )
-            appendConsoleLog("[Security Auditor] Passed 0 critical vulnerabilities. Checksum=$checksum")
-            _statusBanner.value = "🛡️ اكتمل التدقيق الأمني وفحص الأداء (البصمة: $checksum)"
-            _isBusy.value = false
         }
     }
 
     fun triggerCloudDeploymentPipeline() {
-        viewModelScope.launch {
-            _isBusy.value = true
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            appendConsoleLog("[Cloud CI/CD] Starting multi-stage deployment for '${_editorName.value}' on branch '${_activeBranch.value}'...")
-            delay(400L)
-            val checksum = computeSha256Short(_htmlBuffer.value + _cssBuffer.value + _jsBuffer.value + _backendBuffer.value)
-            val report = buildString {
-                appendLine("🚀 تقرير النشر السحابي المتكامل (Cloud CI/CD Pipeline):")
-                appendLine("• الفرع النشط: ${_activeBranch.value} | البصمة: $checksum")
-                appendLine("• المرحلة 1 (Build & Bundle): نجح تجميع الواجهة الأمامية والخلفية (${_editorLanguage.value})")
-                appendLine("• المرحلة 2 (Database Migration): تم التحقق من فهارس ومجموعات Firestore")
-                appendLine("• المرحلة 3 (Cloud Edge Deploy): تم النشر على عقدة السحابة عالية الأداء بزمن 340ms")
-            }
-            repository.createBuildLog(
-                projectId = projectId,
-                stage = "نشر سحابي كامل [${_activeBranch.value}]",
-                status = "SUCCESS",
-                durationMs = 340L,
-                reportSummary = report
-            )
-            appendConsoleLog("[Cloud CI/CD] Deployment LIVE! Checksum=$checksum")
-            _statusBanner.value = "🚀 تم تنفيذ خط أنابيب النشر السحابي وتوليد التقرير التفصيلي بنجاح!"
-            _isBusy.value = false
-        }
+        _statusBanner.value = "النشر السحابي غير مهيأ في هذا الإصدار. لم يتم تنفيذ نشر أو إنشاء سجل نجاح."
+        appendConsoleLog("[Cloud CI/CD] Deployment blocked: no deployment provider or credentials are configured.")
     }
 
     fun computeSha256Short(input: String): String {
-        return try {
-            val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
-            digest.take(5).joinToString("") { "%02x".format(it) }
-        } catch (_: Exception) {
-            "a9f4c2e18b"
-        }
+        val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
+        return digest.take(5).joinToString("") { "%02x".format(it) }
     }
 
     fun buildCombinedLivePreviewHtml(): String {
@@ -565,275 +590,438 @@ class StudioViewModel(
     }
 
     private fun seedInitialWorkspace() {
+        if (hasSeededInitialData) return
+        hasSeededInitialData = true
         viewModelScope.launch {
-            val projRes = repository.createProject(
-                name = "منصة التجارة والتحليلات الذكية Full-Stack",
-                description = "تطبيق متكامل بواجهة تفاعلية وخادم خلفي وقاعدة بيانات مرنة",
-                language = "Full-Stack Web + Kotlin",
-                htmlCode = DEFAULT_HTML,
-                cssCode = DEFAULT_CSS,
-                jsCode = DEFAULT_JS,
-                backendCode = DEFAULT_BACKEND
-            )
-            val projectId = projRes.getOrNull() ?: return@launch
-            _selectedProjectId.value = projectId
+            try {
+                val projectId = repository.createProject(
+                    name = "مشروعي الأول",
+                    description = "مشروع بداية يمكنك تعديله أو استبداله.",
+                    language = "HTML / CSS / JavaScript",
+                    htmlCode = DEFAULT_HTML,
+                    cssCode = DEFAULT_CSS,
+                    jsCode = DEFAULT_JS,
+                    backendCode = DEFAULT_BACKEND
+                ).getOrElse { error -> throw error }
 
-            repository.createSnapshot(
-                projectId = projectId,
-                commitMessage = "الإصدار التأسيسي للمنصة مع المعاينة الحية",
-                versionTag = "v1.0.0",
-                htmlCode = DEFAULT_HTML,
-                cssCode = DEFAULT_CSS,
-                jsCode = DEFAULT_JS,
-                backendCode = DEFAULT_BACKEND,
-                addedLines = (DEFAULT_HTML.lines().size + DEFAULT_CSS.lines().size + DEFAULT_JS.lines().size).toLong(),
-                deletedLines = 0L
-            )
-
-            repository.createCollectionSchema(
-                projectId = projectId,
-                collectionName = "users_directory",
-                fieldsSpec = "id:UUID, fullName:String, role:String, tier:String, active:Boolean",
-                sampleRecordsJson = """[{"id":"usr_01","fullName":"أحمد المنصور","role":"Full-Stack Lead","tier":"Enterprise","active":true},{"id":"usr_02","fullName":"سارة العلي","role":"Bioinformatics Researcher","tier":"Pro","active":true},{"id":"usr_03","fullName":"خالد الزهراني","role":"Database Architect","tier":"Enterprise","active":false}]""",
-                indexConfig = "Composite Index: (role ASC, active DESC)"
-            )
-
-            repository.createBuildLog(
-                projectId = projectId,
-                stage = "تهيئة بيئة السحابة وفحص الأمان",
-                status = "SUCCESS",
-                durationMs = 310L,
-                reportSummary = "تم التحقق من سلامة كود الواجهة الأمامية والخلفية وتفعيل قواعد أمان Firestore بنجاح."
-            )
-
-            repository.createBioExperiment(
-                title = "تحليل طي البروتين p53 واستهداف CRISPR-Cas9",
-                workflowMode = "PROTEIN_FOLDING",
-                fastaSequence = ">sp|P04637|P53_HUMAN Cellular tumor antigen p53\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP",
-                researchGoal = "Preset: p53 Tumor Suppressor | Goal: AlphaFold pLDDT & RMSD Validation",
-                plddtScore = 93L,
-                freeEnergyKcal = -12.4,
-                alphaHelixPct = 54L,
-                betaSheetPct = 22L,
-                aiReportSummary = "تم التحقق من استقرار النطاق الرابط للحمض النووي (DNA-binding domain) بدرجة ثقة pLDDT=93% وانحراف معياري RMSD=0.82Å مع رصد 4 مواقع استهداف PAM."
-            )
-
-            syncUserProfileToCloud(projectsCountOverride = 1, bioCountOverride = 1)
+                _selectedProjectId.value = projectId
+                repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = "الإصدار الأولي",
+                    versionTag = "v1.0.0",
+                    htmlCode = DEFAULT_HTML,
+                    cssCode = DEFAULT_CSS,
+                    jsCode = DEFAULT_JS,
+                    backendCode = DEFAULT_BACKEND,
+                    addedLines = (
+                        DEFAULT_HTML.lines().size + DEFAULT_CSS.lines().size +
+                            DEFAULT_JS.lines().size + DEFAULT_BACKEND.lines().size
+                        ).toLong(),
+                    deletedLines = 0L
+                ).onFailure { error ->
+                    Log.w(TAG, "Initial project snapshot failed", error)
+                }
+                _statusBanner.value = "تم إنشاء مشروع البداية."
+            } catch (error: Exception) {
+                hasSeededInitialData = false
+                Log.e(TAG, "Initial workspace creation failed", error)
+                _statusBanner.value = "تعذر إنشاء مشروع البداية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            }
         }
     }
 
-    fun saveAndBuildCurrentProject() {
-        viewModelScope.launch {
-            _isBusy.value = true
-            val startMs = System.currentTimeMillis()
-            val currentList = (projectsState.value as? UiState.Success)?.data.orEmpty()
-            val existing = currentList.firstOrNull { it.id == _selectedProjectId.value }
-
-            val targetProjectId = if (existing != null && existing.createdAt != null) {
-                repository.updateProject(
-                    existing.copy(
-                        name = _editorName.value,
-                        language = _editorLanguage.value,
-                        htmlCode = _htmlBuffer.value,
-                        cssCode = _cssBuffer.value,
-                        jsCode = _jsBuffer.value,
-                        backendCode = _backendBuffer.value
-                    )
-                )
-                existing.id
-            } else {
-                val created = repository.createProject(
+    private suspend fun persistCurrentProject(): String {
+        val startedAt = System.currentTimeMillis()
+        val selectedId = _selectedProjectId.value
+        val existing = selectedId?.let { projectId ->
+            repository.getProjectById(currentUserId, projectId).getOrElse { error -> throw error }
+        }
+        val result = if (existing != null) {
+            repository.updateProject(
+                existing.copy(
                     name = _editorName.value,
-                    description = "Full-Stack Project (${_editorLanguage.value})",
                     language = _editorLanguage.value,
                     htmlCode = _htmlBuffer.value,
                     cssCode = _cssBuffer.value,
                     jsCode = _jsBuffer.value,
                     backendCode = _backendBuffer.value
                 )
-                val newId = created.getOrNull() ?: "proj_default"
-                _selectedProjectId.value = newId
-                newId
-            }
-
-            val totalLines = _htmlBuffer.value.lines().size +
-                _cssBuffer.value.lines().size +
-                _jsBuffer.value.lines().size +
-                _backendBuffer.value.lines().size
-            val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(145L)
-            val checksum = computeSha256Short(_htmlBuffer.value + _jsBuffer.value + _backendBuffer.value)
-
-            val report = buildString {
-                appendLine("✅ اكتمل البناء السحابي وفحص الكود (${_editorLanguage.value}):")
-                appendLine("• إجمالي الأسطر البرمجية المترجمة: $totalLines سطر (SHA:$checksum)")
-                appendLine("• زمن الاستجابة والتجميع: ${elapsed}ms")
-                appendLine("• فحص الأمان: 0 ثغرات حرجة (Zero-Trust Verified)")
-                appendLine("• حالة نافذة المعاينة الحية (WebView): نشطة ومحدثة")
-            }
-
-            repository.createBuildLog(
-                projectId = targetProjectId,
-                stage = "بناء وتشغيل ${_editorName.value}",
-                status = "SUCCESS",
-                durationMs = elapsed,
-                reportSummary = report
+            ).map { existing.id }
+        } else {
+            repository.createProject(
+                name = _editorName.value,
+                description = "Full-Stack Project (${_editorLanguage.value})",
+                language = _editorLanguage.value,
+                htmlCode = _htmlBuffer.value,
+                cssCode = _cssBuffer.value,
+                jsCode = _jsBuffer.value,
+                backendCode = _backendBuffer.value
             )
+        }
+        val projectId = result.getOrElse { error -> throw error }
+        _selectedProjectId.value = projectId
+        val duration = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
+        val source = _htmlBuffer.value + _cssBuffer.value + _jsBuffer.value + _backendBuffer.value
+        val checksum = computeSha256Short(source)
+        val report = "تم حفظ ملفات المشروع في Firestore. لم يتم تشغيل مترجم أو بناء APK/حزمة نشر.\n" +
+            "حجم المصدر: ${source.length} حرف؛ SHA-256 مختصر: $checksum"
+        val logResult = repository.createBuildLog(
+            projectId = projectId,
+            stage = "حفظ ملفات المشروع",
+            status = "WARNING",
+            durationMs = duration,
+            reportSummary = report
+        )
+        if (logResult.isFailure) {
+            Log.w(TAG, "Project saved but activity log failed", logResult.exceptionOrNull())
+        }
+        appendConsoleLog("[Project Save] Files saved for project $projectId. No compiler/build was run.")
+        return "تم حفظ ملفات المشروع في Firestore بنجاح. لم يتم تشغيل مترجم أو إنشاء APK."
+    }
 
-            appendConsoleLog("[Build Success] Compiled $totalLines lines in ${elapsed}ms (SHA:$checksum)")
-            _statusBanner.value = "تم حفظ المشروع وبناء المعاينة الحية وتوليد التقرير في ${elapsed}ms"
-            _isBusy.value = false
+    fun saveAndBuildCurrentProject() {
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                _statusBanner.value = persistCurrentProject()
+            } catch (error: Exception) {
+                Log.e(TAG, "Project save failed", error)
+                _statusBanner.value = "تعذر حفظ المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
+        }
+    }
+
+    private suspend fun createProjectFromBrief(
+        name: String,
+        description: String,
+        language: String
+    ): String {
+        require(name.isNotBlank()) { "اسم المشروع مطلوب." }
+        require(description.isNotBlank()) { "وصف المشروع مطلوب." }
+        require(language.isNotBlank()) { "لغة أو تقنية المشروع مطلوبة." }
+
+        val generated = aiRepository.generateFullStackCodebase(
+            projectBrief = "$name - $description",
+            stackLanguage = language,
+            preferredModel = _selectedChatModel.value
+        )
+        val html = generated["html"].orEmpty()
+        val css = generated["css"].orEmpty()
+        val js = generated["js"].orEmpty()
+        val backend = generated["backend"].orEmpty()
+        require(listOf(html, css, js, backend).any { it.isNotBlank() }) {
+            "لم ينتج النموذج أي ملفات مصدر؛ لم يتم إنشاء مشروع فارغ."
+        }
+
+        val projectId = repository.createProject(
+            name = name,
+            description = description,
+            language = language,
+            htmlCode = html,
+            cssCode = css,
+            jsCode = js,
+            backendCode = backend
+        ).getOrElse { error -> throw error }
+
+        _selectedProjectId.value = projectId
+        _editorName.value = name
+        _editorLanguage.value = language
+        _htmlBuffer.value = html
+        _cssBuffer.value = css
+        _jsBuffer.value = js
+        _backendBuffer.value = backend
+        _activeCodeTab.value = when {
+            html.isNotBlank() -> "HTML"
+            css.isNotBlank() -> "CSS"
+            js.isNotBlank() -> "JS"
+            else -> "Backend"
+        }
+
+        val initialLines = (html.lines().size + css.lines().size + js.lines().size + backend.lines().size).toLong()
+        val snapshotResult = repository.createSnapshot(
+            projectId = projectId,
+            commitMessage = "Initial AI-generated project version",
+            versionTag = "v1.0.0",
+            htmlCode = html,
+            cssCode = css,
+            jsCode = js,
+            backendCode = backend,
+            addedLines = initialLines,
+            deletedLines = 0L
+        )
+        appendConsoleLog("[AI Generator] Created project '$name' (source files saved; no compiler run).")
+        return if (snapshotResult.isSuccess) {
+            "تم إنشاء المشروع وحفظ ملفاته ولقطة الإصدار الأولى في Firestore. لم يتم تشغيل مترجم أو نشر."
+        } else {
+            Log.w(TAG, "Project created but initial snapshot failed", snapshotResult.exceptionOrNull())
+            "تم إنشاء المشروع وحفظ ملفاته في Firestore، لكن تعذر إنشاء لقطة الإصدار الأولى. لم يتم تشغيل مترجم أو نشر."
         }
     }
 
     fun createNewProject(name: String, description: String, language: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val generated = aiRepository.generateFullStackCodebase(
-                projectBrief = "$name - $description",
-                stackLanguage = language,
-                preferredModel = _selectedChatModel.value
-            )
-            val html = generated["html"] ?: DEFAULT_HTML
-            val css = generated["css"] ?: DEFAULT_CSS
-            val js = generated["js"] ?: DEFAULT_JS
-            val backend = generated["backend"] ?: DEFAULT_BACKEND
-
-            val result = repository.createProject(
-                name = name,
-                description = description,
-                language = language,
-                htmlCode = html,
-                cssCode = css,
-                jsCode = js,
-                backendCode = backend
-            )
-            result.onSuccess { id ->
-                _selectedProjectId.value = id
-                _editorName.value = name
-                _editorLanguage.value = language
-                _htmlBuffer.value = html
-                _cssBuffer.value = css
-                _jsBuffer.value = js
-                _backendBuffer.value = backend
-
-                repository.createSnapshot(
-                    projectId = id,
-                    commitMessage = "توليد معماري كامل عبر ${GeminiAiRepository.MODEL_ARGON}",
-                    versionTag = "v1.0.0",
-                    htmlCode = html,
-                    cssCode = css,
-                    jsCode = js,
-                    backendCode = backend,
-                    addedLines = (html.lines().size + css.lines().size + js.lines().size + backend.lines().size).toLong(),
-                    deletedLines = 0L
-                )
-                appendConsoleLog("[AI Generator] Created new full-stack project '$name'")
-                _statusBanner.value = "تم إنشاء وبناء المشروع الجديد «$name» بنجاح!"
+            try {
+                _statusBanner.value = createProjectFromBrief(name, description, language)
+            } catch (error: Exception) {
+                Log.e(TAG, "Project creation failed", error)
+                _statusBanner.value = "تعذر إنشاء المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            _isBusy.value = false
         }
     }
 
     fun deleteProject(projectId: String) {
         viewModelScope.launch {
-            repository.deleteProject(projectId)
-            _statusBanner.value = "تم حذف المشروع من السحابة."
+            try {
+                repository.deleteProject(projectId).onSuccess {
+                    if (_selectedProjectId.value == projectId) {
+                        _selectedProjectId.value = null
+                    }
+                    _statusBanner.value = "تم حذف المشروع من السحابة."
+                }.onFailure { error ->
+                    Log.e(TAG, "Project deletion failed", error)
+                    _statusBanner.value = "تعذر حذف المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Project deletion failed", error)
+                _statusBanner.value = "تعذر حذف المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            }
         }
     }
 
-    fun triggerInlineCodeSuggestion(instruction: String = "أضف ميزة مراقبة فورية وتحسين أداء") {
+    fun triggerInlineCodeSuggestion(instruction: String) {
+        val cleanInstruction = instruction.trim()
+        if (cleanInstruction.isBlank() || _isBusy.value) {
+            _statusBanner.value = "اكتب التعديل المطلوب قبل إنشاء اقتراح."
+            return
+        }
         viewModelScope.launch {
             _isBusy.value = true
-            val currentTab = _activeCodeTab.value
-            val currentContent = when (currentTab) {
-                "HTML" -> _htmlBuffer.value
-                "CSS" -> _cssBuffer.value
-                "JS" -> _jsBuffer.value
-                else -> _backendBuffer.value
+            try {
+                val currentTab = _activeCodeTab.value
+                val currentContent = when (currentTab) {
+                    "HTML" -> _htmlBuffer.value
+                    "CSS" -> _cssBuffer.value
+                    "JS" -> _jsBuffer.value
+                    "Backend" -> _backendBuffer.value
+                    else -> throw IllegalStateException("تبويب المحرر غير مدعوم: $currentTab")
+                }
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt("$cleanInstruction\n$currentContent")
+                val enrichedInstruction = if (skillsBlock.isNotBlank()) {
+                    "$cleanInstruction\n\n$skillsBlock"
+                } else {
+                    cleanInstruction
+                }
+                val snippet = aiRepository.generateLowLatencyCodeSuggestion(
+                    currentCode = currentContent,
+                    activeTab = currentTab,
+                    instruction = enrichedInstruction,
+                    preferredModel = _selectedChatModel.value
+                ).trim()
+                require(snippet.isNotBlank()) { "لم يُرجع النموذج اقتراحاً برمجياً." }
+                updateCodeBuffer(
+                    currentTab,
+                    if (currentContent.isBlank()) snippet else "$currentContent\n\n$snippet"
+                )
+                val skillsNote = if (appliedIds.isNotEmpty()) {
+                    " [Skills: ${appliedIds.joinToString(", ")}]"
+                } else {
+                    ""
+                }
+                appendConsoleLog("[AI Copilot] Added a suggestion to $currentTab via ${_selectedChatModel.value}$skillsNote")
+                _statusBanner.value = "تم إنشاء اقتراح برمجي وإضافته إلى تبويب $currentTab. لم يتم اختباره أو تشغيله."
+            } catch (error: Exception) {
+                Log.e(TAG, "Inline code suggestion failed", error)
+                _statusBanner.value = "تعذر إنشاء الاقتراح: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt("$instruction\n$currentContent")
-            val enrichedInstruction = if (skillsBlock.isNotBlank()) {
-                "$instruction\n\n$skillsBlock"
-            } else {
-                instruction
-            }
-            val snippet = aiRepository.generateLowLatencyCodeSuggestion(
-                currentCode = currentContent,
-                activeTab = currentTab,
-                instruction = enrichedInstruction,
-                preferredModel = _selectedChatModel.value
-            )
-            updateActiveBuffer(currentContent + "\n\n" + snippet)
-            val skillsNote = if (appliedIds.isNotEmpty()) " [Skills: ${appliedIds.joinToString(", ")}]" else ""
-            appendConsoleLog("[AI Copilot] Injected low-latency snippet into $currentTab via ${_selectedChatModel.value}$skillsNote")
-            _statusBanner.value = "⚡ تم إدراج اقتراح برمجي فوري (${_selectedChatModel.value}) مدعوم بذاكرة المهارات"
-            _isBusy.value = false
         }
     }
 
     fun generateFullStackWithHighThinking(prompt: String) {
+        val cleanPrompt = prompt.trim().ifBlank { _editorName.value.trim() }
+        if (cleanPrompt.isBlank() || _isBusy.value) {
+            _statusBanner.value = "اكتب وصفاً أو اختر مشروعاً له اسم قبل توليد الملفات."
+            return
+        }
+
         viewModelScope.launch {
             _isBusy.value = true
-            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
-            val enrichedPrompt = if (skillsBlock.isNotBlank()) {
-                "$prompt\n\n$skillsBlock"
-            } else {
-                prompt
+            try {
+                val projectId = _selectedProjectId.value
+                    ?: throw IllegalStateException("احفظ المشروع أولاً قبل تحديث ملفاته.")
+                val current = repository.getProjectById(currentUserId, projectId)
+                    .getOrElse { error -> throw error }
+                    ?: throw IllegalStateException("تعذر العثور على المشروع الحالي في Firestore.")
+                require(current.createdAt != null) {
+                    "بيانات المشروع غير مكتملة ولا تسمح بحفظ نسخة آمنة."
+                }
+
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(cleanPrompt)
+                val enrichedPrompt = if (skillsBlock.isNotBlank()) {
+                    "$cleanPrompt\n\n$skillsBlock"
+                } else {
+                    cleanPrompt
+                }
+                val generated = aiRepository.generateFullStackCodebase(
+                    projectBrief = enrichedPrompt,
+                    stackLanguage = _editorLanguage.value,
+                    preferredModel = _selectedChatModel.value
+                )
+                val html = generated["html"]?.takeIf { it.isNotBlank() } ?: _htmlBuffer.value
+                val css = generated["css"]?.takeIf { it.isNotBlank() } ?: _cssBuffer.value
+                val js = generated["js"]?.takeIf { it.isNotBlank() } ?: _jsBuffer.value
+                val backend = generated["backend"]?.takeIf { it.isNotBlank() } ?: _backendBuffer.value
+
+                val hasChanges = html != _htmlBuffer.value ||
+                    css != _cssBuffer.value ||
+                    js != _jsBuffer.value ||
+                    backend != _backendBuffer.value
+                require(hasChanges) { "لم ينتج النموذج تغييرات على ملفات المشروع الحالية." }
+
+                val previousLines = (
+                    _htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
+                        _jsBuffer.value + "\n" + _backendBuffer.value
+                    ).lines()
+                val updatedLines = (
+                    html + "\n" + css + "\n" + js + "\n" + backend
+                    ).lines()
+                val added = updatedLines.count { it !in previousLines }.toLong()
+                val deleted = previousLines.count { it !in updatedLines }.toLong()
+                val backupVersion = "agent-backup-${System.currentTimeMillis()}"
+                val backupId = repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = "نسخة احتياطية قبل التوليد: ${cleanPrompt.take(180)}",
+                    versionTag = backupVersion,
+                    htmlCode = _htmlBuffer.value,
+                    cssCode = _cssBuffer.value,
+                    jsCode = _jsBuffer.value,
+                    backendCode = _backendBuffer.value,
+                    addedLines = 0L,
+                    deletedLines = 0L
+                ).getOrElse { error -> throw error }
+
+                repository.updateProject(
+                    current.copy(
+                        name = _editorName.value,
+                        language = _editorLanguage.value,
+                        htmlCode = html,
+                        cssCode = css,
+                        jsCode = js,
+                        backendCode = backend
+                    )
+                ).getOrElse { error -> throw error }
+
+                _htmlBuffer.value = html
+                _cssBuffer.value = css
+                _jsBuffer.value = js
+                _backendBuffer.value = backend
+                appendConsoleLog(
+                    "[AI Generator] Updated source files; backup $backupVersion ($backupId), +$added/-$deleted lines. No compiler or deployment was run."
+                )
+                val skillsNote = appliedIds.take(3).joinToString(", ")
+                _statusBanner.value =
+                    "تم توليد الملفات وحفظها في Firestore مع نسخة احتياطية ($backupVersion). لم يتم تشغيل مترجم أو نشر. المهارات: $skillsNote"
+            } catch (error: Exception) {
+                Log.e(TAG, "Full-stack generation failed", error)
+                _statusBanner.value = "تعذر توليد الملفات أو حفظها: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            appendConsoleLog("[High Thinking] Synthesizing full-stack architecture via ${_selectedChatModel.value} with skills ${appliedIds.joinToString(", ")}...")
-            val generated = aiRepository.generateFullStackCodebase(
-                projectBrief = enrichedPrompt,
-                stackLanguage = _editorLanguage.value,
-                preferredModel = _selectedChatModel.value
-            )
-            _htmlBuffer.value = generated["html"] ?: _htmlBuffer.value
-            _cssBuffer.value = generated["css"] ?: _cssBuffer.value
-            _jsBuffer.value = generated["js"] ?: _jsBuffer.value
-            _backendBuffer.value = generated["backend"] ?: _backendBuffer.value
-            saveAndBuildCurrentProject()
-            _statusBanner.value = "🧠 تم توليد البنية الكاملة عبر (${_selectedChatModel.value}) مع تطبيق المهارات (${appliedIds.take(3).joinToString(", ")})"
-            _isBusy.value = false
         }
     }
 
     fun commitVersionSnapshot(commitMessage: String, versionTag: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            val previousSnap = (snapshotsState.value as? UiState.Success)?.data
-                ?.firstOrNull { it.projectId == projectId }
-
-            val prevLines = (previousSnap?.htmlCode.orEmpty() + "\n" + previousSnap?.jsCode.orEmpty()).lines()
-            val currLines = (_htmlBuffer.value + "\n" + _jsBuffer.value).lines()
-            val added = currLines.count { it !in prevLines }.toLong().coerceAtLeast(1L)
-            val deleted = prevLines.count { it !in currLines }.toLong()
-            val branchPrefix = "[${_activeBranch.value}] "
-
-            repository.createSnapshot(
-                projectId = projectId,
-                commitMessage = branchPrefix + commitMessage.ifBlank { "تحديث الكود والمخططات" },
-                versionTag = versionTag.ifBlank { "v1.${((snapshotsState.value as? UiState.Success)?.data?.size ?: 0) + 1}.0" },
-                htmlCode = _htmlBuffer.value,
-                cssCode = _cssBuffer.value,
-                jsCode = _jsBuffer.value,
-                backendCode = _backendBuffer.value,
-                addedLines = added,
-                deletedLines = deleted
-            )
-            appendConsoleLog("[VCS Commit] Saved snapshot $versionTag on branch ${_activeBranch.value} (+$added/-$deleted)")
-            _statusBanner.value = "تم حفظ اللقطة السحابية ($versionTag) على الفرع ${_activeBranch.value}"
-            _isBusy.value = false
+            try {
+                val projectId = _selectedProjectId.value
+                if (projectId.isNullOrBlank()) {
+                    _statusBanner.value = "احفظ المشروع أولاً قبل إنشاء لقطة إصدار."
+                    return@launch
+                }
+                val previousSnap = (snapshotsState.value as? UiState.Success)?.data
+                    ?.firstOrNull { it.projectId == projectId }
+                val prevLines = (previousSnap?.htmlCode.orEmpty() + "\n" + previousSnap?.cssCode.orEmpty() +
+                    "\n" + previousSnap?.jsCode.orEmpty() + "\n" + previousSnap?.backendCode.orEmpty()).lines()
+                val currLines = (_htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
+                    _jsBuffer.value + "\n" + _backendBuffer.value).lines()
+                val added = currLines.count { it !in prevLines }.toLong()
+                val deleted = prevLines.count { it !in currLines }.toLong()
+                val tag = versionTag.ifBlank {
+                    "v1.${((snapshotsState.value as? UiState.Success)?.data?.size ?: 0) + 1}.0"
+                }
+                repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = "[${_activeBranch.value}] " + commitMessage.ifBlank { "تحديث الكود والمخططات" },
+                    versionTag = tag,
+                    htmlCode = _htmlBuffer.value,
+                    cssCode = _cssBuffer.value,
+                    jsCode = _jsBuffer.value,
+                    backendCode = _backendBuffer.value,
+                    addedLines = added,
+                    deletedLines = deleted
+                ).onSuccess {
+                    appendConsoleLog("[Version Snapshot] Saved $tag (+$added/-$deleted)")
+                    _statusBanner.value = "تم حفظ لقطة الإصدار $tag."
+                }.onFailure { error ->
+                    Log.e(TAG, "Version snapshot failed", error)
+                    _statusBanner.value = "تعذر حفظ لقطة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Version snapshot failed", error)
+                _statusBanner.value = "تعذر حفظ لقطة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun restoreVersionSnapshot(snapshot: VersionSnapshot) {
-        _htmlBuffer.value = snapshot.htmlCode
-        _cssBuffer.value = snapshot.cssCode
-        _jsBuffer.value = snapshot.jsCode
-        _backendBuffer.value = snapshot.backendCode
-        saveAndBuildCurrentProject()
-        appendConsoleLog("[VCS Restore] Rolled back workspace to ${snapshot.versionTag}")
-        _statusBanner.value = "تمت استعادة الإصدار ${snapshot.versionTag} (${snapshot.commitMessage}) بنجاح!"
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                val projectId = _selectedProjectId.value
+                if (projectId.isNullOrBlank()) {
+                    _statusBanner.value = "اختر مشروعاً قبل استعادة الإصدار."
+                    return@launch
+                }
+                val current = (projectsState.value as? UiState.Success)?.data
+                    ?.firstOrNull { it.id == projectId }
+                if (current == null || current.createdAt == null) {
+                    _statusBanner.value = "تعذر العثور على المشروع الحالي لحفظ النسخة المستعادة."
+                    return@launch
+                }
+                repository.updateProject(
+                    current.copy(
+                        htmlCode = snapshot.htmlCode,
+                        cssCode = snapshot.cssCode,
+                        jsCode = snapshot.jsCode,
+                        backendCode = snapshot.backendCode
+                    )
+                ).onSuccess {
+                    _htmlBuffer.value = snapshot.htmlCode
+                    _cssBuffer.value = snapshot.cssCode
+                    _jsBuffer.value = snapshot.jsCode
+                    _backendBuffer.value = snapshot.backendCode
+                    appendConsoleLog("[VCS Restore] Restored ${snapshot.versionTag} to cloud project.")
+                    _statusBanner.value = "تمت استعادة الإصدار ${snapshot.versionTag} وحفظه."
+                }.onFailure { error ->
+                    Log.e(TAG, "Version restore failed", error)
+                    _statusBanner.value = "تعذرت استعادة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Version restore failed", error)
+                _statusBanner.value = "تعذرت استعادة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
+        }
     }
 
     fun computeDiffAgainstCurrent(snapshot: VersionSnapshot): List<DiffLine> {
@@ -870,29 +1058,58 @@ class StudioViewModel(
         indexConfig: String
     ) {
         viewModelScope.launch {
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            repository.createCollectionSchema(
-                projectId = projectId,
-                collectionName = collectionName,
-                fieldsSpec = fieldsSpec,
-                sampleRecordsJson = sampleRecordsJson,
-                indexConfig = indexConfig
-            )
-            _statusBanner.value = "تم إنشاء مجموعة البيانات «$collectionName» في قاعدة البيانات السحابية"
+            val projectId = _selectedProjectId.value
+            if (projectId.isNullOrBlank()) {
+                _statusBanner.value = "حدد مشروعاً قبل إنشاء مجموعة البيانات."
+                return@launch
+            }
+            if (collectionName.isBlank()) {
+                _statusBanner.value = "اسم مجموعة البيانات مطلوب."
+                return@launch
+            }
+
+            _isBusy.value = true
+            try {
+                repository.createCollectionSchema(
+                    projectId = projectId,
+                    collectionName = collectionName.trim(),
+                    fieldsSpec = fieldsSpec,
+                    sampleRecordsJson = sampleRecordsJson,
+                    indexConfig = indexConfig
+                ).onSuccess {
+                    _statusBanner.value = "تم إنشاء مجموعة البيانات «$collectionName» وحفظها سحابياً."
+                }.onFailure { error ->
+                    _statusBanner.value = "تعذر إنشاء مجموعة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun appendRecordToCollection(schema: DbCollectionSchema, newRecordJsonObject: String) {
         viewModelScope.launch {
-            val currentJson = schema.sampleRecordsJson.trim()
-            val updatedJson = if (currentJson.endsWith("]") && currentJson.length > 2) {
-                currentJson.removeSuffix("]") + "," + newRecordJsonObject + "]"
-            } else {
-                "[$newRecordJsonObject]"
-            }
-            if (schema.createdAt != null) {
-                repository.updateCollectionSchema(schema.copy(sampleRecordsJson = updatedJson))
-                _statusBanner.value = "تم إدراج السجل الجديد في «${schema.collectionName}»"
+            try {
+                val currentRecords = kotlinx.serialization.json.Json.parseToJsonElement(
+                    schema.sampleRecordsJson.ifBlank { "[]" }
+                ) as? kotlinx.serialization.json.JsonArray
+                    ?: throw IllegalArgumentException("بيانات السجلات الحالية يجب أن تكون مصفوفة JSON.")
+                val newRecord = kotlinx.serialization.json.Json.parseToJsonElement(newRecordJsonObject)
+                require(newRecord is kotlinx.serialization.json.JsonObject) {
+                    "السجل الجديد يجب أن يكون كائن JSON."
+                }
+                val updatedJson = kotlinx.serialization.json.JsonArray(currentRecords + newRecord).toString()
+                repository.updateCollectionSchema(
+                    schema.copy(sampleRecordsJson = updatedJson)
+                ).onSuccess {
+                    _statusBanner.value = "تم إدراج السجل الجديد وحفظه في «${schema.collectionName}»."
+                }.onFailure { error ->
+                    _statusBanner.value = "تعذر إدراج السجل: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _statusBanner.value = "بيانات السجل غير صالحة: ${error.localizedMessage ?: "تحقق من JSON"}"
             }
         }
     }
@@ -916,9 +1133,23 @@ class StudioViewModel(
     }
 
     fun deleteDatabaseCollection(collectionId: String) {
+        if (collectionId.isBlank()) {
+            _statusBanner.value = "معرّف مجموعة البيانات غير صالح."
+            return
+        }
         viewModelScope.launch {
-            repository.deleteCollectionSchema(collectionId)
-            _statusBanner.value = "تم حذف مجموعة البيانات."
+            _isBusy.value = true
+            try {
+                repository.deleteCollectionSchema(collectionId)
+                    .onSuccess {
+                        _statusBanner.value = "تم حذف مجموعة البيانات من Firestore."
+                    }
+                    .onFailure { error ->
+                        _statusBanner.value = "تعذر حذف مجموعة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                    }
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
@@ -928,12 +1159,18 @@ class StudioViewModel(
         _selectedChatModel.value = normalized
         aiRepository.setActiveModel(normalized)
         val provider = AiEngineProvider.fromModelId(normalized)
-        appendConsoleLog("[AI Prompt Service] Injected ${provider.shortBadge} client ($normalized) & syncing preference to Firestore.")
-        _statusBanner.value = "🤖 تم تفعيل محرك الذكاء الاصطناعي: ${provider.titleAr} ($normalized) وحفظه في ملفك السحابي"
+        appendConsoleLog("[AI Prompt Service] Activated ${provider.shortBadge} client ($normalized); syncing preference to Firestore.")
+        _statusBanner.value = "تم تفعيل ${provider.titleAr} ($normalized) على هذا الجهاز."
         viewModelScope.launch {
-            repository.updatePreferredAiModel(normalized).onSuccess {
-                _lastSyncTimestampLabel.value = currentTimeLabel()
-            }
+            repository.updatePreferredAiModel(normalized)
+                .onSuccess {
+                    _lastSyncTimestampLabel.value = currentTimeLabel()
+                    _statusBanner.value = "تم تفعيل ${provider.titleAr} وحفظ التفضيل في Firestore."
+                }
+                .onFailure { error ->
+                    Log.w(TAG, "AI model preference sync failed", error)
+                    _statusBanner.value = "تم تفعيل ${provider.titleAr} محلياً، لكن تعذر حفظ التفضيل سحابياً: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
         }
     }
 
@@ -962,54 +1199,296 @@ class StudioViewModel(
         _useHighThinking.value = enabled
     }
 
+    private suspend fun executeAgentTask(task: AgentTaskType, originalPrompt: String): Pair<String, List<String>> {
+        return when (task) {
+            AgentTaskType.CREATE_PROJECT -> {
+                val projectName = originalPrompt.trim()
+                    .replace(
+                        Regex("^\\s*(?:من فضلك\\s*)?(?:أنشئ|انشئ)\\s+(?:لي\\s+)?مشروع\\s*", RegexOption.IGNORE_CASE),
+                        ""
+                    )
+                    .replace(
+                        Regex("^\\s*(?:please\\s+)?(?:create|build)\\s+(?:a\\s+)?project\\s*", RegexOption.IGNORE_CASE),
+                        ""
+                    )
+                    .split(Regex("\\s+(?:باستخدام|مع|using|with)\\s+"), limit = 2).first()
+                    .trim()
+                    .take(80)
+                require(projectName.isNotBlank()) {
+                    "حدد اسم المشروع ووصفه بعد أمر الإنشاء، مثال: أنشئ مشروع متجر إلكتروني باستخدام React."
+                }
+                val language = _editorLanguage.value.ifBlank { "Full-Stack Web" }
+                val result = createProjectFromBrief(
+                    name = projectName,
+                    description = originalPrompt.trim(),
+                    language = language
+                )
+                result to listOf("Cyber Agent Workspace Executor", "AI Project Generator", "Firestore Project Save")
+            }
+            AgentTaskType.SAVE_PROJECT -> {
+                val result = persistCurrentProject()
+                result to listOf("Cyber Agent Workspace Executor", "Firestore Project Save")
+            }
+            AgentTaskType.CREATE_SNAPSHOT -> {
+                val projectId = _selectedProjectId.value
+                    ?: throw IllegalStateException("احفظ المشروع أولاً قبل إنشاء لقطة إصدار.")
+                val projectSnapshots = (snapshotsState.value as? UiState.Success)?.data
+                    .orEmpty()
+                    .filter { it.projectId == projectId }
+                val previous = projectSnapshots.firstOrNull()
+                val previousLines = (
+                    previous?.htmlCode.orEmpty() + "\n" + previous?.cssCode.orEmpty() +
+                        "\n" + previous?.jsCode.orEmpty() + "\n" + previous?.backendCode.orEmpty()
+                    ).lines()
+                val currentLines = (
+                    _htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
+                        _jsBuffer.value + "\n" + _backendBuffer.value
+                    ).lines()
+                val added = currentLines.count { it !in previousLines }.toLong()
+                val deleted = previousLines.count { it !in currentLines }.toLong()
+                val versionTag = "v1.${projectSnapshots.size + 1}.0"
+                val snapshotId = repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = originalPrompt.take(300),
+                    versionTag = versionTag,
+                    htmlCode = _htmlBuffer.value,
+                    cssCode = _cssBuffer.value,
+                    jsCode = _jsBuffer.value,
+                    backendCode = _backendBuffer.value,
+                    addedLines = added,
+                    deletedLines = deleted
+                ).getOrElse { error -> throw error }
+                appendConsoleLog("[Agent Task] Created snapshot $versionTag ($snapshotId).")
+                "تم إنشاء لقطة الإصدار $versionTag وحفظها في Firestore." to
+                    listOf("Cyber Agent Workspace Executor", "Firestore Version Snapshot")
+            }
+            AgentTaskType.REVIEW_CODE -> {
+                val source = buildString {
+                    appendLine("HTML:\n${_htmlBuffer.value}")
+                    appendLine("CSS:\n${_cssBuffer.value}")
+                    appendLine("JavaScript:\n${_jsBuffer.value}")
+                    appendLine("Backend:\n${_backendBuffer.value}")
+                }
+                val reviewPrompt = """
+                    راجع الشيفرة التالية مراجعة أمنية وبرمجية دقيقة.
+                    صنّف النتائج إلى: أخطاء مؤكدة من النص، مخاطر محتملة تحتاج تحققاً، وتحسينات.
+                    لا تدّعِ تشغيل أدوات SAST أو DAST أو تنفيذ الاختبارات.
+                    لا تخترع نتائج تشغيل. اربط كل ملاحظة بمقطع أو ملف واضح.
+                    أعد خطوات إصلاح عملية.
+                    $source
+                """.trimIndent()
+                val (review, sources) = aiRepository.sendMultiTurnChat(
+                    history = emptyList(),
+                    userPrompt = reviewPrompt,
+                    selectedModel = _selectedChatModel.value,
+                    persona = AiRolePersona.SECURITY_AUDITOR,
+                    useSearchGrounding = false,
+                    useHighThinking = true
+                )
+                "مراجعة برمجية بمساعدة الذكاء الاصطناعي (ليست فحصاً ديناميكياً أو SAST/DAST):\n\n$review" to
+                    (listOf("Cyber Agent AI Code Review") + sources).distinct()
+            }
+            AgentTaskType.EDIT_ACTIVE_CODE -> {
+                val tab = _activeCodeTab.value
+                val currentCode = when (tab) {
+                    "HTML" -> _htmlBuffer.value
+                    "CSS" -> _cssBuffer.value
+                    "JS" -> _jsBuffer.value
+                    "Backend" -> _backendBuffer.value
+                    else -> throw IllegalStateException("تبويب المحرر غير مدعوم: $tab")
+                }
+                val revisedFile = aiRepository.reviseCodeFile(
+                    currentCode = currentCode,
+                    activeTab = tab,
+                    instruction = originalPrompt,
+                    preferredModel = _selectedChatModel.value
+                )
+                require(revisedFile.isNotBlank()) { "لم يرجع نموذج الذكاء الاصطناعي ملفاً معدلاً." }
+                require(revisedFile != currentCode) { "لم ينتج النموذج تغييراً في الملف؛ لم يتم حفظ تعديل." }
+
+                persistCurrentProject()
+                val projectId = _selectedProjectId.value
+                    ?: throw IllegalStateException("تعذر تحديد المشروع لحفظ نسخة احتياطية قبل التعديل.")
+                val backupVersion = "agent-backup-${System.currentTimeMillis()}"
+                val backupId = repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = "نسخة احتياطية قبل تعديل الوكيل: ${originalPrompt.take(180)}",
+                    versionTag = backupVersion,
+                    htmlCode = _htmlBuffer.value,
+                    cssCode = _cssBuffer.value,
+                    jsCode = _jsBuffer.value,
+                    backendCode = _backendBuffer.value,
+                    addedLines = 0L,
+                    deletedLines = 0L
+                ).getOrElse { error -> throw error }
+
+                updateCodeBuffer(tab, revisedFile)
+                val saveResult = try {
+                    persistCurrentProject()
+                } catch (saveError: Exception) {
+                    updateCodeBuffer(tab, currentCode)
+                    throw saveError
+                }
+                "تم تطبيق الملف المعدل بالكامل على تبويب $tab وحفظه. أُنشئت نسخة احتياطية قبل التعديل ($backupVersion / $backupId).\n$saveResult\n\nراجع التغيير في المحرر قبل تشغيله." to
+                    listOf("Cyber Agent Code Editor", "AI Full-File Revision", "Firestore Backup Snapshot", "Firestore Project Save")
+            }
+        }
+    }
+
+    private fun readAgentToolString(args: Map<String, JsonElement>, key: String): String {
+        return args[key]?.jsonPrimitive?.contentOrNull?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: throw IllegalArgumentException("المعامل المطلوب غير موجود أو فارغ: $key")
+    }
+
+    private suspend fun executeAgentTool(
+        name: String,
+        args: Map<String, JsonElement>
+    ): JsonObject {
+        if (name == "create_project") {
+            val projectName = readAgentToolString(args, "name")
+            val description = readAgentToolString(args, "description")
+            val language = readAgentToolString(args, "language")
+            val result = createProjectFromBrief(projectName, description, language)
+            return JsonObject(
+                mapOf(
+                    "ok" to JsonPrimitive(true),
+                    "project_id" to JsonPrimitive(_selectedProjectId.value.orEmpty()),
+                    "result" to JsonPrimitive(result)
+                )
+            )
+        }
+
+        if (name == "get_workspace_status") {
+            val status = buildString {
+                appendLine("Project: ${_editorName.value}")
+                appendLine("Project selected: ${_selectedProjectId.value != null}")
+                appendLine("Active editor tab: ${_activeCodeTab.value}")
+                appendLine("HTML characters: ${_htmlBuffer.value.length}")
+                appendLine("CSS characters: ${_cssBuffer.value.length}")
+                appendLine("JavaScript characters: ${_jsBuffer.value.length}")
+                appendLine("Backend characters: ${_backendBuffer.value.length}")
+            }.trim()
+            return JsonObject(
+                mapOf(
+                    "ok" to JsonPrimitive(true),
+                    "result" to JsonPrimitive(status)
+                )
+            )
+        }
+
+        val task = when (name) {
+            "save_current_project" -> AgentTaskType.SAVE_PROJECT
+            "create_version_snapshot" -> AgentTaskType.CREATE_SNAPSHOT
+            "review_current_code" -> AgentTaskType.REVIEW_CODE
+            "edit_active_code" -> AgentTaskType.EDIT_ACTIVE_CODE
+            else -> throw IllegalArgumentException("أداة غير مسموح بها: $name")
+        }
+        val instruction = when (task) {
+            AgentTaskType.CREATE_SNAPSHOT -> readAgentToolString(args, "commit_message")
+            AgentTaskType.EDIT_ACTIVE_CODE -> readAgentToolString(args, "instruction")
+            else -> name
+        }
+        val (result, sources) = executeAgentTask(task, instruction)
+        return JsonObject(
+            mapOf(
+                "ok" to JsonPrimitive(true),
+                "result" to JsonPrimitive(result),
+                "executed_sources" to JsonPrimitive(sources.joinToString(", "))
+            )
+        )
+    }
+
+    private fun appendAgentReply(text: String, model: String, sources: List<String>) {
+        _chatMessages.value = _chatMessages.value + ChatMessage(
+            id = UUID.randomUUID().toString(),
+            isUser = false,
+            text = text,
+            modelUsed = model,
+            timestampLabel = currentTimeLabel(),
+            groundingSources = sources
+        )
+    }
+
     fun sendChatMessage(prompt: String) {
-        if (prompt.isBlank()) return
+        val cleanPrompt = prompt.trim()
+        if (cleanPrompt.isEmpty() || _isBusy.value) return
+
+        val currentHistory = _chatMessages.value
         val userMsg = ChatMessage(
             id = UUID.randomUUID().toString(),
             isUser = true,
-            text = prompt,
+            text = cleanPrompt,
             modelUsed = "User",
             timestampLabel = currentTimeLabel()
         )
-        val currentHistory = _chatMessages.value
         _chatMessages.value = currentHistory + userMsg
+        val agentTask = AgentTaskRouter.route(cleanPrompt)
 
         viewModelScope.launch {
             _isBusy.value = true
-            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
-            val enrichedPrompt = if (skillsBlock.isNotBlank()) {
-                "$prompt\n\n$skillsBlock"
-            } else {
-                prompt
+            try {
+                if (agentTask != null) {
+                    val (reply, sources) = executeAgentTask(agentTask, cleanPrompt)
+                    appendAgentReply(reply, "Cyber Agent • ${agentTask.name}", sources)
+                    _statusBanner.value = "اكتملت المهمة ونُفذت إجراءاتها داخل مساحة العمل."
+                    return@launch
+                }
+
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(cleanPrompt)
+                val enrichedPrompt = if (skillsBlock.isNotBlank()) {
+                    "$cleanPrompt\n\n$skillsBlock"
+                } else {
+                    cleanPrompt
+                }
+                val isOpenAiSelected = GeminiAiRepository.isOpenAiModel(_selectedChatModel.value)
+                val (replyText, providerSources, effectiveModel) = if (isOpenAiSelected) {
+                    val (reply, sources) = aiRepository.sendMultiTurnChat(
+                        history = currentHistory,
+                        userPrompt = enrichedPrompt,
+                        selectedModel = _selectedChatModel.value,
+                        persona = _selectedPersona.value,
+                        useSearchGrounding = _useSearchGrounding.value,
+                        useHighThinking = _useHighThinking.value
+                    )
+                    Triple(reply, sources, _selectedChatModel.value)
+                } else {
+                    val (reply, executedTools) = aiRepository.sendAgentTurn(
+                        history = currentHistory,
+                        userPrompt = enrichedPrompt,
+                        preferredModel = _selectedChatModel.value,
+                        systemInstruction = _selectedPersona.value.systemPrompt,
+                        executeTool = { toolName, arguments ->
+                            executeAgentTool(toolName, arguments)
+                        }
+                    )
+                    val modelName = if (
+                        GeminiAiRepository.isDualEngineModel(_selectedChatModel.value)
+                    ) GeminiAiRepository.MODEL_FLASH else _selectedChatModel.value
+                    Triple(
+                        reply,
+                        executedTools.map { "Cyber Agent Tool: $it" },
+                        modelName
+                    )
+                }
+                appendAgentReply(
+                    replyText,
+                    effectiveModel,
+                    (appliedIds.map { "SkillMemory:$it" } + providerSources).distinct()
+                )
+                _statusBanner.value = if (providerSources.any { it.startsWith("Cyber Agent Tool:") }) {
+                    "تم تنفيذ إجراءات داخل مساحة العمل وإرجاع النتيجة."
+                } else {
+                    "وصل رد من مزود الذكاء الاصطناعي."
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Chat or agent task failed", error)
+                val errorText = "لم تُنفذ المهمة. السبب: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                appendAgentReply(errorText, "Task Error", listOf("Execution failed"))
+                _statusBanner.value = errorText
+            } finally {
+                _isBusy.value = false
             }
-            val (replyText, sources) = aiRepository.sendMultiTurnChat(
-                history = currentHistory,
-                userPrompt = enrichedPrompt,
-                selectedModel = _selectedChatModel.value,
-                persona = _selectedPersona.value,
-                useSearchGrounding = _useSearchGrounding.value,
-                useHighThinking = _useHighThinking.value
-            )
-            val effectiveModel = when {
-                GeminiAiRepository.isDualEngineModel(_selectedChatModel.value) ->
-                    GeminiAiRepository.MODEL_DUAL_ENGINE
-                GeminiAiRepository.isOpenAiModel(_selectedChatModel.value) ->
-                    _selectedChatModel.value
-                _useHighThinking.value -> GeminiAiRepository.MODEL_ARGON
-                _useSearchGrounding.value -> GeminiAiRepository.MODEL_FLASH
-                else -> _selectedChatModel.value
-            }
-            val skillSources = appliedIds.map { "SkillMemory:$it" }
-            val aiMsg = ChatMessage(
-                id = UUID.randomUUID().toString(),
-                isUser = false,
-                text = replyText,
-                modelUsed = effectiveModel,
-                timestampLabel = currentTimeLabel(),
-                groundingSources = (skillSources + sources).distinct()
-            )
-            _chatMessages.value = _chatMessages.value + aiMsg
-            _isBusy.value = false
         }
     }
 
@@ -1037,17 +1516,23 @@ class StudioViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            val asset = aiRepository.generateOrEditImage(
-                prompt = prompt,
-                useStudioProModel = useStudioPro,
-                aspectRatio = aspectRatio,
-                imageSize = imageSize,
-                sourceImageBase64 = sourceBase64,
-                sourceMimeType = sourceMime
-            )
-            _generatedAssets.value = listOf(asset) + _generatedAssets.value
-            _statusBanner.value = "تم توليد الصورة عبر ${asset.modelUsed} (${asset.metadataLabel})"
-            _isBusy.value = false
+            try {
+                val asset = aiRepository.generateOrEditImage(
+                    prompt = prompt,
+                    useStudioProModel = useStudioPro,
+                    aspectRatio = aspectRatio,
+                    imageSize = imageSize,
+                    sourceImageBase64 = sourceBase64,
+                    sourceMimeType = sourceMime
+                )
+                _generatedAssets.value = listOf(asset) + _generatedAssets.value
+                _statusBanner.value = "تم توليد الصورة عبر ${asset.modelUsed} (${asset.metadataLabel})"
+            } catch (error: Exception) {
+                Log.e(TAG, "Image generation failed", error)
+                _statusBanner.value = "تعذر توليد الصورة: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
@@ -1059,15 +1544,21 @@ class StudioViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            val asset = aiRepository.generateOrAnimateVideo(
-                prompt = prompt,
-                aspectRatio = aspectRatio,
-                sourcePhotoBase64 = sourcePhotoBase64,
-                sourcePhotoMime = sourcePhotoMime
-            )
-            _generatedAssets.value = listOf(asset) + _generatedAssets.value
-            _statusBanner.value = "تمت معالجة الفيديو عبر ${GeminiAiRepository.MODEL_OMNI_VIDEO} ($aspectRatio)"
-            _isBusy.value = false
+            try {
+                val asset = aiRepository.generateOrAnimateVideo(
+                    prompt = prompt,
+                    aspectRatio = aspectRatio,
+                    sourcePhotoBase64 = sourcePhotoBase64,
+                    sourcePhotoMime = sourcePhotoMime
+                )
+                _generatedAssets.value = listOf(asset) + _generatedAssets.value
+                _statusBanner.value = "تم إعداد ملف الفيديو عبر ${asset.modelUsed} ($aspectRatio)"
+            } catch (error: Exception) {
+                Log.e(TAG, "Video generation failed", error)
+                _statusBanner.value = "تعذر توليد الفيديو: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
@@ -1079,86 +1570,96 @@ class StudioViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            val analysis = aiRepository.analyzeVisualMediaWithArgon(
-                prompt = prompt,
-                mediaBase64 = base64Data,
-                mimeType = mimeType,
-                isVideo = isVideo
-            )
-            _mediaAnalysisOutput.value = analysis
-            _statusBanner.value = "اكتمل تحليل الوسائط عبر ${GeminiAiRepository.MODEL_ARGON}"
-            _isBusy.value = false
-        }
-    }
-
-    fun synthesizeSpeechFromText(text: String, voiceName: String = "Kore", onAudioReady: (String?) -> Unit) {
-        viewModelScope.launch {
-            _isBusy.value = true
-            val asset = aiRepository.convertTextToSpeech(text, voiceName)
-            _generatedAssets.value = listOf(asset) + _generatedAssets.value
-            onAudioReady(asset.base64Data)
-            _statusBanner.value = "تم تحويل النص إلى كلام عبر ${GeminiAiRepository.MODEL_TTS}"
-            _isBusy.value = false
+            try {
+                _mediaAnalysisOutput.value = aiRepository.analyzeVisualMediaWithArgon(
+                    prompt = prompt,
+                    mediaBase64 = base64Data,
+                    mimeType = mimeType,
+                    isVideo = isVideo
+                )
+                _statusBanner.value = "اكتمل تحليل الوسائط عبر ${GeminiAiRepository.MODEL_ARGON}"
+            } catch (error: Exception) {
+                Log.e(TAG, "Media analysis failed", error)
+                _statusBanner.value = "تعذر تحليل الوسائط: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun transcribeRecordedAudio(audioBase64: String, onTranscribed: (String) -> Unit) {
         viewModelScope.launch {
             _isBusy.value = true
-            val text = aiRepository.transcribeMicrophoneAudio(audioBase64)
-            _lastTranscribedText.value = text
-            onTranscribed(text)
-            _statusBanner.value = "تم نسخ الصوت عبر ${GeminiAiRepository.MODEL_TRANSCRIBE}"
-            _isBusy.value = false
+            try {
+                val text = aiRepository.transcribeMicrophoneAudio(audioBase64)
+                _lastTranscribedText.value = text
+                onTranscribed(text)
+                _statusBanner.value = "تم نسخ الصوت عبر ${GeminiAiRepository.MODEL_FLASH}"
+            } catch (error: Exception) {
+                Log.e(TAG, "Audio transcription failed", error)
+                _statusBanner.value = "تعذر نسخ الصوت: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun sendLiveVoiceTurn(spokenText: String, audioBase64: String? = null, onReplyReady: (String) -> Unit) {
         viewModelScope.launch {
             _isBusy.value = true
-            val userEntry = "👤 أنت: $spokenText"
-            _liveVoiceHistory.value = _liveVoiceHistory.value + userEntry
-            val reply = aiRepository.sendLiveVoiceConversationTurn(spokenText, audioBase64)
-            _liveVoiceHistory.value = _liveVoiceHistory.value + "🤖 ${GeminiAiRepository.MODEL_LIVE}: $reply"
-            onReplyReady(reply)
-            _isBusy.value = false
+            try {
+                val reply = aiRepository.sendLiveVoiceConversationTurn(spokenText, audioBase64)
+                _liveVoiceHistory.value = _liveVoiceHistory.value +
+                    listOf("👤 أنت: $spokenText", "🤖 Gemini (رد صوتي): $reply")
+                onReplyReady(reply)
+            } catch (error: Exception) {
+                Log.e(TAG, "Live voice turn failed", error)
+                _statusBanner.value = "تعذرت المحادثة الصوتية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun generateMusicTrack(prompt: String, useFullLengthPro: Boolean, onMusicReady: (String?) -> Unit) {
         viewModelScope.launch {
-            _isBusy.value = true
-            val asset = aiRepository.generateMusic(prompt, useFullLengthPro)
-            _generatedAssets.value = listOf(asset) + _generatedAssets.value
-            onMusicReady(asset.base64Data)
-            _statusBanner.value = "تم توليد الموسيقى عبر ${asset.modelUsed}"
-            _isBusy.value = false
+            _statusBanner.value = "توليد الموسيقى غير متاح حالياً لأن مزود إنتاج الملفات الصوتية غير مهيأ."
+            onMusicReady(null)
         }
     }
 
     fun runBioscienceAnalysis(fastaSequence: String, researchGoal: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val result = aiRepository.analyzeBioscienceSequence(
-                fastaOrSequence = fastaSequence,
-                researchGoal = researchGoal,
-                preferredModel = _selectedChatModel.value
-            )
-            _bioscienceOutput.value = result
-            repository.createBioExperiment(
-                title = researchGoal.take(80).ifBlank { "تحليل تسلسل حيوي (${_selectedChatModel.value})" },
-                workflowMode = "PROTEIN_FOLDING",
-                fastaSequence = fastaSequence,
-                researchGoal = researchGoal,
-                plddtScore = 91L,
-                freeEnergyKcal = -11.2,
-                alphaHelixPct = 52L,
-                betaSheetPct = 24L,
-                aiReportSummary = result
-            )
-            syncUserProfileToCloud()
-            _statusBanner.value = "اكتمل التحليل الحيوي وتم حفظ التجربة سحابياً في Firestore (${_selectedChatModel.value})"
-            _isBusy.value = false
+            try {
+                val result = aiRepository.analyzeBioscienceSequence(
+                    fastaOrSequence = fastaSequence,
+                    researchGoal = researchGoal,
+                    preferredModel = _selectedChatModel.value
+                )
+                _bioscienceOutput.value = result
+                repository.createBioExperiment(
+                    title = researchGoal.take(80).ifBlank { "تحليل تسلسل حيوي (${_selectedChatModel.value})" },
+                    workflowMode = "PROTEIN_FOLDING",
+                    fastaSequence = fastaSequence,
+                    researchGoal = researchGoal,
+                    plddtScore = 0L,
+                    freeEnergyKcal = 0.0,
+                    alphaHelixPct = 0L,
+                    betaSheetPct = 0L,
+                    aiReportSummary = result
+                ).onSuccess {
+                    syncUserProfileToCloud()
+                    _statusBanner.value = "اكتمل التحليل وحُفظت التجربة. المؤشرات البنيوية غير محسوبة ما لم يذكرها النموذج."
+                }.onFailure { error ->
+                    _statusBanner.value = "اكتمل التحليل لكن تعذر حفظه: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Bioscience analysis failed", error)
+                _statusBanner.value = "تعذر تحليل التسلسل: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
@@ -1175,38 +1676,49 @@ class StudioViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            repository.createBioExperiment(
-                title = title,
-                workflowMode = workflowMode,
-                fastaSequence = fastaSequence,
-                researchGoal = researchGoal,
-                plddtScore = plddtScore.toLong(),
-                freeEnergyKcal = freeEnergyKcal,
-                alphaHelixPct = alphaHelixPct.toLong(),
-                betaSheetPct = betaSheetPct.toLong(),
-                aiReportSummary = aiReportSummary
-            ).onSuccess { expId ->
-                _lastSyncTimestampLabel.value = currentTimeLabel()
-                syncUserProfileToCloud()
-                _statusBanner.value = "☁️ تم حفظ تجربة المختبر الحيوي ($expId) في Cloud Firestore بنجاح"
-            }.onFailure { err ->
-                _statusBanner.value = "تعذر حفظ التجربة الحيوية سحابياً: ${err.localizedMessage}"
+            try {
+                repository.createBioExperiment(
+                    title = title,
+                    workflowMode = workflowMode,
+                    fastaSequence = fastaSequence,
+                    researchGoal = researchGoal,
+                    plddtScore = plddtScore.toLong(),
+                    freeEnergyKcal = freeEnergyKcal,
+                    alphaHelixPct = alphaHelixPct.toLong(),
+                    betaSheetPct = betaSheetPct.toLong(),
+                    aiReportSummary = aiReportSummary
+                ).onSuccess { expId ->
+                    _lastSyncTimestampLabel.value = currentTimeLabel()
+                    _statusBanner.value = "تم حفظ تجربة المختبر الحيوي ($expId) في Firestore."
+                    syncUserProfileToCloud()
+                }.onFailure { error ->
+                    _statusBanner.value = "تعذر حفظ التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Bio experiment save failed", error)
+                _statusBanner.value = "تعذر حفظ التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            _isBusy.value = false
         }
     }
 
     fun deleteBioExperimentFromCloud(experimentId: String) {
         viewModelScope.launch {
-            repository.deleteBioExperiment(experimentId)
-                .onSuccess {
-                    _lastSyncTimestampLabel.value = currentTimeLabel()
-                    syncUserProfileToCloud()
-                    _statusBanner.value = "تم حذف التجربة الحيوية من السحابة"
-                }
-                .onFailure { err ->
-                    _statusBanner.value = "تعذر حذف التجربة الحيوية: ${err.localizedMessage}"
-                }
+            try {
+                repository.deleteBioExperiment(experimentId)
+                    .onSuccess {
+                        _lastSyncTimestampLabel.value = currentTimeLabel()
+                        _statusBanner.value = "تم حذف التجربة الحيوية من السحابة."
+                        syncUserProfileToCloud()
+                    }
+                    .onFailure { error ->
+                        _statusBanner.value = "تعذر حذف التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                    }
+            } catch (error: Exception) {
+                Log.e(TAG, "Bio experiment deletion failed", error)
+                _statusBanner.value = "تعذر حذف التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            }
         }
     }
 
@@ -1238,16 +1750,43 @@ class StudioViewModel(
     fun forceManualCloudSync() {
         viewModelScope.launch {
             _isBusy.value = true
-            val latencyRes = repository.checkConnectionLatency()
-            latencyRes.onSuccess { ms ->
-                _syncLatencyMs.value = ms
+            try {
+                val latencyResult = repository.checkConnectionLatency()
+                latencyResult.onSuccess { _syncLatencyMs.value = it }
+                    .onFailure { error ->
+                        Log.w(TAG, "Cloud latency check failed", error)
+                        _statusBanner.value = "تعذر الاتصال بـ Firestore: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                        return@launch
+                    }
+
+                val profileCount = repository.upsertUserProfile(
+                    email = userEmail,
+                    displayName = userDisplayName,
+                    photoUrl = userPhotoUrl,
+                    activeBranch = _activeBranch.value,
+                    projectsCount = (projectsState.value as? UiState.Success)?.data?.size?.toLong() ?: 0L,
+                    bioExperimentsCount = (bioExperimentsState.value as? UiState.Success)?.data?.size?.toLong() ?: 0L,
+                    preferredAiModel = if (hasRestoredPreferredModelFromCloud) _selectedChatModel.value else null
+                )
+                profileCount.onFailure { error ->
+                    Log.w(TAG, "Cloud profile sync failed", error)
+                    _statusBanner.value = "فشل تحديث الملف الشخصي: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                    return@launch
+                }
+
+                val skillsSynced = syncSkillsMemoryToFirestoreNow(silent = true)
+                _lastSyncTimestampLabel.value = currentTimeLabel()
+                _statusBanner.value = if (skillsSynced) {
+                    "اكتملت مزامنة الملف الشخصي والمهارات مع Firestore. زمن الاستجابة ${_syncLatencyMs.value}ms."
+                } else {
+                    "تم تحديث الملف الشخصي، لكن تعذرت مزامنة المهارات. زمن الاستجابة ${_syncLatencyMs.value}ms."
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Manual cloud sync failed", error)
+                _statusBanner.value = "فشلت المزامنة: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            } finally {
+                _isBusy.value = false
             }
-            syncUserProfileToCloud()
-            syncSkillsMemoryToFirestore()
-            _lastSyncTimestampLabel.value = currentTimeLabel()
-            val msLabel = _syncLatencyMs.value
-            _statusBanner.value = "☁️ تمت المزامنة السحابية الفورية مع Cloud Firestore بنجاح (${msLabel}ms)"
-            _isBusy.value = false
         }
     }
 
@@ -1259,142 +1798,115 @@ class StudioViewModel(
         private const val TAG = "StudioViewModel"
 
         val DEFAULT_HTML = """
-            <div class="nova-app">
-              <header class="top-bar">
-                <div>
-                  <span class="pill">⚡ NovaForge Full-Stack Runtime</span>
-                  <h1>لوحة المبيعات والعمليات السحابية</h1>
-                </div>
-                <button class="action-btn" onclick="triggerSync()">مزامنة فورية 🔄</button>
-              </header>
-              <div class="metrics-row">
-                <div class="metric-box">
-                  <span>المستخدمون النشطون</span>
-                  <strong id="active-users">1,420</strong>
-                </div>
-                <div class="metric-box">
-                  <span>معدل الاستجابة</span>
-                  <strong id="latency-val">18ms</strong>
-                </div>
-                <div class="metric-box">
-                  <span>حالة قاعدة البيانات</span>
-                  <strong class="ok">متصل • آمن</strong>
-                </div>
-              </div>
-              <div class="card">
-                <h3>إضافة عملية سحابية جديدة</h3>
-                <div class="form-row">
-                  <input id="op-title" placeholder="اسم العملية أو الخدمة..." />
-                  <button onclick="addOperation()">تشغيل +</button>
-                </div>
-                <ul id="ops-list">
-                  <li>✅ تشغيل محرك قواعد البيانات المرنة Firestore</li>
-                  <li>🧬 ربط خط أنابيب الذكاء الاصطناعي والعلوم الحيوية</li>
-                  <li>🔒 التحقق من لقطة الإصدار v1.0.0</li>
-                </ul>
-              </div>
-            </div>
+            <main class="workspace">
+              <p class="eyebrow">مشروع جديد</p>
+              <h1>مرحباً بك في مساحة العمل</h1>
+              <p class="intro">ابدأ بتعديل هذه الصفحة أو اطلب من المساعد إنشاء واجهتك الأولى.</p>
+              <section class="starter-card">
+                <h2>خطوات البدء</h2>
+                <ol>
+                  <li>عدّل HTML وCSS وJavaScript في المحرر.</li>
+                  <li>احفظ ملفات المشروع في حسابك.</li>
+                  <li>استخدم المعاينة المحلية لمراجعة الواجهة.</li>
+                </ol>
+              </section>
+            </main>
         """.trimIndent()
 
         val FINTECH_HTML = """
             <div class="nova-app">
               <header class="top-bar">
                 <div>
-                  <span class="pill">💹 FinTech Quantum Engine</span>
-                  <h1>لوحة السيولة والتداول الخوارزمي المباشر</h1>
+                  <span class="pill">نموذج FinTech تجريبي • لا اتصال بمنصة تداول</span>
+                  <h1>واجهة محاكاة محلية للتداول</h1>
                 </div>
-                <button class="action-btn" onclick="simulateTrade()">تنفيذ صفقة ذكية ⚡</button>
+                <button class="action-btn" onclick="simulateTrade()">إضافة سجل محاكاة</button>
               </header>
               <div class="metrics-row">
                 <div class="metric-box">
-                  <span>حجم السيولة السحابية</span>
-                  <strong id="liquidity-val">$4.85M</strong>
+                  <span>السيولة الفعلية</span>
+                  <strong id="liquidity-val">غير متاحة</strong>
                 </div>
                 <div class="metric-box">
-                  <span>مؤشر المخاطر الذكي</span>
-                  <strong class="ok" id="risk-score">منخفض (0.12)</strong>
+                  <span>مؤشر المخاطر</span>
+                  <strong id="risk-score">غير محسوب</strong>
                 </div>
                 <div class="metric-box">
                   <span>سرعة التسوية</span>
-                  <strong>9.4ms</strong>
+                  <strong>غير متصلة</strong>
                 </div>
               </div>
               <div class="card">
-                <h3>سجل المعاملات المالية الفورية</h3>
+                <h3>سجل المحاكاة المحلي</h3>
                 <ul id="trades-list">
-                  <li>🟢 شراء عقد سحابي ذكي بقيمة $12,400 • تم التحقق</li>
-                  <li>🔵 إعادة توازن المحفظة الآلية عبر نموذج Gemini Argon</li>
+                  <li>لا توجد عمليات. الزر يضيف سجلاً تجريبياً فقط ولا ينفذ أوامر مالية.</li>
                 </ul>
               </div>
             </div>
         """.trimIndent()
 
         val FINTECH_JS = """
-            let liq = 4.85;
             function simulateTrade() {
-              liq = +(liq + 0.15).toFixed(2);
-              document.getElementById('liquidity-val').textContent = '$' + liq + 'M';
               const ul = document.getElementById('trades-list');
               const li = document.createElement('li');
-              li.textContent = '⚡ صفقة خوارزمية جديدة • السيولة المحدثة: $' + liq + 'M';
+              li.textContent = 'محاكاة محلية فقط: لم يتم إرسال أمر أو تنفيذ صفقة فعلية.';
               ul.prepend(li);
-              console.log('Executed algorithmic trade. Liquidity=' + liq + 'M');
+              console.info('Demo only: no trading order was sent.');
             }
         """.trimIndent()
 
         val FINTECH_BACKEND = """
-            // FinTech Risk & Ledger Microservice (Python FastAPI + SQL)
+            # Example only: this endpoint does not persist a ledger or settle funds.
             from fastapi import FastAPI
             app = FastAPI()
 
-            @app.post("/api/v1/ledger/settle")
-            async def settle_transaction(amount: float, asset: str):
-                return {"status": "SETTLED", "amount": amount, "asset": asset}
+            @app.post("/api/v1/ledger/preview")
+            async def preview_transaction(amount: float, asset: str):
+                return {"status": "SIMULATED_ONLY", "amount": amount, "asset": asset}
         """.trimIndent()
 
         val BIOMED_HTML = """
             <div class="nova-app">
               <header class="top-bar">
                 <div>
-                  <span class="pill">🧬 BioMed Cloud Lab</span>
-                  <h1>بوابة تحليل العينات الجينومية والسريرية</h1>
+                  <span class="pill">واجهة BioMed تجريبية • لا يوجد تحليل متصل</span>
+                  <h1>قائمة سجلات العينات</h1>
                 </div>
-                <button class="action-btn" onclick="runSeqBatch()">فحص عينة جديدة 🔬</button>
+                <button class="action-btn" onclick="addDemoSample()">إضافة سجل تجريبي</button>
               </header>
               <div class="metrics-row">
                 <div class="metric-box">
-                  <span>العينات المحللة</span>
-                  <strong id="sample-count">348</strong>
+                  <span>السجلات التجريبية</span>
+                  <strong id="sample-count">0</strong>
                 </div>
                 <div class="metric-box">
-                  <span>متوسط GC Content</span>
-                  <strong class="ok">54.8%</strong>
+                  <span>GC Content</span>
+                  <strong>غير محسوب</strong>
                 </div>
                 <div class="metric-box">
-                  <span>دقة التنبؤ البنيوي</span>
-                  <strong>99.4%</strong>
+                  <span>الثقة البنيوية</span>
+                  <strong>غير متاحة</strong>
                 </div>
               </div>
               <div class="card">
-                <h3>سجل العينات الجزيئية (FASTA Queue)</h3>
+                <h3>سجل العرض التجريبي</h3>
                 <ul id="bio-list">
-                  <li>🧬 عينة INS-204 • اكتمل تطابق السلسلة البروتينية</li>
-                  <li>🔬 عينة CRISPR-sgRNA • كفاءة استهداف 98.2%</li>
+                  <li>لا توجد سجلات بعد. إضافة سجل لا تشغّل Biopython أو أداة تحليل حيوية.</li>
                 </ul>
               </div>
             </div>
         """.trimIndent()
 
         val BIOMED_JS = """
-            let samples = 348;
-            function runSeqBatch() {
-              samples++;
-              document.getElementById('sample-count').textContent = String(samples);
+            let sampleRecords = 0;
+            function addDemoSample() {
+              sampleRecords++;
+              document.getElementById('sample-count').textContent = String(sampleRecords);
               const ul = document.getElementById('bio-list');
               const li = document.createElement('li');
-              li.textContent = '🧪 عينة جينومية #' + samples + ' • تم التحليل عبر Biopython';
+              li.textContent = 'سجل تجريبي #' + sampleRecords + ' • لم يتم تشغيل تحليل حيوي.';
               ul.prepend(li);
-              console.log('Processed genomic sample #' + samples);
+              console.info('Demo record added; no sequence analysis was performed.');
             }
         """.trimIndent()
 
@@ -1446,38 +1958,30 @@ class StudioViewModel(
         """.trimIndent()
 
         val DEFAULT_JS = """
-            let users = 1420;
-            function triggerSync() {
-              users += Math.floor(Math.random() * 15) + 1;
-              document.getElementById('active-users').textContent = users.toLocaleString();
-              document.getElementById('latency-val').textContent = (12 + Math.floor(Math.random() * 9)) + 'ms';
-              console.log('Cloud sync completed. Active users=' + users);
-            }
+            // Local UI interactions only; this starter does not claim to sync with a cloud service.
             function addOperation() {
               const input = document.getElementById('op-title');
-              const val = input.value.trim();
-              if (!val) return;
-              const li = document.createElement('li');
-              li.textContent = '🚀 ' + val + ' (تم التنفيذ فوراً)';
-              document.getElementById('ops-list').prepend(li);
+              const value = input?.value?.trim();
+              if (!value) return;
+              const item = document.createElement('li');
+              item.textContent = value;
+              document.getElementById('ops-list')?.prepend(item);
               input.value = '';
-              console.log('Operation added: ' + val);
-              triggerSync();
             }
         """.trimIndent()
 
         val DEFAULT_BACKEND = """
-            // Full-Stack Cloud Controller & Database Gateway
+            // Example Kotlin service only; it is not wired to Firebase or a database.
             package com.novaforge.cloud
 
             data class ApiOperation(val id: String, val title: String, val status: String)
 
             class FullStackEngine {
-                fun processTransaction(title: String): ApiOperation {
+                fun previewOperation(title: String): ApiOperation {
                     return ApiOperation(
-                        id = "tx_" + System.currentTimeMillis(),
+                        id = "local_" + System.currentTimeMillis(),
                         title = title,
-                        status = "COMMITTED_TO_FIRESTORE"
+                        status = "LOCAL_ONLY_NOT_PERSISTED"
                     )
                 }
             }

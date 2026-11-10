@@ -96,58 +96,45 @@ object AudioAndMediaHelper {
         Base64.encodeToString(wavBytes, Base64.NO_WRAP)
     }
 
-    // Play either returned PCM/WAV Base64 audio or a synthesized ambient chord progression for Lyria Music / TTS feedback
-    suspend fun playAudioOrSynthesizedTrack(base64Audio: String?, isMusic: Boolean = true) = withContext(Dispatchers.IO) {
+    /**
+     * Plays audio returned by a configured provider. Empty or invalid content is rejected;
+     * no synthetic sound is generated as a substitute for an API result.
+     */
+    suspend fun playAudioOrSynthesizedTrack(
+        base64Audio: String?,
+        isMusic: Boolean = true
+    ) = withContext(Dispatchers.IO) {
+        require(!base64Audio.isNullOrBlank()) {
+            if (isMusic) "لم يتم استلام ملف موسيقي من مزود الخدمة." else "لم يتم استلام ملف صوتي."
+        }
+        val audioBytes = Base64.decode(base64Audio, Base64.DEFAULT)
+        require(audioBytes.isNotEmpty()) { "ملف الصوت المستلم فارغ." }
         val sampleRate = 24000
-        val pcmBytes: ByteArray = if (!base64Audio.isNullOrBlank()) {
-            try {
-                Base64.decode(base64Audio, Base64.DEFAULT)
-            } catch (_: Exception) {
-                synthesizeAmbientMelodyPcm(sampleRate, if (isMusic) 3.0 else 1.2)
-            }
-        } else {
-            synthesizeAmbientMelodyPcm(sampleRate, if (isMusic) 3.0 else 1.2)
-        }
-
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(audioBytes.size.coerceAtLeast(4096))
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .build()
         try {
-            val track = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
-                )
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build()
-                )
-                .setBufferSizeInBytes(pcmBytes.size.coerceAtLeast(4096))
-                .setTransferMode(AudioTrack.MODE_STATIC)
-                .build()
-
-            track.write(pcmBytes, 0, pcmBytes.size)
+            val written = track.write(audioBytes, 0, audioBytes.size)
+            check(written > 0) { "تعذر تحميل بيانات الصوت إلى المشغل." }
             track.play()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            track.release()
+            throw error
         }
-    }
-
-    private fun synthesizeAmbientMelodyPcm(sampleRate: Int, seconds: Double): ByteArray {
-        val totalSamples = (sampleRate * seconds).toInt()
-        val buffer = ByteBuffer.allocate(totalSamples * 2).order(ByteOrder.LITTLE_ENDIAN)
-        val notes = doubleArrayOf(261.63, 329.63, 392.00, 523.25) // C4, E4, G4, C5
-        for (i in 0 until totalSamples) {
-            val t = i.toDouble() / sampleRate
-            val noteIdx = ((t / (seconds / notes.size)).toInt()).coerceIn(0, notes.lastIndex)
-            val freq = notes[noteIdx]
-            val envelope = sin((i.toDouble() / totalSamples) * PI)
-            val sampleVal = (sin(2.0 * PI * freq * t) * 0.35 + sin(2.0 * PI * (freq * 1.5) * t) * 0.15) * envelope
-            val pcmShort = (sampleVal * Short.MAX_VALUE).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
-            buffer.putShort(pcmShort)
-        }
-        return buffer.array()
     }
 
     private fun wrapPcmInWavHeader(pcmData: ByteArray, sampleRate: Int, channels: Int, bitsPerSample: Int): ByteArray {

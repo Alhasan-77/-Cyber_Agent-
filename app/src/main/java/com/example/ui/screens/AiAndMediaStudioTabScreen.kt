@@ -124,7 +124,8 @@ fun AiAndMediaStudioTabScreen(
     onTranscribeAudio: (String, (String) -> Unit) -> Unit,
     onSendLiveVoiceTurn: (String, String?) -> Unit,
     onGenerateMusic: (String, Boolean) -> Unit,
-    onSpeakText: (String) -> Unit
+    onSpeakText: (String) -> Unit,
+    isBusy: Boolean = false
 ) {
     // 0 = Multi-Turn Chatbot, 1 = Image & Video Studio, 2 = Voice, Audio & Music Lab
     var subTab by remember { mutableIntStateOf(0) }
@@ -151,7 +152,7 @@ fun AiAndMediaStudioTabScreen(
                 FilterChip(
                     selected = subTab == 0,
                     onClick = { subTab = 0 },
-                    label = { Text("محادثة Gemini") },
+                    label = { Text("محادثة الوكيل") },
                     leadingIcon = { Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     shape = RoundedCornerShape(50),
                     colors = FilterChipDefaults.filterChipColors(
@@ -217,7 +218,8 @@ fun AiAndMediaStudioTabScreen(
                 onToggleSearch = onToggleSearch,
                 onToggleHighThinking = onToggleHighThinking,
                 onSendChatMessage = onSendChatMessage,
-                onSpeakText = onSpeakText
+                onSpeakText = onSpeakText,
+                isBusy = isBusy
             )
             1 -> VisualMediaStudioSection(
                 generatedAssets = generatedAssets,
@@ -252,7 +254,8 @@ private fun MultiTurnChatbotSection(
     onToggleSearch: (Boolean) -> Unit,
     onToggleHighThinking: (Boolean) -> Unit,
     onSendChatMessage: (String) -> Unit,
-    onSpeakText: (String) -> Unit
+    onSpeakText: (String) -> Unit,
+    isBusy: Boolean
 ) {
     var inputPrompt by remember { mutableStateOf("") }
     var showPersonaSelector by remember { mutableStateOf(false) }
@@ -261,9 +264,10 @@ private fun MultiTurnChatbotSection(
 
     val quickSuggestions = remember {
         listOf(
-            "✨ صمّم معمارية تطبيق متكامل بـ Kotlin و Firestore",
-            "🔍 راجع أمان الكود واقترح تحسينات للأداء",
-            "🧬 حلّل تسلسل بروتين الهيموغلوبين وخصائصه"
+            "أنشئ مشروع متجر إلكتروني بـ Kotlin و Firestore",
+            "احفظ المشروع الحالي وأنشئ لقطة إصدار",
+            "راجع الكود الحالي وحدد المخاطر الأمنية",
+            "أضف ميزة تسجيل الدخول إلى الملف المفتوح"
         )
     }
 
@@ -289,7 +293,7 @@ private fun MultiTurnChatbotSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "✦ Gemini API متصل",
+                        text = "✦ Gemini عبر Firebase AI",
                         style = MaterialTheme.typography.labelMedium,
                         color = CyberCyan,
                         fontWeight = FontWeight.Bold
@@ -454,7 +458,7 @@ private fun MultiTurnChatbotSection(
                             )
                         }
                         Text(
-                            text = "اسأل Gemini أو ChatGPT في أي وقت",
+                            text = "اطلب من Cyber Agent تنفيذ مهمة أو تحليل مشروعك",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 brush = GeminiSparkleGradient
                             ),
@@ -599,7 +603,7 @@ private fun MultiTurnChatbotSection(
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
                                         Text(
-                                            text = "🌐 مصادر Google Search:",
+                                            text = "مصادر التنفيذ والمعلومات:",
                                             style = MaterialTheme.typography.labelMedium,
                                             color = CyberEmerald,
                                             fontWeight = FontWeight.Bold
@@ -652,9 +656,10 @@ private fun MultiTurnChatbotSection(
                 OutlinedTextField(
                     value = inputPrompt,
                     onValueChange = { inputPrompt = it },
+                    enabled = !isBusy,
                     placeholder = {
                         Text(
-                            text = "اسأل Gemini أو اطلب كتابة كود...",
+                            text = "اكتب طلباً أو مهمة إلى Cyber Agent...",
                             color = CyberTextSecondary
                         )
                     },
@@ -670,8 +675,9 @@ private fun MultiTurnChatbotSection(
                 )
 
                 Button(
+                    enabled = !isBusy && inputPrompt.isNotBlank(),
                     onClick = {
-                        if (inputPrompt.isNotBlank()) {
+                        if (inputPrompt.isNotBlank() && !isBusy) {
                             onSendChatMessage(inputPrompt)
                             inputPrompt = ""
                         }
@@ -686,12 +692,16 @@ private fun MultiTurnChatbotSection(
                         .size(46.dp)
                         .testTag("chatbot_send_button")
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "إرسال",
-                        tint = CyberBackground,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    if (isBusy) {
+                        Text("...", color = CyberBackground, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "إرسال",
+                            tint = CyberBackground,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
@@ -946,31 +956,12 @@ private fun VisualMediaStudioSection(
                             )
                         }
 
-                        Button(
-                            onClick = {
-                                onGenerateVideo(
-                                    visualPrompt,
-                                    selectedVideoRatio,
-                                    if (!uploadedIsVideo) uploadedBase64 else null,
-                                    if (!uploadedIsVideo) uploadedMime else null
-                                )
-                            },
-                            shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = GeminiPillSelectedContainer,
-                                contentColor = GeminiOnPillSelectedContainer
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("generate_video_button")
-                        ) {
-                            Icon(Icons.Default.Movie, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (uploadedBase64 != null && !uploadedIsVideo) "تحريك لفيديو" else "توليد فيديو",
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        Text(
+                            text = "توليد الفيديو غير متاح حالياً. يمكنك استخدام تحليل الصورة أو الفيديو وقراءة وصف المشاهد.",
+                            color = CyberTextSecondary,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }
@@ -1075,10 +1066,10 @@ private fun VoiceAndMusicStudioSection(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var ttsText by remember { mutableStateOf("تم بناء تطبيقك المتكامل بنجاح وتفعيل قاعدة البيانات السحابية.") }
-    var selectedVoice by remember { mutableStateOf("Kore") }
+    var ttsText by remember { mutableStateOf("") }
+    var selectedVoice by remember { mutableStateOf("صوت النظام") }
     var liveVoicePrompt by remember { mutableStateOf("كيف أحسّن أداء استعلامات قاعدة البيانات في مشروعي؟") }
-    var musicPrompt by remember { mutableStateOf("موسيقى إلكترونية سينمائية ملهمة لبيئة تطوير مستقبلية") }
+    var musicPrompt by remember { mutableStateOf("") }
     var useProFullTrack by remember { mutableStateOf(false) }
     var isRecordingMic by remember { mutableStateOf(false) }
 
@@ -1101,7 +1092,7 @@ private fun VoiceAndMusicStudioSection(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1. Gemini Live Voice & Transcription
+        // 1. Turn-based Gemini Voice Conversation & Transcription
         item {
             Card(
                 shape = RoundedCornerShape(24.dp),
@@ -1115,7 +1106,7 @@ private fun VoiceAndMusicStudioSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "🎙️ Gemini Live الصوتية الحية ونسخ الميكروفون",
+                        text = "🎙️ محادثة صوتية مع Gemini ونسخ الميكروفون",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberTextPrimary,
                         fontWeight = FontWeight.Bold
@@ -1180,7 +1171,7 @@ private fun VoiceAndMusicStudioSection(
                         ) {
                             Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = CyberBackground)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("تحدث مع Gemini Live", color = CyberBackground, fontWeight = FontWeight.Bold)
+                            Text("أرسل دوراً صوتياً إلى Gemini", color = CyberBackground, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -1212,7 +1203,7 @@ private fun VoiceAndMusicStudioSection(
             }
         }
 
-        // 2. Text-to-Speech (gemini-3.8-flash-tts)
+        // 2. Local Android text-to-speech
         item {
             Card(
                 shape = RoundedCornerShape(24.dp),
@@ -1226,7 +1217,7 @@ private fun VoiceAndMusicStudioSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "🔊 تحويل النص إلى كلام طبيعي (Gemini TTS)",
+                        text = "🔊 تحويل النص إلى كلام (قارئ Android)",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberViolet,
                         fontWeight = FontWeight.Bold
@@ -1241,7 +1232,7 @@ private fun VoiceAndMusicStudioSection(
                             .testTag("tts_text_input")
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Kore", "Puck", "Aoede", "Charon").forEach { voice ->
+                        listOf("صوت النظام").forEach { voice ->
                             FilterChip(
                                 selected = selectedVoice == voice,
                                 onClick = { selectedVoice = voice },
@@ -1251,7 +1242,7 @@ private fun VoiceAndMusicStudioSection(
                         }
                     }
                     Button(
-                        onClick = { onSynthesizeSpeech(ttsText, selectedVoice) },
+                        onClick = { if (ttsText.isNotBlank()) onSynthesizeSpeech(ttsText, selectedVoice) },
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = GeminiPillSelectedContainer,
@@ -1283,7 +1274,7 @@ private fun VoiceAndMusicStudioSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "🎵 توليد الموسيقى والمؤثرات الصوتية (Lyria 3)",
+                        text = "🎵 توليد الموسيقى (غير متاح حالياً)",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberEmerald,
                         fontWeight = FontWeight.Bold
@@ -1301,20 +1292,20 @@ private fun VoiceAndMusicStudioSection(
                         FilterChip(
                             selected = !useProFullTrack,
                             onClick = { useProFullTrack = false },
-                            label = { Text("Lyria Clip (30 ثانية)") },
+                            label = { Text("مقطع قصير") },
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("music_model_clip")
                         )
                         FilterChip(
                             selected = useProFullTrack,
                             onClick = { useProFullTrack = true },
-                            label = { Text("Lyria Pro (مسار كامل)") },
+                            label = { Text("مسار كامل") },
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("music_model_pro")
                         )
                     }
                     Button(
-                        onClick = { onGenerateMusic(musicPrompt, useProFullTrack) },
+                        onClick = { /* Music generation provider is not configured in this build. */ },
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
                         modifier = Modifier
@@ -1323,7 +1314,7 @@ private fun VoiceAndMusicStudioSection(
                     ) {
                         Icon(Icons.Default.AudioFile, contentDescription = null, tint = CyberBackground)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("توليد وتشغيل الموسيقى الآن", color = CyberBackground, fontWeight = FontWeight.Bold)
+                        Text("غير متاح حالياً", color = CyberBackground, fontWeight = FontWeight.Bold)
                     }
                 }
             }

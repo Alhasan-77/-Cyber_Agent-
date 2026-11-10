@@ -214,7 +214,7 @@ fun SkillsMemoryHubTabScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "${catalog.totalSkills} مهارة • $totalReferencesCount مرجع تقني • $totalPackagesCount مكتبة • ${catalog.totalArchiveFiles} ملف مؤرشف • MCP: ${catalog.mcpServerUrl}",
+                                text = "${catalog.totalSkills} مهارة محمّلة • $totalReferencesCount مرجع • $totalPackagesCount مكتبة • ${catalog.totalArchiveFiles} ملف • MCP: ${catalog.mcpServerUrl.ifBlank { "غير مهيأ" }}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -334,7 +334,7 @@ fun SkillsMemoryHubTabScreen(
             Tab(
                 selected = activeSectionTab == 0,
                 onClick = { activeSectionTab = 0 },
-                text = { Text("📚 دليل المهارات الـ 25 (${catalog.skills.size})") },
+                text = { Text("📚 دليل المهارات (${catalog.skills.size})") },
                 modifier = Modifier.testTag("skills_subtab_catalog")
             )
             Tab(
@@ -359,6 +359,7 @@ fun SkillsMemoryHubTabScreen(
 
         when (activeSectionTab) {
             0 -> SkillsInteractiveExplorerSection(
+                totalSkillCount = catalog.totalSkills,
                 skills = filteredSkills,
                 selectedSkill = selectedSkill,
                 pinnedSkillIds = pinnedSkillIds,
@@ -437,6 +438,7 @@ fun SkillsMemoryHubTabScreen(
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun SkillsInteractiveExplorerSection(
+    totalSkillCount: Int,
     skills: List<ExtractedSkillItem>,
     selectedSkill: ExtractedSkillItem?,
     pinnedSkillIds: Set<String>,
@@ -470,7 +472,7 @@ private fun SkillsInteractiveExplorerSection(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
-                placeholder = { Text("ابحث في الـ 25 مهارة، الحزم، المراجع، أو الكلمات المفتاحية...") },
+                placeholder = { Text("ابحث في $totalSkillCount مهارة محمّلة أو في الحزم والمراجع...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = CyberCyan) },
                 singleLine = true,
                 modifier = Modifier
@@ -1196,7 +1198,7 @@ private fun GlobalToolsAndMcpSection(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "MCP Endpoint: $mcpServerUrl • Type: ${active.type}",
+                                text = "MCP (مرجع إعداد فقط): ${mcpServerUrl.ifBlank { "غير مهيأ" }} • Type: ${active.type}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = CyberEmerald
                             )

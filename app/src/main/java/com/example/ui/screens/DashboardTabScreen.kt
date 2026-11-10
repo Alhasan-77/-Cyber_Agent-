@@ -120,7 +120,7 @@ fun DashboardTabScreen(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Authentic Gemini Welcome Hero Card
+        // 1. Workspace welcome card
         item {
             Card(
                 shape = RoundedCornerShape(28.dp),
@@ -155,7 +155,7 @@ fun DashboardTabScreen(
                                         .background(CyberEmerald)
                                 )
                                 Text(
-                                    text = "سحابة Gemini متصلة • الفرع: $activeBranch",
+                                    text = "الفرع: $activeBranch • بيانات الحساب السحابية",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = CyberTextPrimary
                                 )
@@ -188,7 +188,7 @@ fun DashboardTabScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "مساحة عمل Google Gemini الموحدة لتطوير المشاريع Full-Stack، فحص الأمان، ومراقبة الأداء الفوري.",
+                            text = "مساحة عمل موحدة للمشاريع البرمجية، المحادثة الذكية، والبيانات السحابية.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = CyberTextSecondary
                         )
@@ -267,18 +267,19 @@ fun DashboardTabScreen(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = "فحص أمني",
+                                text = "مراجعة الكود",
                                 color = CyberTextPrimary,
                                 maxLines = 1
                             )
                         }
 
-                        Button(
+                        OutlinedButton(
                             onClick = onTriggerCloudDeploy,
                             shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = CyberCyan,
-                                contentColor = CyberBackground
+                            border = BorderStroke(1.dp, CyberBorder),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = CyberSurfaceElevated,
+                                contentColor = CyberTextPrimary
                             ),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             modifier = Modifier
@@ -288,13 +289,13 @@ fun DashboardTabScreen(
                             Icon(
                                 imageVector = Icons.Default.CloudUpload,
                                 contentDescription = null,
-                                tint = CyberBackground,
+                                tint = CyberAmber,
                                 modifier = Modifier.size(17.dp)
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = "نشر سحابي",
-                                color = CyberBackground,
+                                text = "النشر غير مهيأ",
+                                color = CyberTextPrimary,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1
                             )
@@ -304,7 +305,7 @@ fun DashboardTabScreen(
             }
         }
 
-        // 2. Gemini Minimalist Metrics Strip
+        // 2. Workspace metrics
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -333,15 +334,15 @@ fun DashboardTabScreen(
                 )
                 MetricTile(
                     modifier = Modifier.weight(1f),
-                    icon = Icons.Default.Speed,
-                    label = "سرعة البناء",
-                    value = "${logs.firstOrNull()?.durationMs ?: 210}ms",
+                    icon = Icons.Default.History,
+                    label = "سجلات النشاط",
+                    value = "${logs.size}",
                     accent = CyberAmber
                 )
             }
         }
 
-        // 3. Gemini Segmented Section Filter
+        // 3. Workspace section filter
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -597,7 +598,7 @@ fun DashboardTabScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                                        contentDescription = "قراءة التقرير صوتياً عبر gemini-3.8-flash-tts",
+                                        contentDescription = "قراءة التقرير صوتياً باستخدام قارئ Android",
                                         tint = CyberCyan
                                     )
                                 }

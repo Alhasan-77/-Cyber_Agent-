@@ -105,7 +105,8 @@ fun IdePreviewTabScreen(
     onLoadTemplate: (String) -> Unit,
     onRunSecurityAudit: () -> Unit,
     onAppendConsoleLog: (String) -> Unit,
-    onClearConsoleLogs: () -> Unit
+    onClearConsoleLogs: () -> Unit,
+    isBusy: Boolean = false
 ) {
     // 0 = Split (Code + Live Preview), 1 = Code Only, 2 = Live Preview Full
     var viewMode by remember { mutableIntStateOf(0) }
@@ -179,6 +180,7 @@ fun IdePreviewTabScreen(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         OutlinedButton(
+                            enabled = !isBusy,
                             onClick = onRunSecurityAudit,
                             shape = RoundedCornerShape(50),
                             border = BorderStroke(1.dp, CyberBorder),
@@ -187,9 +189,10 @@ fun IdePreviewTabScreen(
                         ) {
                             Icon(Icons.Default.Security, contentDescription = null, tint = CyberCyan, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("فحص", color = CyberTextPrimary)
+                            Text("مراجعة الكود", color = CyberTextPrimary)
                         }
                         Button(
+                            enabled = !isBusy,
                             onClick = {
                                 onSaveAndBuildPreview()
                                 previewReloadTick++
@@ -201,7 +204,7 @@ fun IdePreviewTabScreen(
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null, tint = CyberBackground, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("تشغيل ومعاينة", color = CyberBackground, fontWeight = FontWeight.Bold)
+                            Text("حفظ ومعاينة", color = CyberBackground, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -215,12 +218,13 @@ fun IdePreviewTabScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "قوالب Gemini الجاهزة:",
+                        text = "قوالب البداية:",
                         style = MaterialTheme.typography.labelMedium,
                         color = CyberTextSecondary
                     )
                     FilterChip(
                         selected = false,
+                        enabled = !isBusy,
                         onClick = {
                             onLoadTemplate("ECOMMERCE")
                             previewReloadTick++
@@ -231,6 +235,7 @@ fun IdePreviewTabScreen(
                     )
                     FilterChip(
                         selected = false,
+                        enabled = !isBusy,
                         onClick = {
                             onLoadTemplate("FINTECH")
                             previewReloadTick++
@@ -241,6 +246,7 @@ fun IdePreviewTabScreen(
                     )
                     FilterChip(
                         selected = false,
+                        enabled = !isBusy,
                         onClick = {
                             onLoadTemplate("BIOMED")
                             previewReloadTick++
@@ -251,6 +257,7 @@ fun IdePreviewTabScreen(
                     )
                     FilterChip(
                         selected = false,
+                        enabled = !isBusy,
                         onClick = {
                             onLoadTemplate("THREEJS_BIOGAME")
                             previewReloadTick++
@@ -278,7 +285,8 @@ fun IdePreviewTabScreen(
                         OutlinedTextField(
                             value = aiPromptText,
                             onValueChange = { aiPromptText = it },
-                            placeholder = { Text("اطلب من Gemini تعديل الكود أو بناء ميزة...") },
+                            enabled = !isBusy,
+                            placeholder = { Text("اكتب التعديل المطلوب تطبيقه على الملف المفتوح...") },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color.Transparent,
@@ -291,10 +299,10 @@ fun IdePreviewTabScreen(
                                 .testTag("ide_ai_prompt_input")
                         )
                         OutlinedButton(
+                            enabled = !isBusy && aiPromptText.isNotBlank(),
                             onClick = {
-                                onTriggerInlineSuggestion(
-                                    aiPromptText.ifBlank { "تحسين الكود وإضافة مراقبة أداء فورية" }
-                                )
+                                onTriggerInlineSuggestion(aiPromptText.trim())
+                                aiPromptText = ""
                             },
                             shape = RoundedCornerShape(50),
                             border = BorderStroke(1.dp, CyberBorder),
@@ -306,6 +314,7 @@ fun IdePreviewTabScreen(
                             Text("إكمال ذكي", color = CyberCyan)
                         }
                         Button(
+                            enabled = !isBusy,
                             onClick = {
                                 onGenerateFullStackHighThinking(
                                     aiPromptText.ifBlank { projectName }
@@ -322,7 +331,7 @@ fun IdePreviewTabScreen(
                         ) {
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("بناء بـ Gemini", fontWeight = FontWeight.Bold)
+                            Text("توليد ملفات", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -343,6 +352,7 @@ fun IdePreviewTabScreen(
                             val selected = activeCodeTab == tabKey
                             FilterChip(
                                 selected = selected,
+                                enabled = !isBusy,
                                 onClick = { onSelectCodeTab(tabKey) },
                                 label = { Text(tabLabel) },
                                 shape = RoundedCornerShape(50),
@@ -414,6 +424,7 @@ fun IdePreviewTabScreen(
                         OutlinedTextField(
                             value = activeBufferText,
                             onValueChange = onUpdateCodeBuffer,
+                            readOnly = isBusy,
                             textStyle = TextStyle(
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontSize = 13.sp,
