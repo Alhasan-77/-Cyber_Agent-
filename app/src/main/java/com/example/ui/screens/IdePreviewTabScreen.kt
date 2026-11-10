@@ -201,7 +201,7 @@ fun IdePreviewTabScreen(
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null, tint = CyberBackground, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("تشغيل ومعاينة", color = CyberBackground, fontWeight = FontWeight.Bold)
+                            Text("حفظ ومعاينة", color = CyberBackground, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
