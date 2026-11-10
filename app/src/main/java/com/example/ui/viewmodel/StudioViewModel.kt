@@ -1114,8 +1114,6 @@ class StudioViewModel(
                 persistCurrentProject()
                 val projectId = _selectedProjectId.value
                     ?: throw IllegalStateException("تعذر تحديد المشروع لحفظ نسخة احتياطية قبل التعديل.")
-                val snapshotCount = (snapshotsState.value as? UiState.Success)?.data
-                    ?.count { it.projectId == projectId } ?: 0
                 val backupVersion = "agent-backup-${System.currentTimeMillis()}"
                 val backupId = repository.createSnapshot(
                     projectId = projectId,
