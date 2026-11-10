@@ -338,7 +338,7 @@ class GeminiAiRepository(
                 if (result["ok"] == JsonPrimitive(true)) {
                     executedTools += call.name
                 }
-                FunctionResponsePart(call.name, result)
+                FunctionResponsePart(call.name, result, call.id)
             }
             response = withTimeout(AI_TIMEOUT_MS) {
                 chat.sendMessage(content("user") {
