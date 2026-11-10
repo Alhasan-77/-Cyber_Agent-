@@ -667,10 +667,10 @@ class StudioViewModel(
                     stackLanguage = language,
                     preferredModel = _selectedChatModel.value
                 )
-                val html = generated["html"] ?: DEFAULT_HTML
-                val css = generated["css"] ?: DEFAULT_CSS
-                val js = generated["js"] ?: DEFAULT_JS
-                val backend = generated["backend"] ?: DEFAULT_BACKEND
+                val html = generated["html"].orEmpty()
+                val css = generated["css"].orEmpty()
+                val js = generated["js"].orEmpty()
+                val backend = generated["backend"].orEmpty()
                 val projectId = repository.createProject(
                     name = name,
                     description = description,
