@@ -130,7 +130,7 @@ class ExampleRobolectricTest {
 
     @Test
     fun `main screen layout supports minimalist navigation drawer and bottom centered sparkle prompt input`() {
-        var activeTab = StudioBottomTab.DASHBOARD.index
+        var activeTab by mutableIntStateOf(StudioBottomTab.DASHBOARD.index)
         var submittedPrompt = ""
 
         composeTestRule.setContent {
@@ -165,7 +165,7 @@ class ExampleRobolectricTest {
 
         composeTestRule.onNodeWithTag("gemini_navigation_drawer").assertIsDisplayed()
         composeTestRule.onNodeWithTag("drawer_new_prompt_button").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("drawer_nav_tab_bioscience").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("drawer_nav_tab_bioscience").performScrollTo().assertIsDisplayed().performClick()
         composeTestRule.waitForIdle()
         assertEquals(StudioBottomTab.BIOSCIENCE.index, activeTab)
 
