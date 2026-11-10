@@ -506,7 +506,7 @@ class GeminiAiRepository(
             }
 
             val text = responseText?.takeIf { it.isNotBlank() }
-                ?: "تم إتمام التحليل عبر النموذج $effectiveModel."
+                ?: throw IllegalStateException("لم يُرجع نموذج Gemini أي محتوى.");
             val sources = if (useSearchGrounding) {
                 listOf("Firebase AI Logic ($effectiveModel)")
             } else {
