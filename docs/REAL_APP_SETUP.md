@@ -65,6 +65,12 @@ Firebase AI Logic يتطلب App Check enforcement منذ 2 نوفمبر 2026.
 ```bash
 firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest"
 gradle --no-daemon assembleDebug
+
+إذا لم يوجد ملف التوقيع المحلي `debug.keystore`، أنشئ مفتاح Debug محلياً بالأمر التالي من جذر المستودع (لا تستخدمه لتوقيع إصدار Release):
+
+```bash
+keytool -genkeypair -noprompt -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+```
 ```
 
 اختبارات CI تستخدم Firebase Auth وFirestore Emulator. نجاح الاختبارات لا يثبت تسجيل الدخول إلى مشروع Firebase الإنتاجي أو عمل App Check على جهاز حقيقي؛ يجب إجراء اختبار جهاز بعد إدخال إعدادات المشروع الفعلية.
