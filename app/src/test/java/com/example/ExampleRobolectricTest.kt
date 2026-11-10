@@ -4,11 +4,14 @@ import android.content.Context
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -17,12 +20,16 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.skills.BioscienceSimulationEngine
+import com.example.data.model.AiRolePersona
 import com.example.data.model.BioExperimentRecord
+import com.example.data.model.ChatMessage
+import com.example.data.model.GeneratedMediaAsset
 import com.example.data.remote.GeminiAiRepository
 import com.example.data.skills.BioscienceWorkflowMode
 import com.example.ui.components.MainScreenLayout
 import com.example.ui.components.SKILLS_HUB_TAB_INDEX
 import com.example.ui.components.StudioBottomTab
+import com.example.ui.screens.AiAndMediaStudioTabScreen
 import com.example.ui.screens.BioscienceLabTabScreen
 import com.example.ui.theme.MyApplicationTheme
 import org.junit.Assert.assertEquals
@@ -361,5 +368,51 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("ai_dropdown_option_gemini-4-argon").assertIsDisplayed().performClick()
         assertEquals("gemini-4-argon", selectedModel)
     }
+    @Test
+    fun `agent chat sends a real prompt and disables duplicate submission while busy`() {
+        var submittedPrompt = ""
+        composeTestRule.setContent {
+            var isBusy by remember { mutableStateOf(false) }
+            MyApplicationTheme {
+                AiAndMediaStudioTabScreen(
+                    chatMessages = emptyList<ChatMessage>(),
+                    selectedChatModel = GeminiAiRepository.MODEL_FLASH,
+                    selectedPersona = AiRolePersona.FULLSTACK_ARCHITECT,
+                    useSearchGrounding = false,
+                    useHighThinking = false,
+                    generatedAssets = emptyList<GeneratedMediaAsset>(),
+                    mediaAnalysisOutput = null,
+                    liveVoiceHistory = emptyList(),
+                    lastTranscribedText = "",
+                    onSelectChatModel = {},
+                    onSelectPersona = {},
+                    onToggleSearch = {},
+                    onToggleHighThinking = {},
+                    onSendChatMessage = { prompt ->
+                        submittedPrompt = prompt
+                        isBusy = true
+                    },
+                    onGenerateImage = { _, _, _, _, _, _ -> },
+                    onGenerateVideo = { _, _, _, _ -> },
+                    onAnalyzeMedia = { _, _, _, _ -> },
+                    onSynthesizeSpeech = { _, _ -> },
+                    onTranscribeAudio = { _, callback -> callback("transcribed text") },
+                    onSendLiveVoiceTurn = { _, _ -> },
+                    onGenerateMusic = { _, _ -> },
+                    onSpeakText = {},
+                    isBusy = isBusy
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("chatbot_message_input")
+            .performTextReplacement("احفظ المشروع الحالي في Firestore")
+        composeTestRule.onNodeWithTag("chatbot_send_button").performClick()
+
+        assertEquals("احفظ المشروع الحالي في Firestore", submittedPrompt)
+        composeTestRule.onNodeWithTag("chatbot_send_button").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("chatbot_message_input").assertIsNotEnabled()
+    }
+
 }
 
