@@ -841,7 +841,9 @@ class StudioViewModel(
                 val current = repository.getProjectById(currentUserId, projectId)
                     .getOrElse { error -> throw error }
                     ?: throw IllegalStateException("تعذر العثور على المشروع الحالي في Firestore.")
-                require(current.createdAt != null) { "بيانات المشروع غير مكتملة ولا تسمح بحفظ نسخة آمنة." }
+                require(current.createdAt != null) {
+                    "بيانات المشروع غير مكتملة ولا تسمح بحفظ نسخة آمنة."
+                }
 
                 val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(cleanPrompt)
                 val enrichedPrompt = if (skillsBlock.isNotBlank()) {
@@ -887,7 +889,7 @@ class StudioViewModel(
                     deletedLines = 0L
                 ).getOrElse { error -> throw error }
 
-                val updateResult = repository.updateProject(
+                repository.updateProject(
                     current.copy(
                         name = _editorName.value,
                         language = _editorLanguage.value,
@@ -896,8 +898,7 @@ class StudioViewModel(
                         jsCode = js,
                         backendCode = backend
                     )
-                )
-                updateResult.getOrElse { error -> throw error }
+                ).getOrElse { error -> throw error }
 
                 _htmlBuffer.value = html
                 _cssBuffer.value = css
