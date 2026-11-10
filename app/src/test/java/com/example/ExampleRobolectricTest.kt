@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.skills.BioscienceSimulationEngine
 import com.example.data.model.BioExperimentRecord
+import com.example.data.remote.GeminiAiRepository
 import com.example.data.skills.BioscienceWorkflowMode
 import com.example.ui.components.MainScreenLayout
 import com.example.ui.components.SKILLS_HUB_TAB_INDEX
@@ -31,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.runBlocking
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -38,6 +40,35 @@ class ExampleRobolectricTest {
 
     @get:Rule
     val composeTestRule = createComposeRule()
+
+    @Test
+    fun `media analysis rejects missing or mismatched input before calling Firebase`() = runBlocking {
+        val repository = GeminiAiRepository()
+
+        try {
+            repository.analyzeVisualMediaWithArgon(
+                prompt = "Describe the attachment",
+                mediaBase64 = "",
+                mimeType = "image/png",
+                isVideo = false
+            )
+            throw AssertionError("Missing media must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected: a prompt-only request must not be reported as media analysis.
+        }
+
+        try {
+            repository.analyzeVisualMediaWithArgon(
+                prompt = "Describe the attachment",
+                mediaBase64 = "AQID",
+                mimeType = "video/mp4",
+                isVideo = false
+            )
+            throw AssertionError("Mismatched media type must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected: image requests must provide an image MIME type.
+        }
+    }
 
     @Test
     fun `read string from context`() {
