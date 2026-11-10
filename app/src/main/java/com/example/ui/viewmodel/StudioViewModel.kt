@@ -766,7 +766,12 @@ class StudioViewModel(
         }
     }
 
-    fun triggerInlineCodeSuggestion(instruction: String = "أضف ميزة مراقبة فورية وتحسين أداء") {
+    fun triggerInlineCodeSuggestion(instruction: String) {
+        val cleanInstruction = instruction.trim()
+        if (cleanInstruction.isBlank() || _isBusy.value) {
+            _statusBanner.value = "اكتب التعديل المطلوب قبل إنشاء اقتراح."
+            return
+        }
         viewModelScope.launch {
             _isBusy.value = true
             try {
@@ -775,20 +780,32 @@ class StudioViewModel(
                     "HTML" -> _htmlBuffer.value
                     "CSS" -> _cssBuffer.value
                     "JS" -> _jsBuffer.value
-                    else -> _backendBuffer.value
+                    "Backend" -> _backendBuffer.value
+                    else -> throw IllegalStateException("تبويب المحرر غير مدعوم: $currentTab")
                 }
-                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt("$instruction\n$currentContent")
-                val enrichedInstruction = if (skillsBlock.isNotBlank()) "$instruction\n\n$skillsBlock" else instruction
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt("$cleanInstruction\n$currentContent")
+                val enrichedInstruction = if (skillsBlock.isNotBlank()) {
+                    "$cleanInstruction\n\n$skillsBlock"
+                } else {
+                    cleanInstruction
+                }
                 val snippet = aiRepository.generateLowLatencyCodeSuggestion(
                     currentCode = currentContent,
                     activeTab = currentTab,
                     instruction = enrichedInstruction,
                     preferredModel = _selectedChatModel.value
+                ).trim()
+                require(snippet.isNotBlank()) { "لم يُرجع النموذج اقتراحاً برمجياً." }
+                updateActiveBuffer(
+                    if (currentContent.isBlank()) snippet else "$currentContent\n\n$snippet"
                 )
-                updateActiveBuffer(currentContent + "\n\n" + snippet)
-                val skillsNote = if (appliedIds.isNotEmpty()) " [Skills: ${appliedIds.joinToString(", ")}]" else ""
-                appendConsoleLog("[AI Copilot] Added suggestion to $currentTab via ${_selectedChatModel.value}$skillsNote")
-                _statusBanner.value = "تم إنشاء اقتراح برمجي وإضافته إلى المحرر."
+                val skillsNote = if (appliedIds.isNotEmpty()) {
+                    " [Skills: ${appliedIds.joinToString(", ")}]"
+                } else {
+                    ""
+                }
+                appendConsoleLog("[AI Copilot] Added a suggestion to $currentTab via ${_selectedChatModel.value}$skillsNote")
+                _statusBanner.value = "تم إنشاء اقتراح برمجي وإضافته إلى تبويب $currentTab. لم يتم اختباره أو تشغيله."
             } catch (error: Exception) {
                 Log.e(TAG, "Inline code suggestion failed", error)
                 _statusBanner.value = "تعذر إنشاء الاقتراح: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -799,45 +816,91 @@ class StudioViewModel(
     }
 
     fun generateFullStackWithHighThinking(prompt: String) {
+        val cleanPrompt = prompt.trim().ifBlank { _editorName.value.trim() }
+        if (cleanPrompt.isBlank() || _isBusy.value) {
+            _statusBanner.value = "اكتب وصفاً أو اختر مشروعاً له اسم قبل توليد الملفات."
+            return
+        }
+
         viewModelScope.launch {
             _isBusy.value = true
             try {
-                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
-                val enrichedPrompt = if (skillsBlock.isNotBlank()) "$prompt\n\n$skillsBlock" else prompt
+                val projectId = _selectedProjectId.value
+                    ?: throw IllegalStateException("احفظ المشروع أولاً قبل تحديث ملفاته.")
+                val current = repository.getProjectById(currentUserId, projectId)
+                    .getOrElse { error -> throw error }
+                    ?: throw IllegalStateException("تعذر العثور على المشروع الحالي في Firestore.")
+                require(current.createdAt != null) { "بيانات المشروع غير مكتملة ولا تسمح بحفظ نسخة آمنة." }
+
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(cleanPrompt)
+                val enrichedPrompt = if (skillsBlock.isNotBlank()) {
+                    "$cleanPrompt\n\n$skillsBlock"
+                } else {
+                    cleanPrompt
+                }
                 val generated = aiRepository.generateFullStackCodebase(
                     projectBrief = enrichedPrompt,
                     stackLanguage = _editorLanguage.value,
                     preferredModel = _selectedChatModel.value
                 )
-                val html = generated["html"] ?: _htmlBuffer.value
-                val css = generated["css"] ?: _cssBuffer.value
-                val js = generated["js"] ?: _jsBuffer.value
-                val backend = generated["backend"] ?: _backendBuffer.value
-                val projectId = _selectedProjectId.value
-                if (projectId.isNullOrBlank()) {
-                    _statusBanner.value = "احفظ المشروع أولاً قبل تحديث ملفات المشروع المولدة."
-                    return@launch
-                }
-                val current = (projectsState.value as? UiState.Success)?.data
-                    ?.firstOrNull { it.id == projectId }
-                if (current == null || current.createdAt == null) {
-                    _statusBanner.value = "تعذر العثور على المشروع لحفظ الملفات المولدة."
-                    return@launch
-                }
-                repository.updateProject(
-                    current.copy(htmlCode = html, cssCode = css, jsCode = js, backendCode = backend)
-                ).onSuccess {
-                    _htmlBuffer.value = html
-                    _cssBuffer.value = css
-                    _jsBuffer.value = js
-                    _backendBuffer.value = backend
-                    _statusBanner.value = "تم توليد الملفات وحفظها. لم يتم تشغيل مترجم أو نشر. المهارات: ${appliedIds.take(3).joinToString(", ")}"
-                }.onFailure { error ->
-                    _statusBanner.value = "تم التوليد لكن تعذر حفظ الملفات: ${error.localizedMessage ?: "خطأ غير معروف"}"
-                }
+                val html = generated["html"]?.takeIf { it.isNotBlank() } ?: _htmlBuffer.value
+                val css = generated["css"]?.takeIf { it.isNotBlank() } ?: _cssBuffer.value
+                val js = generated["js"]?.takeIf { it.isNotBlank() } ?: _jsBuffer.value
+                val backend = generated["backend"]?.takeIf { it.isNotBlank() } ?: _backendBuffer.value
+
+                val hasChanges = html != _htmlBuffer.value ||
+                    css != _cssBuffer.value ||
+                    js != _jsBuffer.value ||
+                    backend != _backendBuffer.value
+                require(hasChanges) { "لم ينتج النموذج تغييرات على ملفات المشروع الحالية." }
+
+                val previousLines = (
+                    _htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
+                        _jsBuffer.value + "\n" + _backendBuffer.value
+                    ).lines()
+                val updatedLines = (
+                    html + "\n" + css + "\n" + js + "\n" + backend
+                    ).lines()
+                val added = updatedLines.count { it !in previousLines }.toLong()
+                val deleted = previousLines.count { it !in updatedLines }.toLong()
+                val backupVersion = "agent-backup-${System.currentTimeMillis()}"
+                val backupId = repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = "نسخة احتياطية قبل التوليد: ${cleanPrompt.take(180)}",
+                    versionTag = backupVersion,
+                    htmlCode = _htmlBuffer.value,
+                    cssCode = _cssBuffer.value,
+                    jsCode = _jsBuffer.value,
+                    backendCode = _backendBuffer.value,
+                    addedLines = 0L,
+                    deletedLines = 0L
+                ).getOrElse { error -> throw error }
+
+                val updateResult = repository.updateProject(
+                    current.copy(
+                        name = _editorName.value,
+                        language = _editorLanguage.value,
+                        htmlCode = html,
+                        cssCode = css,
+                        jsCode = js,
+                        backendCode = backend
+                    )
+                )
+                updateResult.getOrElse { error -> throw error }
+
+                _htmlBuffer.value = html
+                _cssBuffer.value = css
+                _jsBuffer.value = js
+                _backendBuffer.value = backend
+                appendConsoleLog(
+                    "[AI Generator] Updated source files; backup $backupVersion ($backupId), +$added/-$deleted lines. No compiler or deployment was run."
+                )
+                val skillsNote = appliedIds.take(3).joinToString(", ")
+                _statusBanner.value =
+                    "تم توليد الملفات وحفظها في Firestore مع نسخة احتياطية ($backupVersion). لم يتم تشغيل مترجم أو نشر. المهارات: $skillsNote"
             } catch (error: Exception) {
                 Log.e(TAG, "Full-stack generation failed", error)
-                _statusBanner.value = "تعذر توليد المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                _statusBanner.value = "تعذر توليد الملفات أو حفظها: ${error.localizedMessage ?: "خطأ غير معروف"}"
             } finally {
                 _isBusy.value = false
             }
