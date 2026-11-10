@@ -37,7 +37,7 @@ jobs:
 
       - name: Create local secrets file with safe empty defaults
         run: |
-          printf '%s\n' 'OPENAI_API_KEY=""' > .env
+          printf '%s\n' 'OPENAI_API_KEY="\"\""' > .env
 
       - name: Run unit and Robolectric tests
         run: gradle --no-daemon testDebugUnitTest
