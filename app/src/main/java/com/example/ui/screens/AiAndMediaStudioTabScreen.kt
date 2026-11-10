@@ -264,9 +264,10 @@ private fun MultiTurnChatbotSection(
 
     val quickSuggestions = remember {
         listOf(
-            "✨ صمّم معمارية تطبيق متكامل بـ Kotlin و Firestore",
-            "🔍 راجع أمان الكود واقترح تحسينات للأداء",
-            "🧬 حلّل تسلسل بروتين الهيموغلوبين وخصائصه"
+            "أنشئ مشروع متجر إلكتروني بـ Kotlin و Firestore",
+            "احفظ المشروع الحالي وأنشئ لقطة إصدار",
+            "راجع الكود الحالي وحدد المخاطر الأمنية",
+            "أضف ميزة تسجيل الدخول إلى الملف المفتوح"
         )
     }
 
@@ -457,7 +458,7 @@ private fun MultiTurnChatbotSection(
                             )
                         }
                         Text(
-                            text = "اسأل Gemini أو ChatGPT في أي وقت",
+                            text = "اطلب من Cyber Agent تنفيذ مهمة أو تحليل مشروعك",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 brush = GeminiSparkleGradient
                             ),
