@@ -3,6 +3,7 @@ package com.example.data.agent
 import java.util.Locale
 
 enum class AgentTaskType {
+    CREATE_PROJECT,
     SAVE_PROJECT,
     CREATE_SNAPSHOT,
     REVIEW_CODE,
@@ -19,6 +20,15 @@ object AgentTaskRouter {
         if (normalized.isBlank()) return null
 
         return when {
+            containsAny(
+                normalized,
+                "انشئ مشروع",
+                "انشئ لي مشروع",
+                "create a project",
+                "create project",
+                "build a project"
+            ) -> AgentTaskType.CREATE_PROJECT
+
             containsAny(
                 normalized,
                 "احفظ المشروع",
