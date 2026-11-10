@@ -10,6 +10,7 @@
 3. نزّل ملف `google-services.json` وضعه في:
    `app/google-services.json`
    لا تضع الملف داخل المستودع العام إذا كانت سياسة مشروعك تمنع نشر إعداداته.
+   لبناء APK متصل بالمشروع عبر GitHub Actions، أضف محتوى الملف كـRepository Secret باسم `GOOGLE_SERVICES_JSON` من Settings → Secrets and variables → Actions.
 4. فعّل Google كموفر تسجيل دخول في Firebase Authentication.
 5. أضف بصمات شهادة التوقيع SHA-1 وSHA-256 لتطبيق Android في إعدادات Firebase؛ أضف بصمة debug للتطوير وبصمة release للتوزيع.
 6. أنشئ قاعدة Firestore بالمعرّف الذي يحدده مورد `firestore_database_id` في التطبيق، ثم انشر قواعد `firestore.rules`:
