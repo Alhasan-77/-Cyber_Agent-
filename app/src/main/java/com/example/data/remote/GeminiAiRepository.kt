@@ -806,32 +806,34 @@ class GeminiAiRepository(
         isVideo: Boolean
     ): String = withContext(Dispatchers.IO) {
         val mediaTypeAr = if (isVideo) "الفيديو" else "الصورة"
+        require(prompt.isNotBlank()) { "اكتب وصفاً للتحليل أولاً." }
+        require(mediaBase64.isNotBlank()) { "لم يتم إرفاق ملف وسائط للتحليل." }
+        require(
+            mimeType.startsWith(if (isVideo) "video/" else "image/", ignoreCase = true)
+        ) { "نوع الملف لا يتوافق مع نوع الوسائط المحدد." }
+
         try {
-            val bitmap = if (!isVideo) decodeBase64Bitmap(mediaBase64) else null
-            val rawBytes = runCatching { Base64.decode(mediaBase64, Base64.DEFAULT) }.getOrNull()
+            val cleanBase64 = mediaBase64.substringAfter("base64,", mediaBase64)
+            val rawBytes = Base64.decode(cleanBase64, Base64.DEFAULT)
+            require(rawBytes.isNotEmpty()) { "ملف الوسائط فارغ." }
+            val bitmap = if (!isVideo) decodeBase64Bitmap(cleanBase64) else null
 
             val responseText = withTimeout(AI_TIMEOUT_MS) {
                 executeWithAppCheckRetry {
-                    when {
-                        bitmap != null -> {
-                            argonModel.generateContent(
-                                content {
-                                    image(bitmap)
-                                    text(prompt)
-                                }
-                            ).text
-                        }
-                        rawBytes != null && rawBytes.isNotEmpty() -> {
-                            argonModel.generateContent(
-                                content {
-                                    inlineData(rawBytes, mimeType)
-                                    text(prompt)
-                                }
-                            ).text
-                        }
-                        else -> {
-                            argonModel.generateContent(prompt).text
-                        }
+                    if (bitmap != null) {
+                        argonModel.generateContent(
+                            content {
+                                image(bitmap)
+                                text(prompt)
+                            }
+                        ).text
+                    } else {
+                        argonModel.generateContent(
+                            content {
+                                inlineData(rawBytes, mimeType)
+                                text(prompt)
+                            }
+                        ).text
                     }
                 }
             }
