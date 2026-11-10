@@ -187,7 +187,7 @@ fun IdePreviewTabScreen(
                         ) {
                             Icon(Icons.Default.Security, contentDescription = null, tint = CyberCyan, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("فحص", color = CyberTextPrimary)
+                            Text("مراجعة الكود", color = CyberTextPrimary)
                         }
                         Button(
                             onClick = {
