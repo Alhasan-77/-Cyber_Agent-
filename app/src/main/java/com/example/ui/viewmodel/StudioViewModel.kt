@@ -429,6 +429,7 @@ class StudioViewModel(
             "CSS" -> _cssBuffer.value = newContent
             "JS" -> _jsBuffer.value = newContent
             "Backend" -> _backendBuffer.value = newContent
+            else -> throw IllegalArgumentException("تبويب المحرر غير معروف: ${_activeCodeTab.value}")
         }
     }
 
@@ -1128,7 +1129,8 @@ class StudioViewModel(
                     "HTML" -> _htmlBuffer.value
                     "CSS" -> _cssBuffer.value
                     "JS" -> _jsBuffer.value
-                    else -> _backendBuffer.value
+                    "Backend" -> _backendBuffer.value
+                    else -> throw IllegalStateException("تبويب المحرر غير مدعوم: $tab")
                 }
                 val revisedFile = aiRepository.reviseCodeFile(
                     currentCode = currentCode,
