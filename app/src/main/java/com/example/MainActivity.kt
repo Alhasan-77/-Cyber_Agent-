@@ -474,7 +474,8 @@ fun NovaForgeStudioShell(
                 onLoadTemplate = { viewModel.loadStarterTemplate(it) },
                 onRunSecurityAudit = { viewModel.runAiSecurityAndPerformanceAudit() },
                 onAppendConsoleLog = { viewModel.appendConsoleLog(it) },
-                onClearConsoleLogs = { viewModel.clearConsoleLogs() }
+                onClearConsoleLogs = { viewModel.clearConsoleLogs() },
+                isBusy = isBusy
             )
             StudioBottomTab.DB_VCS.index -> DatabaseAndVcsTabScreen(
                 dataViewModel = dataViewModel,
