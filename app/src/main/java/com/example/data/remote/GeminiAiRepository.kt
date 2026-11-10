@@ -276,7 +276,6 @@ class GeminiAiRepository(
                 throw IllegalStateException("توقف تنفيذ الوكيل بعد أربع جولات أدوات لحماية التطبيق من حلقات التنفيذ.")
             }
             val functionResponses = response.functionCalls.map { call ->
-                executedTools += call.name
                 val result = try {
                     executeTool(call.name, call.args)
                 } catch (error: CancellationException) {
@@ -288,6 +287,9 @@ class GeminiAiRepository(
                             "error" to JsonPrimitive(error.localizedMessage ?: "Tool execution failed")
                         )
                     )
+                }
+                if (result["ok"] == JsonPrimitive(true)) {
+                    executedTools += call.name
                 }
                 FunctionResponsePart(call.name, result)
             }
