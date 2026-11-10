@@ -1211,7 +1211,7 @@ class StudioViewModel(
                         Regex("^\\s*(?:please\\s+)?(?:create|build)\\s+(?:a\\s+)?project\\s*", RegexOption.IGNORE_CASE),
                         ""
                     )
-                    .substringBefore(Regex("\\s+(?:باستخدام|مع|using|with)\\s+").find(originalPrompt)?.value.orEmpty())
+                    .split(Regex("\\s+(?:باستخدام|مع|using|with)\\s+"), limit = 2).first()
                     .trim()
                     .take(80)
                 require(projectName.isNotBlank()) {
