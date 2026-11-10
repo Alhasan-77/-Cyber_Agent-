@@ -82,7 +82,7 @@ object AgentTaskRouter {
     private fun containsAny(value: String, vararg phrases: String): Boolean {
         return phrases.any { phrase ->
             val normalizedPhrase = normalize(phrase)
-            Regex("(^|\\\\s)" + Regex.escape(normalizedPhrase) + "($|\\\\s)")
+            Regex("(^|\\s)" + Regex.escape(normalizedPhrase) + "($|\\s)")
                 .containsMatchIn(value)
         }
     }
