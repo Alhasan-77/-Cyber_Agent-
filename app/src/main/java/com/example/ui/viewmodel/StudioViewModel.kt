@@ -1103,16 +1103,14 @@ class StudioViewModel(
                     "JS" -> _jsBuffer.value
                     else -> _backendBuffer.value
                 }
-                val suggestion = aiRepository.generateLowLatencyCodeSuggestion(
+                val revisedFile = aiRepository.reviseCodeFile(
                     currentCode = currentCode,
                     activeTab = tab,
                     instruction = originalPrompt,
                     preferredModel = _selectedChatModel.value
-                ).trim()
-                require(suggestion.isNotBlank()) { "لم يرجع نموذج الذكاء الاصطناعي أي تعديل." }
-                updateActiveBuffer(
-                    if (currentCode.isBlank()) suggestion else "$currentCode\n\n$suggestion"
                 )
+                require(revisedFile.isNotBlank()) { "لم يرجع نموذج الذكاء الاصطناعي ملفاً معدلاً." }
+                updateActiveBuffer(revisedFile)
                 val saveResult = persistCurrentProject()
                 "تم تطبيق التعديل المقترح على تبويب $tab وحفظ ملفات المشروع.\n$saveResult\n\nراجع التغيير في المحرر قبل تشغيله." to
                     listOf("Cyber Agent Code Editor", "AI Code Suggestion", "Firestore Project Save")
@@ -1228,6 +1226,7 @@ class StudioViewModel(
                         history = currentHistory,
                         userPrompt = enrichedPrompt,
                         preferredModel = _selectedChatModel.value,
+                        systemInstruction = _selectedPersona.value.systemPrompt,
                         executeTool = { toolName, arguments ->
                             executeAgentTool(toolName, arguments)
                         }
