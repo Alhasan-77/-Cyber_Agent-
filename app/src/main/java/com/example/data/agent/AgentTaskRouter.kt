@@ -73,6 +73,7 @@ object AgentTaskRouter {
             .replace('إ', 'ا')
             .replace('آ', 'ا')
             .replace('ى', 'ي')
+            .replace('ة', 'ه')
             .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
