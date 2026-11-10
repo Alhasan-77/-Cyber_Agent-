@@ -12,7 +12,7 @@ import org.junit.Assert.fail
 import org.junit.Test
 import org.robolectric.annotation.Config
 
-@Config(sdk = [36])
+@Config(sdk = [35])
 class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
 
     @Test
