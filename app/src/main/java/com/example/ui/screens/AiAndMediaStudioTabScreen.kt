@@ -124,7 +124,8 @@ fun AiAndMediaStudioTabScreen(
     onTranscribeAudio: (String, (String) -> Unit) -> Unit,
     onSendLiveVoiceTurn: (String, String?) -> Unit,
     onGenerateMusic: (String, Boolean) -> Unit,
-    onSpeakText: (String) -> Unit
+    onSpeakText: (String) -> Unit,
+    isBusy: Boolean = false
 ) {
     // 0 = Multi-Turn Chatbot, 1 = Image & Video Studio, 2 = Voice, Audio & Music Lab
     var subTab by remember { mutableIntStateOf(0) }
@@ -217,7 +218,8 @@ fun AiAndMediaStudioTabScreen(
                 onToggleSearch = onToggleSearch,
                 onToggleHighThinking = onToggleHighThinking,
                 onSendChatMessage = onSendChatMessage,
-                onSpeakText = onSpeakText
+                onSpeakText = onSpeakText,
+                isBusy = isBusy
             )
             1 -> VisualMediaStudioSection(
                 generatedAssets = generatedAssets,
@@ -252,7 +254,8 @@ private fun MultiTurnChatbotSection(
     onToggleSearch: (Boolean) -> Unit,
     onToggleHighThinking: (Boolean) -> Unit,
     onSendChatMessage: (String) -> Unit,
-    onSpeakText: (String) -> Unit
+    onSpeakText: (String) -> Unit,
+    isBusy: Boolean
 ) {
     var inputPrompt by remember { mutableStateOf("") }
     var showPersonaSelector by remember { mutableStateOf(false) }
@@ -599,7 +602,7 @@ private fun MultiTurnChatbotSection(
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
                                         Text(
-                                            text = "🌐 مصادر Google Search:",
+                                            text = "مصادر التنفيذ والمعلومات:",
                                             style = MaterialTheme.typography.labelMedium,
                                             color = CyberEmerald,
                                             fontWeight = FontWeight.Bold
@@ -652,6 +655,7 @@ private fun MultiTurnChatbotSection(
                 OutlinedTextField(
                     value = inputPrompt,
                     onValueChange = { inputPrompt = it },
+                    enabled = !isBusy,
                     placeholder = {
                         Text(
                             text = "اسأل Gemini أو اطلب كتابة كود...",
@@ -670,8 +674,9 @@ private fun MultiTurnChatbotSection(
                 )
 
                 Button(
+                    enabled = !isBusy && inputPrompt.isNotBlank(),
                     onClick = {
-                        if (inputPrompt.isNotBlank()) {
+                        if (inputPrompt.isNotBlank() && !isBusy) {
                             onSendChatMessage(inputPrompt)
                             inputPrompt = ""
                         }
@@ -686,12 +691,16 @@ private fun MultiTurnChatbotSection(
                         .size(46.dp)
                         .testTag("chatbot_send_button")
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "إرسال",
-                        tint = CyberBackground,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    if (isBusy) {
+                        Text("...", color = CyberBackground, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "إرسال",
+                            tint = CyberBackground,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
