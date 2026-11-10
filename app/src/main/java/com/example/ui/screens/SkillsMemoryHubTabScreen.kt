@@ -359,6 +359,7 @@ fun SkillsMemoryHubTabScreen(
 
         when (activeSectionTab) {
             0 -> SkillsInteractiveExplorerSection(
+                totalSkillCount = catalog.totalSkills,
                 skills = filteredSkills,
                 selectedSkill = selectedSkill,
                 pinnedSkillIds = pinnedSkillIds,
@@ -437,6 +438,7 @@ fun SkillsMemoryHubTabScreen(
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun SkillsInteractiveExplorerSection(
+    totalSkillCount: Int,
     skills: List<ExtractedSkillItem>,
     selectedSkill: ExtractedSkillItem?,
     pinnedSkillIds: Set<String>,
@@ -470,7 +472,7 @@ private fun SkillsInteractiveExplorerSection(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
-                placeholder = { Text("ابحث في ${catalog.totalSkills} مهارة محمّلة أو في الحزم والمراجع...") },
+                placeholder = { Text("ابحث في $totalSkillCount مهارة محمّلة أو في الحزم والمراجع...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = CyberCyan) },
                 singleLine = true,
                 modifier = Modifier
