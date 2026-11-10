@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - "refactor/**"
   pull_request:
     branches:
       - main
@@ -14,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-ci-${{ github.ref }}
+  group: android-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -39,6 +38,17 @@ jobs:
         run: |
           printf '%s\n' 'OPENAI_API_KEY="\"\""' > .env
 
+      - name: Configure Firebase Android app when repository secret is available
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            echo "Firebase Android configuration loaded from repository secret."
+          else
+            echo "GOOGLE_SERVICES_JSON is not configured; the APK will not connect to a real Firebase project."
+          fi
+
       - name: Set up Node.js for Firebase emulators
         uses: actions/setup-node@v4
         with:
@@ -49,6 +59,17 @@ jobs:
 
       - name: Run unit and Robolectric tests with Auth and Firestore emulators
         run: firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest"
+
+      - name: Upload unit test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyber-agent-unit-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Assemble debug APK
         run: gradle --no-daemon assembleDebug
