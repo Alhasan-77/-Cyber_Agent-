@@ -22,7 +22,6 @@ object AgentTaskRouter {
             containsAny(
                 normalized,
                 "احفظ المشروع",
-                "حفظ المشروع",
                 "احفظ مشروعي",
                 "save project",
                 "save current project"
