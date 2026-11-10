@@ -599,9 +599,11 @@ class StudioViewModel(
 
     private suspend fun persistCurrentProject(): String {
         val startedAt = System.currentTimeMillis()
-        val projects = (projectsState.value as? UiState.Success)?.data.orEmpty()
-        val existing = projects.firstOrNull { it.id == _selectedProjectId.value }
-        val result = if (existing != null && existing.createdAt != null) {
+        val selectedId = _selectedProjectId.value
+        val existing = selectedId?.let { projectId ->
+            repository.getProjectById(currentUserId, projectId).getOrElse { error -> throw error }
+        }
+        val result = if (existing != null) {
             repository.updateProject(
                 existing.copy(
                     name = _editorName.value,
