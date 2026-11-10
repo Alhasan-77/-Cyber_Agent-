@@ -433,6 +433,16 @@ class StudioViewModel(
         }
     }
 
+    private fun updateCodeBuffer(tab: String, newContent: String) {
+        when (tab) {
+            "HTML" -> _htmlBuffer.value = newContent
+            "CSS" -> _cssBuffer.value = newContent
+            "JS" -> _jsBuffer.value = newContent
+            "Backend" -> _backendBuffer.value = newContent
+            else -> throw IllegalArgumentException("تبويب المحرر غير مدعوم: $tab")
+        }
+    }
+
     fun selectProject(project: StudioProject) {
         _selectedProjectId.value = project.id
         _editorName.value = project.name
@@ -796,7 +806,8 @@ class StudioViewModel(
                     preferredModel = _selectedChatModel.value
                 ).trim()
                 require(snippet.isNotBlank()) { "لم يُرجع النموذج اقتراحاً برمجياً." }
-                updateActiveBuffer(
+                updateCodeBuffer(
+                    currentTab,
                     if (currentContent.isBlank()) snippet else "$currentContent\n\n$snippet"
                 )
                 val skillsNote = if (appliedIds.isNotEmpty()) {
@@ -1220,11 +1231,11 @@ class StudioViewModel(
                     deletedLines = 0L
                 ).getOrElse { error -> throw error }
 
-                updateActiveBuffer(revisedFile)
+                updateCodeBuffer(tab, revisedFile)
                 val saveResult = try {
                     persistCurrentProject()
                 } catch (saveError: Exception) {
-                    updateActiveBuffer(currentCode)
+                    updateCodeBuffer(tab, currentCode)
                     throw saveError
                 }
                 "تم تطبيق الملف المعدل بالكامل على تبويب $tab وحفظه. أُنشئت نسخة احتياطية قبل التعديل ($backupVersion / $backupId).\n$saveResult\n\nراجع التغيير في المحرر قبل تشغيله." to
