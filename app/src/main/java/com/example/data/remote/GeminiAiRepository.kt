@@ -241,10 +241,46 @@ class GeminiAiRepository(
         )
     }
 
+    suspend fun reviseCodeFile(
+        currentCode: String,
+        activeTab: String,
+        instruction: String,
+        preferredModel: String
+    ): String = withContext(Dispatchers.IO) {
+        require(instruction.isNotBlank()) { "اكتب التعديل المطلوب." }
+        val model = when (preferredModel) {
+            MODEL_ARGON -> argonModel
+            MODEL_FLASH_LITE -> flashLiteModel
+            else -> flashModel
+        }
+        val prompt = """
+            You are editing an existing source file in the Cyber Agent IDE.
+            Language or file type: $activeTab
+            User change request: $instruction
+
+            Return the COMPLETE updated file, not a patch and not a snippet.
+            Preserve all existing behavior unrelated to the requested change.
+            Keep imports, declarations, and required surrounding code.
+            Do not add markdown fences, explanations, or placeholder implementations.
+            Do not claim the code was compiled or tested.
+            If the request is ambiguous or cannot be safely implemented from the supplied file,
+            return the original file unchanged.
+
+            Current complete file:
+            $currentCode
+        """.trimIndent()
+        val response = withTimeout(AI_TIMEOUT_MS) {
+            executeWithAppCheckRetry { model.generateContent(prompt).text }
+        }
+        val revised = response?.trim().orEmpty()
+        require(revised.isNotBlank()) { "لم يُرجع النموذج ملفاً معدلاً." }
+        revised.removeSurrounding("```$activeTab\n", "\n```").trim()
+    }
     suspend fun sendAgentTurn(
         history: List<ChatMessage>,
         userPrompt: String,
         preferredModel: String,
+        systemInstruction: String,
         executeTool: suspend (String, Map<String, JsonElement>) -> JsonObject
     ): Pair<String, List<String>> = withContext(Dispatchers.IO) {
         require(userPrompt.isNotBlank()) { "أدخل طلباً للوكيل أولاً." }
@@ -254,6 +290,7 @@ class GeminiAiRepository(
         }
         val agentPrompt = buildString {
             appendLine("You are Cyber Agent, an in-app task execution assistant.")
+            appendLine(systemInstruction)
             appendLine("Use the declared tools whenever the user asks you to inspect or change the current workspace.")
             appendLine("Never claim a task was completed unless a tool returned ok=true.")
             appendLine("Never claim code was compiled, deployed, or security-scanned unless an actual tool did that.")
