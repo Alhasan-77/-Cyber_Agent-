@@ -315,34 +315,47 @@ class StudioViewModel(
 
     fun syncSkillsMemoryToFirestore(silent: Boolean = false) {
         viewModelScope.launch {
-            val catalog = _skillsCatalog.value
-            if (catalog.skills.isEmpty()) return@launch
-            val pinned = _pinnedSkillIds.value
-            val projectId = _selectedProjectId.value ?: "proj_skills_memory"
-            val fieldsSpec = "skillId:string, titleAr:string, category:string, isPinned:boolean, referencesCount:int, scriptsCount:int | Pinned=${pinned.joinToString(",")}"
-            val recordsJson = SkillsMemoryEngine.buildFirestoreRegistryJson(pinned, catalog)
-            val existingList = (collectionsState.value as? UiState.Success)?.data.orEmpty()
-            val existingDoc = existingList.find { it.collectionName == SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME }
+            syncSkillsMemoryToFirestoreNow(silent)
+        }
+    }
 
-            val result = if (existingDoc != null && existingDoc.createdAt != null) {
-                repository.updateCollectionSchema(
-                    existingDoc.copy(
-                        fieldsSpec = fieldsSpec.take(5000),
-                        sampleRecordsJson = recordsJson.take(20000),
-                        indexConfig = "MCP:${catalog.mcpServerUrl} | TotalSkills:${catalog.totalSkills} | Files:${catalog.totalArchiveFiles}"
-                    )
-                )
-            } else {
-                repository.createCollectionSchema(
-                    projectId = projectId,
-                    collectionName = SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME,
+    private suspend fun syncSkillsMemoryToFirestoreNow(silent: Boolean = false): Boolean {
+        val catalog = _skillsCatalog.value
+        if (catalog.skills.isEmpty()) {
+            _isSkillsSyncedToFirestore.value = false
+            if (!silent) _statusBanner.value = "لا توجد مهارات محملة لمزامنتها."
+            return false
+        }
+
+        val pinned = _pinnedSkillIds.value
+        val projectId = _selectedProjectId.value ?: "proj_skills_memory"
+        val fieldsSpec = "skillId:string, titleAr:string, category:string, isPinned:boolean, referencesCount:int, scriptsCount:int | Pinned=${pinned.joinToString(",")}"
+        val recordsJson = SkillsMemoryEngine.buildFirestoreRegistryJson(pinned, catalog)
+        val existingList = (collectionsState.value as? UiState.Success)?.data.orEmpty()
+        val existingDoc = existingList.find {
+            it.collectionName == SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME
+        }
+
+        val result = if (existingDoc != null && existingDoc.createdAt != null) {
+            repository.updateCollectionSchema(
+                existingDoc.copy(
                     fieldsSpec = fieldsSpec.take(5000),
                     sampleRecordsJson = recordsJson.take(20000),
                     indexConfig = "MCP:${catalog.mcpServerUrl} | TotalSkills:${catalog.totalSkills} | Files:${catalog.totalArchiveFiles}"
-                ).map { }
-            }
+                )
+            )
+        } else {
+            repository.createCollectionSchema(
+                projectId = projectId,
+                collectionName = SkillsMemoryEngine.FIRESTORE_MEMORY_COLLECTION_NAME,
+                fieldsSpec = fieldsSpec.take(5000),
+                sampleRecordsJson = recordsJson.take(20000),
+                indexConfig = "MCP:${catalog.mcpServerUrl} | TotalSkills:${catalog.totalSkills} | Files:${catalog.totalArchiveFiles}"
+            ).map { }
+        }
 
-            result.onSuccess {
+        return result.fold(
+            onSuccess = {
                 _isSkillsSyncedToFirestore.value = true
                 if (!silent) {
                     _statusBanner.value = "تمت مزامنة ${catalog.totalSkills} مهارة و${pinned.size} مهارة مثبتة مع Firestore."
@@ -350,14 +363,17 @@ class StudioViewModel(
                 appendConsoleLog(
                     "[Firestore Memory Sync] Synced ${catalog.totalSkills} skills & ${pinned.size} pinned items."
                 )
-            }.onFailure { error ->
+                true
+            },
+            onFailure = { error ->
                 _isSkillsSyncedToFirestore.value = false
                 Log.w(TAG, "Skills memory sync failed", error)
                 if (!silent) {
                     _statusBanner.value = "تعذرت مزامنة المهارات: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
+                false
             }
-        }
+        )
     }
 
     private fun restorePinnedSkillsFromFirestoreDoc(doc: DbCollectionSchema) {
@@ -1143,12 +1159,18 @@ class StudioViewModel(
         _selectedChatModel.value = normalized
         aiRepository.setActiveModel(normalized)
         val provider = AiEngineProvider.fromModelId(normalized)
-        appendConsoleLog("[AI Prompt Service] Injected ${provider.shortBadge} client ($normalized) & syncing preference to Firestore.")
-        _statusBanner.value = "🤖 تم تفعيل محرك الذكاء الاصطناعي: ${provider.titleAr} ($normalized) وحفظه في ملفك السحابي"
+        appendConsoleLog("[AI Prompt Service] Activated ${provider.shortBadge} client ($normalized); syncing preference to Firestore.")
+        _statusBanner.value = "تم تفعيل ${provider.titleAr} ($normalized) على هذا الجهاز."
         viewModelScope.launch {
-            repository.updatePreferredAiModel(normalized).onSuccess {
-                _lastSyncTimestampLabel.value = currentTimeLabel()
-            }
+            repository.updatePreferredAiModel(normalized)
+                .onSuccess {
+                    _lastSyncTimestampLabel.value = currentTimeLabel()
+                    _statusBanner.value = "تم تفعيل ${provider.titleAr} وحفظ التفضيل في Firestore."
+                }
+                .onFailure { error ->
+                    Log.w(TAG, "AI model preference sync failed", error)
+                    _statusBanner.value = "تم تفعيل ${provider.titleAr} محلياً، لكن تعذر حفظ التفضيل سحابياً: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
         }
     }
 
@@ -1728,9 +1750,13 @@ class StudioViewModel(
                     return@launch
                 }
 
-                syncSkillsMemoryToFirestore()
+                val skillsSynced = syncSkillsMemoryToFirestoreNow(silent = true)
                 _lastSyncTimestampLabel.value = currentTimeLabel()
-                _statusBanner.value = "اكتملت مزامنة الملف الشخصي والمهارات مع Firestore. زمن الاستجابة ${_syncLatencyMs.value}ms."
+                _statusBanner.value = if (skillsSynced) {
+                    "اكتملت مزامنة الملف الشخصي والمهارات مع Firestore. زمن الاستجابة ${_syncLatencyMs.value}ms."
+                } else {
+                    "تم تحديث الملف الشخصي، لكن تعذرت مزامنة المهارات. زمن الاستجابة ${_syncLatencyMs.value}ms."
+                }
             } catch (error: Exception) {
                 Log.e(TAG, "Manual cloud sync failed", error)
                 _statusBanner.value = "فشلت المزامنة: ${error.localizedMessage ?: "خطأ غير معروف"}"
