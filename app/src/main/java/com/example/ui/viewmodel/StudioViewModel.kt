@@ -665,51 +665,78 @@ class StudioViewModel(
         }
     }
 
+    private suspend fun createProjectFromBrief(
+        name: String,
+        description: String,
+        language: String
+    ): String {
+        require(name.isNotBlank()) { "اسم المشروع مطلوب." }
+        require(description.isNotBlank()) { "وصف المشروع مطلوب." }
+        require(language.isNotBlank()) { "لغة أو تقنية المشروع مطلوبة." }
+
+        val generated = aiRepository.generateFullStackCodebase(
+            projectBrief = "$name - $description",
+            stackLanguage = language,
+            preferredModel = _selectedChatModel.value
+        )
+        val html = generated["html"].orEmpty()
+        val css = generated["css"].orEmpty()
+        val js = generated["js"].orEmpty()
+        val backend = generated["backend"].orEmpty()
+        require(listOf(html, css, js, backend).any { it.isNotBlank() }) {
+            "لم ينتج النموذج أي ملفات مصدر؛ لم يتم إنشاء مشروع فارغ."
+        }
+
+        val projectId = repository.createProject(
+            name = name,
+            description = description,
+            language = language,
+            htmlCode = html,
+            cssCode = css,
+            jsCode = js,
+            backendCode = backend
+        ).getOrElse { error -> throw error }
+
+        _selectedProjectId.value = projectId
+        _editorName.value = name
+        _editorLanguage.value = language
+        _htmlBuffer.value = html
+        _cssBuffer.value = css
+        _jsBuffer.value = js
+        _backendBuffer.value = backend
+        _activeCodeTab.value = when {
+            html.isNotBlank() -> "HTML"
+            css.isNotBlank() -> "CSS"
+            js.isNotBlank() -> "JS"
+            else -> "Backend"
+        }
+
+        val initialLines = (html.lines().size + css.lines().size + js.lines().size + backend.lines().size).toLong()
+        val snapshotResult = repository.createSnapshot(
+            projectId = projectId,
+            commitMessage = "Initial AI-generated project version",
+            versionTag = "v1.0.0",
+            htmlCode = html,
+            cssCode = css,
+            jsCode = js,
+            backendCode = backend,
+            addedLines = initialLines,
+            deletedLines = 0L
+        )
+        appendConsoleLog("[AI Generator] Created project '$name' (source files saved; no compiler run).")
+        return if (snapshotResult.isSuccess) {
+            "تم إنشاء المشروع وحفظ ملفاته ولقطة الإصدار الأولى في Firestore. لم يتم تشغيل مترجم أو نشر."
+        } else {
+            Log.w(TAG, "Project created but initial snapshot failed", snapshotResult.exceptionOrNull())
+            "تم إنشاء المشروع وحفظ ملفاته في Firestore، لكن تعذر إنشاء لقطة الإصدار الأولى. لم يتم تشغيل مترجم أو نشر."
+        }
+    }
+
     fun createNewProject(name: String, description: String, language: String) {
         viewModelScope.launch {
             _isBusy.value = true
             try {
-                val generated = aiRepository.generateFullStackCodebase(
-                    projectBrief = "$name - $description",
-                    stackLanguage = language,
-                    preferredModel = _selectedChatModel.value
-                )
-                val html = generated["html"].orEmpty()
-                val css = generated["css"].orEmpty()
-                val js = generated["js"].orEmpty()
-                val backend = generated["backend"].orEmpty()
-                val projectId = repository.createProject(
-                    name = name,
-                    description = description,
-                    language = language,
-                    htmlCode = html,
-                    cssCode = css,
-                    jsCode = js,
-                    backendCode = backend
-                ).getOrElse { error -> throw error }
-
-                _selectedProjectId.value = projectId
-                _editorName.value = name
-                _editorLanguage.value = language
-                _htmlBuffer.value = html
-                _cssBuffer.value = css
-                _jsBuffer.value = js
-                _backendBuffer.value = backend
-                repository.createSnapshot(
-                    projectId = projectId,
-                    commitMessage = "إنشاء مشروع بواسطة ${_selectedChatModel.value}",
-                    versionTag = "v1.0.0",
-                    htmlCode = html,
-                    cssCode = css,
-                    jsCode = js,
-                    backendCode = backend,
-                    addedLines = (html.lines().size + css.lines().size + js.lines().size + backend.lines().size).toLong(),
-                    deletedLines = 0L
-                ).onFailure { error ->
-                    Log.w(TAG, "Project created but initial snapshot failed", error)
-                }
-                appendConsoleLog("[AI Generator] Created project '$name' (files saved; no compiler run).")
-                _statusBanner.value = "تم إنشاء المشروع وحفظ ملفاته. لم يتم تشغيل مترجم أو نشر."
+                _statusBanner.value = createProjectFromBrief(name, description, language)
             } catch (error: Exception) {
                 Log.e(TAG, "Project creation failed", error)
                 _statusBanner.value = "تعذر إنشاء المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
