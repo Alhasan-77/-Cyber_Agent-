@@ -13,6 +13,10 @@ import com.example.ui.components.GlobalExceptionHandler
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.GenerativeModel
+import com.google.firebase.ai.type.FunctionDeclaration
+import com.google.firebase.ai.type.FunctionResponsePart
+import com.google.firebase.ai.type.Schema
+import com.google.firebase.ai.type.Tool
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.ImagePart
 import com.google.firebase.ai.type.QuotaExceededException
@@ -28,6 +32,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import kotlin.coroutines.resume
@@ -189,6 +196,115 @@ class GeminiAiRepository(
     }
 
     // Lazy model initialization so FirebaseApp and FirebaseAppCheck are configured first
+    private val agentFunctionDeclarations: List<FunctionDeclaration> by lazy {
+        listOf(
+            FunctionDeclaration(
+                "save_current_project",
+                "Save the current editor files to the signed-in user's Firestore project. Use when the user asks to save or persist the current project.",
+                emptyMap()
+            ),
+            FunctionDeclaration(
+                "create_version_snapshot",
+                "Create an immutable Firestore version snapshot of the current editor files. Use when the user asks to create a version, checkpoint, or snapshot.",
+                mapOf(
+                    "commit_message" to Schema.string("A short, meaningful description for this version snapshot.")
+                )
+            ),
+            FunctionDeclaration(
+                "review_current_code",
+                "Ask the security auditor AI to review the current HTML, CSS, JavaScript, and backend code. This is a code review only, not a dynamic scan or executed test.",
+                emptyMap()
+            ),
+            FunctionDeclaration(
+                "edit_active_code",
+                "Generate a code change for the active editor tab, apply it to the editor, and save the project. Only use when the user explicitly asks to change or implement something.",
+                mapOf(
+                    "instruction" to Schema.string("The exact requested code change, including requirements and constraints.")
+                )
+            ),
+            FunctionDeclaration(
+                "get_workspace_status",
+                "Read the current project name, active editor tab, selected project state, and code lengths. Use to answer questions about the current workspace.",
+                emptyMap()
+            )
+        )
+    }
+
+    private fun createAgentModel(preferredModel: String): GenerativeModel {
+        val modelName = when {
+            isDualEngineModel(preferredModel) || isOpenAiModel(preferredModel) -> MODEL_FLASH
+            else -> normalizePreferredModel(preferredModel)
+        }
+        return Firebase.ai.generativeModel(
+            modelName = modelName,
+            tools = listOf(Tool.functionDeclarations(agentFunctionDeclarations))
+        )
+    }
+
+    suspend fun sendAgentTurn(
+        history: List<ChatMessage>,
+        userPrompt: String,
+        preferredModel: String,
+        executeTool: suspend (String, Map<String, JsonElement>) -> JsonObject
+    ): Pair<String, List<String>> = withContext(Dispatchers.IO) {
+        require(userPrompt.isNotBlank()) { "أدخل طلباً للوكيل أولاً." }
+        val conversationContext = history.takeLast(8).joinToString("\n") { message ->
+            val role = if (message.isUser) "User" else "Assistant"
+            "$role: ${message.text.take(4000)}"
+        }
+        val agentPrompt = buildString {
+            appendLine("You are Cyber Agent, an in-app task execution assistant.")
+            appendLine("Use the declared tools whenever the user asks you to inspect or change the current workspace.")
+            appendLine("Never claim a task was completed unless a tool returned ok=true.")
+            appendLine("Never claim code was compiled, deployed, or security-scanned unless an actual tool did that.")
+            appendLine("For destructive or unavailable actions, explain the limitation and do not invent success.")
+            if (conversationContext.isNotBlank()) {
+                appendLine("Recent conversation:")
+                appendLine(conversationContext)
+            }
+            appendLine("Current user request:")
+            appendLine(userPrompt)
+        }
+
+        val chat = createAgentModel(preferredModel).startChat()
+        var response = withTimeout(AI_TIMEOUT_MS) { chat.sendMessage(agentPrompt) }
+        val executedTools = mutableListOf<String>()
+        var rounds = 0
+
+        while (response.functionCalls.isNotEmpty()) {
+            if (rounds >= 4) {
+                throw IllegalStateException("توقف تنفيذ الوكيل بعد أربع جولات أدوات لحماية التطبيق من حلقات التنفيذ.")
+            }
+            val functionResponses = response.functionCalls.map { call ->
+                executedTools += call.name
+                val result = try {
+                    executeTool(call.name, call.args)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    JsonObject(
+                        mapOf(
+                            "ok" to JsonPrimitive(false),
+                            "error" to JsonPrimitive(error.localizedMessage ?: "Tool execution failed")
+                        )
+                    )
+                }
+                FunctionResponsePart(call.name, result)
+            }
+            response = withTimeout(AI_TIMEOUT_MS) {
+                chat.sendMessage(content("user") {
+                    functionResponses.forEach { functionResponse -> part(functionResponse) }
+                })
+            }
+            rounds++
+        }
+
+        val finalText = response.text?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("لم يُرجع وكيل Gemini استجابة نهائية.")
+        finalText to executedTools.distinct()
+    }
+
     private val flashModel: GenerativeModel by lazy {
         Firebase.ai.generativeModel(
             modelName = MODEL_FLASH,
