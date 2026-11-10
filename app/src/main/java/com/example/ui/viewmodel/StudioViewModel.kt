@@ -25,6 +25,7 @@ import com.example.data.skills.ExtractedSkillItem
 import com.example.data.skills.SkillsMemoryCatalog
 import com.example.data.skills.SkillsMemoryEngine
 import com.google.firebase.Timestamp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -1089,6 +1090,8 @@ class StudioViewModel(
                 }.onFailure { error ->
                     _statusBanner.value = "تعذر إدراج السجل: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 _statusBanner.value = "بيانات السجل غير صالحة: ${error.localizedMessage ?: "تحقق من JSON"}"
             }
