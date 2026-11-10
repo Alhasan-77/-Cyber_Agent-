@@ -1172,6 +1172,20 @@ class StudioViewModel(
         name: String,
         args: Map<String, JsonElement>
     ): JsonObject {
+        if (name == "create_project") {
+            val projectName = readAgentToolString(args, "name")
+            val description = readAgentToolString(args, "description")
+            val language = readAgentToolString(args, "language")
+            val result = createProjectFromBrief(projectName, description, language)
+            return JsonObject(
+                mapOf(
+                    "ok" to JsonPrimitive(true),
+                    "project_id" to JsonPrimitive(_selectedProjectId.value.orEmpty()),
+                    "result" to JsonPrimitive(result)
+                )
+            )
+        }
+
         if (name == "get_workspace_status") {
             val status = buildString {
                 appendLine("Project: ${_editorName.value}")
