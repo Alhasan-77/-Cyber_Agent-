@@ -274,7 +274,8 @@ class GeminiAiRepository(
         }
         val revised = response?.trim().orEmpty()
         require(revised.isNotBlank()) { "لم يُرجع النموذج ملفاً معدلاً." }
-        revised.removeSurrounding("```$activeTab\n", "\n```").trim()
+        val fencedCode = Regex("""(?s)^```[A-Za-z0-9_+#.-]*\s*\n(.*?)\n```$""").find(revised)
+        fencedCode?.groupValues?.get(1)?.trim() ?: revised
     }
     suspend fun sendAgentTurn(
         history: List<ChatMessage>,
