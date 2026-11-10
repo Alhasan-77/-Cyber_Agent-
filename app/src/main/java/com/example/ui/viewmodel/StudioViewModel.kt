@@ -3,6 +3,8 @@ package com.example.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.agent.AgentTaskRouter
+import com.example.data.agent.AgentTaskType
 import com.example.data.model.AiRolePersona
 import com.example.data.model.BioExperimentRecord
 import com.example.data.model.BuildExecutionLog
@@ -595,55 +597,58 @@ class StudioViewModel(
         }
     }
 
+    private suspend fun persistCurrentProject(): String {
+        val startedAt = System.currentTimeMillis()
+        val projects = (projectsState.value as? UiState.Success)?.data.orEmpty()
+        val existing = projects.firstOrNull { it.id == _selectedProjectId.value }
+        val result = if (existing != null && existing.createdAt != null) {
+            repository.updateProject(
+                existing.copy(
+                    name = _editorName.value,
+                    language = _editorLanguage.value,
+                    htmlCode = _htmlBuffer.value,
+                    cssCode = _cssBuffer.value,
+                    jsCode = _jsBuffer.value,
+                    backendCode = _backendBuffer.value
+                )
+            ).map { existing.id }
+        } else {
+            repository.createProject(
+                name = _editorName.value,
+                description = "Full-Stack Project (${_editorLanguage.value})",
+                language = _editorLanguage.value,
+                htmlCode = _htmlBuffer.value,
+                cssCode = _cssBuffer.value,
+                jsCode = _jsBuffer.value,
+                backendCode = _backendBuffer.value
+            )
+        }
+        val projectId = result.getOrElse { error -> throw error }
+        _selectedProjectId.value = projectId
+        val duration = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
+        val source = _htmlBuffer.value + _cssBuffer.value + _jsBuffer.value + _backendBuffer.value
+        val checksum = computeSha256Short(source)
+        val report = "تم حفظ ملفات المشروع في Firestore. لم يتم تشغيل مترجم أو بناء APK/حزمة نشر.\n" +
+            "حجم المصدر: ${source.length} حرف؛ SHA-256 مختصر: $checksum"
+        val logResult = repository.createBuildLog(
+            projectId = projectId,
+            stage = "حفظ ملفات المشروع",
+            status = "WARNING",
+            durationMs = duration,
+            reportSummary = report
+        )
+        if (logResult.isFailure) {
+            Log.w(TAG, "Project saved but activity log failed", logResult.exceptionOrNull())
+        }
+        appendConsoleLog("[Project Save] Files saved for project $projectId. No compiler/build was run.")
+        return "تم حفظ ملفات المشروع في Firestore بنجاح. لم يتم تشغيل مترجم أو إنشاء APK."
+    }
+
     fun saveAndBuildCurrentProject() {
         viewModelScope.launch {
             _isBusy.value = true
             try {
-                val startedAt = System.currentTimeMillis()
-                val projects = (projectsState.value as? UiState.Success)?.data.orEmpty()
-                val existing = projects.firstOrNull { it.id == _selectedProjectId.value }
-                val result = if (existing != null && existing.createdAt != null) {
-                    repository.updateProject(
-                        existing.copy(
-                            name = _editorName.value,
-                            language = _editorLanguage.value,
-                            htmlCode = _htmlBuffer.value,
-                            cssCode = _cssBuffer.value,
-                            jsCode = _jsBuffer.value,
-                            backendCode = _backendBuffer.value
-                        )
-                    ).map { existing.id }
-                } else {
-                    repository.createProject(
-                        name = _editorName.value,
-                        description = "Full-Stack Project (${_editorLanguage.value})",
-                        language = _editorLanguage.value,
-                        htmlCode = _htmlBuffer.value,
-                        cssCode = _cssBuffer.value,
-                        jsCode = _jsBuffer.value,
-                        backendCode = _backendBuffer.value
-                    )
-                }
-                val projectId = result.getOrElse { error ->
-                    throw error
-                }
-                _selectedProjectId.value = projectId
-                val duration = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
-                val source = _htmlBuffer.value + _cssBuffer.value + _jsBuffer.value + _backendBuffer.value
-                val checksum = computeSha256Short(source)
-                val report = "تم حفظ ملفات المشروع في Firestore. لم يتم تشغيل مترجم أو بناء APK/حزمة نشر.\n" +
-                    "حجم المصدر: ${source.length} حرف؛ SHA-256 مختصر: $checksum"
-                repository.createBuildLog(
-                    projectId = projectId,
-                    stage = "حفظ ملفات المشروع",
-                    status = "WARNING",
-                    durationMs = duration,
-                    reportSummary = report
-                ).onFailure { error ->
-                    Log.w(TAG, "Project saved but activity log failed", error)
-                }
-                appendConsoleLog("[Project Save] Files saved for project $projectId. No compiler/build was run.")
-                _statusBanner.value = "تم حفظ المشروع سحابياً. لم يتم تشغيل بناء أو معاينة فعلية."
+                _statusBanner.value = persistCurrentProject()
             } catch (error: Exception) {
                 Log.e(TAG, "Project save failed", error)
                 _statusBanner.value = "تعذر حفظ المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1018,9 +1023,98 @@ class StudioViewModel(
         _useHighThinking.value = enabled
     }
 
+    private suspend fun executeAgentTask(task: AgentTaskType, originalPrompt: String): Pair<String, List<String>> {
+        return when (task) {
+            AgentTaskType.SAVE_PROJECT -> {
+                val result = persistCurrentProject()
+                result to listOf("Cyber Agent Workspace Executor", "Firestore Project Save")
+            }
+            AgentTaskType.CREATE_SNAPSHOT -> {
+                val projectId = _selectedProjectId.value
+                    ?: throw IllegalStateException("احفظ المشروع أولاً قبل إنشاء لقطة إصدار.")
+                val snapshotCount = (snapshotsState.value as? UiState.Success)?.data
+                    ?.count { it.projectId == projectId } ?: 0
+                val versionTag = "v1.${snapshotCount + 1}.0"
+                val snapshotId = repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = originalPrompt.take(300),
+                    versionTag = versionTag,
+                    htmlCode = _htmlBuffer.value,
+                    cssCode = _cssBuffer.value,
+                    jsCode = _jsBuffer.value,
+                    backendCode = _backendBuffer.value,
+                    addedLines = 0L,
+                    deletedLines = 0L
+                ).getOrElse { error -> throw error }
+                appendConsoleLog("[Agent Task] Created snapshot $versionTag ($snapshotId).")
+                "تم إنشاء لقطة الإصدار $versionTag وحفظها في Firestore." to
+                    listOf("Cyber Agent Workspace Executor", "Firestore Version Snapshot")
+            }
+            AgentTaskType.REVIEW_CODE -> {
+                val source = buildString {
+                    appendLine("HTML:\n${_htmlBuffer.value}")
+                    appendLine("CSS:\n${_cssBuffer.value}")
+                    appendLine("JavaScript:\n${_jsBuffer.value}")
+                    appendLine("Backend:\n${_backendBuffer.value}")
+                }
+                val reviewPrompt = """
+                    راجع الشيفرة التالية مراجعة أمنية وبرمجية دقيقة.
+                    صنّف النتائج إلى: أخطاء مؤكدة من النص، مخاطر محتملة تحتاج تحققاً، وتحسينات.
+                    لا تدّعِ تشغيل أدوات SAST أو DAST أو تنفيذ الاختبارات.
+                    لا تخترع نتائج تشغيل. اربط كل ملاحظة بمقطع أو ملف واضح.
+                    أعد خطوات إصلاح عملية.
+                    $source
+                """.trimIndent()
+                val (review, sources) = aiRepository.sendMultiTurnChat(
+                    history = emptyList(),
+                    userPrompt = reviewPrompt,
+                    selectedModel = _selectedChatModel.value,
+                    persona = AiRolePersona.SECURITY_AUDITOR,
+                    useSearchGrounding = false,
+                    useHighThinking = true
+                )
+                "مراجعة برمجية بمساعدة الذكاء الاصطناعي (ليست فحصاً ديناميكياً أو SAST/DAST):\n\n$review" to
+                    (listOf("Cyber Agent AI Code Review") + sources).distinct()
+            }
+            AgentTaskType.EDIT_ACTIVE_CODE -> {
+                val tab = _activeCodeTab.value
+                val currentCode = when (tab) {
+                    "HTML" -> _htmlBuffer.value
+                    "CSS" -> _cssBuffer.value
+                    "JS" -> _jsBuffer.value
+                    else -> _backendBuffer.value
+                }
+                val suggestion = aiRepository.generateLowLatencyCodeSuggestion(
+                    currentCode = currentCode,
+                    activeTab = tab,
+                    instruction = originalPrompt,
+                    preferredModel = _selectedChatModel.value
+                ).trim()
+                require(suggestion.isNotBlank()) { "لم يرجع نموذج الذكاء الاصطناعي أي تعديل." }
+                updateActiveBuffer(
+                    if (currentCode.isBlank()) suggestion else "$currentCode\n\n$suggestion"
+                )
+                val saveResult = persistCurrentProject()
+                "تم تطبيق التعديل المقترح على تبويب $tab وحفظ ملفات المشروع.\n$saveResult\n\nراجع التغيير في المحرر قبل تشغيله." to
+                    listOf("Cyber Agent Code Editor", "AI Code Suggestion", "Firestore Project Save")
+            }
+        }
+    }
+
+    private fun appendAgentReply(text: String, model: String, sources: List<String>) {
+        _chatMessages.value = _chatMessages.value + ChatMessage(
+            id = UUID.randomUUID().toString(),
+            isUser = false,
+            text = text,
+            modelUsed = model,
+            timestampLabel = currentTimeLabel(),
+            groundingSources = sources
+        )
+    }
+
     fun sendChatMessage(prompt: String) {
         val cleanPrompt = prompt.trim()
-        if (cleanPrompt.isEmpty()) return
+        if (cleanPrompt.isEmpty() || _isBusy.value) return
 
         val currentHistory = _chatMessages.value
         val userMsg = ChatMessage(
@@ -1031,10 +1125,18 @@ class StudioViewModel(
             timestampLabel = currentTimeLabel()
         )
         _chatMessages.value = currentHistory + userMsg
+        val agentTask = AgentTaskRouter.route(cleanPrompt)
 
         viewModelScope.launch {
             _isBusy.value = true
             try {
+                if (agentTask != null) {
+                    val (reply, sources) = executeAgentTask(agentTask, cleanPrompt)
+                    appendAgentReply(reply, "Cyber Agent • ${agentTask.name}", sources)
+                    _statusBanner.value = "اكتملت المهمة ونُفذت إجراءاتها داخل مساحة العمل."
+                    return@launch
+                }
+
                 val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(cleanPrompt)
                 val enrichedPrompt = if (skillsBlock.isNotBlank()) {
                     "$cleanPrompt\n\n$skillsBlock"
@@ -1058,19 +1160,17 @@ class StudioViewModel(
                     _useSearchGrounding.value -> GeminiAiRepository.MODEL_FLASH
                     else -> _selectedChatModel.value
                 }
-                val aiMsg = ChatMessage(
-                    id = UUID.randomUUID().toString(),
-                    isUser = false,
-                    text = replyText,
-                    modelUsed = effectiveModel,
-                    timestampLabel = currentTimeLabel(),
-                    groundingSources = (appliedIds.map { "SkillMemory:$it" } + sources).distinct()
+                appendAgentReply(
+                    replyText,
+                    effectiveModel,
+                    (appliedIds.map { "SkillMemory:$it" } + sources).distinct()
                 )
-                _chatMessages.value = _chatMessages.value + aiMsg
-                _statusBanner.value = "اكتملت الاستجابة بنجاح."
+                _statusBanner.value = "وصل رد من مزود الذكاء الاصطناعي."
             } catch (error: Exception) {
-                Log.e(TAG, "Chat request failed", error)
-                _statusBanner.value = "تعذر إرسال الطلب: ${error.localizedMessage ?: "تحقق من الاتصال وإعدادات مفتاح الخدمة"}"
+                Log.e(TAG, "Chat or agent task failed", error)
+                val errorText = "لم تُنفذ المهمة. السبب: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                appendAgentReply(errorText, "Task Error", listOf("Execution failed"))
+                _statusBanner.value = errorText
             } finally {
                 _isBusy.value = false
             }
