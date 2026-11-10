@@ -218,12 +218,13 @@ fun IdePreviewTabScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "قوالب Gemini الجاهزة:",
+                        text = "قوالب البداية:",
                         style = MaterialTheme.typography.labelMedium,
                         color = CyberTextSecondary
                     )
                     FilterChip(
                         selected = false,
+                        enabled = !isBusy,
                         onClick = {
                             onLoadTemplate("ECOMMERCE")
                             previewReloadTick++
@@ -234,6 +235,7 @@ fun IdePreviewTabScreen(
                     )
                     FilterChip(
                         selected = false,
+                        enabled = !isBusy,
                         onClick = {
                             onLoadTemplate("FINTECH")
                             previewReloadTick++
@@ -244,6 +246,7 @@ fun IdePreviewTabScreen(
                     )
                     FilterChip(
                         selected = false,
+                        enabled = !isBusy,
                         onClick = {
                             onLoadTemplate("BIOMED")
                             previewReloadTick++
@@ -254,6 +257,7 @@ fun IdePreviewTabScreen(
                     )
                     FilterChip(
                         selected = false,
+                        enabled = !isBusy,
                         onClick = {
                             onLoadTemplate("THREEJS_BIOGAME")
                             previewReloadTick++
