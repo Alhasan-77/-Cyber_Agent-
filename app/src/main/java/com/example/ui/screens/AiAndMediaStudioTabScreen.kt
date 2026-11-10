@@ -152,7 +152,7 @@ fun AiAndMediaStudioTabScreen(
                 FilterChip(
                     selected = subTab == 0,
                     onClick = { subTab = 0 },
-                    label = { Text("محادثة Gemini") },
+                    label = { Text("محادثة الوكيل") },
                     leadingIcon = { Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     shape = RoundedCornerShape(50),
                     colors = FilterChipDefaults.filterChipColors(
@@ -658,7 +658,7 @@ private fun MultiTurnChatbotSection(
                     enabled = !isBusy,
                     placeholder = {
                         Text(
-                            text = "اسأل Gemini أو اطلب كتابة كود...",
+                            text = "اكتب طلباً أو مهمة إلى Cyber Agent...",
                             color = CyberTextSecondary
                         )
                     },
