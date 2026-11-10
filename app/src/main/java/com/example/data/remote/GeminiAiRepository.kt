@@ -199,6 +199,15 @@ class GeminiAiRepository(
     private val agentFunctionDeclarations: List<FunctionDeclaration> by lazy {
         listOf(
             FunctionDeclaration(
+                "create_project",
+                "Generate a new full-stack project from the user's brief, create the project in Firestore, and initialize the editor with the generated source files. Use only when the user asks to create a new project.",
+                mapOf(
+                    "name" to Schema.string("A concise project name."),
+                    "description" to Schema.string("The user's project requirements and desired features."),
+                    "language" to Schema.string("The primary language or technology stack, such as HTML/CSS/JS, Kotlin, Python, or TypeScript.")
+                )
+            ),
+            FunctionDeclaration(
                 "save_current_project",
                 "Save the current editor files to the signed-in user's Firestore project. Use when the user asks to save or persist the current project.",
                 emptyMap()
