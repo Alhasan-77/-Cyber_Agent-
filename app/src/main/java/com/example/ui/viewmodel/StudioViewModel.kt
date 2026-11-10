@@ -1201,6 +1201,30 @@ class StudioViewModel(
 
     private suspend fun executeAgentTask(task: AgentTaskType, originalPrompt: String): Pair<String, List<String>> {
         return when (task) {
+            AgentTaskType.CREATE_PROJECT -> {
+                val projectName = originalPrompt.trim()
+                    .replace(
+                        Regex("^\\s*(?:من فضلك\\s*)?(?:أنشئ|انشئ)\\s+(?:لي\\s+)?مشروع\\s*", RegexOption.IGNORE_CASE),
+                        ""
+                    )
+                    .replace(
+                        Regex("^\\s*(?:please\\s+)?(?:create|build)\\s+(?:a\\s+)?project\\s*", RegexOption.IGNORE_CASE),
+                        ""
+                    )
+                    .substringBefore(Regex("\\s+(?:باستخدام|مع|using|with)\\s+").find(originalPrompt)?.value.orEmpty())
+                    .trim()
+                    .take(80)
+                require(projectName.isNotBlank()) {
+                    "حدد اسم المشروع ووصفه بعد أمر الإنشاء، مثال: أنشئ مشروع متجر إلكتروني باستخدام React."
+                }
+                val language = _editorLanguage.value.ifBlank { "Full-Stack Web" }
+                val result = createProjectFromBrief(
+                    name = projectName,
+                    description = originalPrompt.trim(),
+                    language = language
+                )
+                result to listOf("Cyber Agent Workspace Executor", "AI Project Generator", "Firestore Project Save")
+            }
             AgentTaskType.SAVE_PROJECT -> {
                 val result = persistCurrentProject()
                 result to listOf("Cyber Agent Workspace Executor", "Firestore Project Save")
