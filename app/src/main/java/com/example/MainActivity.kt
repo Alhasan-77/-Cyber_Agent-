@@ -553,7 +553,8 @@ fun NovaForgeStudioShell(
                         }
                     }
                 },
-                onSpeakText = { text -> ttsSpeaker?.speak(text) }
+                onSpeakText = { text -> ttsSpeaker?.speak(text) },
+                isBusy = isBusy
             )
             StudioBottomTab.BIOSCIENCE.index -> BioscienceLabTabScreen(
                 bioscienceOutput = bioscienceOutput,
