@@ -34,6 +34,11 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -1115,6 +1120,56 @@ class StudioViewModel(
         }
     }
 
+    private fun readAgentToolString(args: Map<String, JsonElement>, key: String): String {
+        return args[key]?.jsonPrimitive?.contentOrNull?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: throw IllegalArgumentException("المعامل المطلوب غير موجود أو فارغ: $key")
+    }
+
+    private suspend fun executeAgentTool(
+        name: String,
+        args: Map<String, JsonElement>
+    ): JsonObject {
+        if (name == "get_workspace_status") {
+            val status = buildString {
+                appendLine("Project: ${_editorName.value}")
+                appendLine("Project selected: ${_selectedProjectId.value != null}")
+                appendLine("Active editor tab: ${_activeCodeTab.value}")
+                appendLine("HTML characters: ${_htmlBuffer.value.length}")
+                appendLine("CSS characters: ${_cssBuffer.value.length}")
+                appendLine("JavaScript characters: ${_jsBuffer.value.length}")
+                appendLine("Backend characters: ${_backendBuffer.value.length}")
+            }.trim()
+            return JsonObject(
+                mapOf(
+                    "ok" to JsonPrimitive(true),
+                    "result" to JsonPrimitive(status)
+                )
+            )
+        }
+
+        val task = when (name) {
+            "save_current_project" -> AgentTaskType.SAVE_PROJECT
+            "create_version_snapshot" -> AgentTaskType.CREATE_SNAPSHOT
+            "review_current_code" -> AgentTaskType.REVIEW_CODE
+            "edit_active_code" -> AgentTaskType.EDIT_ACTIVE_CODE
+            else -> throw IllegalArgumentException("أداة غير مسموح بها: $name")
+        }
+        val instruction = when (task) {
+            AgentTaskType.CREATE_SNAPSHOT -> readAgentToolString(args, "commit_message")
+            AgentTaskType.EDIT_ACTIVE_CODE -> readAgentToolString(args, "instruction")
+            else -> name
+        }
+        val (result, sources) = executeAgentTask(task, instruction)
+        return JsonObject(
+            mapOf(
+                "ok" to JsonPrimitive(true),
+                "result" to JsonPrimitive(result),
+                "executed_sources" to JsonPrimitive(sources.joinToString(", "))
+            )
+        )
+    }
+
     private fun appendAgentReply(text: String, model: String, sources: List<String>) {
         _chatMessages.value = _chatMessages.value + ChatMessage(
             id = UUID.randomUUID().toString(),
@@ -1157,29 +1212,45 @@ class StudioViewModel(
                 } else {
                     cleanPrompt
                 }
-                val (replyText, sources) = aiRepository.sendMultiTurnChat(
-                    history = currentHistory,
-                    userPrompt = enrichedPrompt,
-                    selectedModel = _selectedChatModel.value,
-                    persona = _selectedPersona.value,
-                    useSearchGrounding = _useSearchGrounding.value,
-                    useHighThinking = _useHighThinking.value
-                )
-                val effectiveModel = when {
-                    GeminiAiRepository.isDualEngineModel(_selectedChatModel.value) ->
-                        GeminiAiRepository.MODEL_DUAL_ENGINE
-                    GeminiAiRepository.isOpenAiModel(_selectedChatModel.value) ->
-                        _selectedChatModel.value
-                    _useHighThinking.value -> GeminiAiRepository.MODEL_ARGON
-                    _useSearchGrounding.value -> GeminiAiRepository.MODEL_FLASH
-                    else -> _selectedChatModel.value
+                val isOpenAiSelected = GeminiAiRepository.isOpenAiModel(_selectedChatModel.value)
+                val (replyText, providerSources, effectiveModel) = if (isOpenAiSelected) {
+                    val (reply, sources) = aiRepository.sendMultiTurnChat(
+                        history = currentHistory,
+                        userPrompt = enrichedPrompt,
+                        selectedModel = _selectedChatModel.value,
+                        persona = _selectedPersona.value,
+                        useSearchGrounding = _useSearchGrounding.value,
+                        useHighThinking = _useHighThinking.value
+                    )
+                    Triple(reply, sources, _selectedChatModel.value)
+                } else {
+                    val (reply, executedTools) = aiRepository.sendAgentTurn(
+                        history = currentHistory,
+                        userPrompt = enrichedPrompt,
+                        preferredModel = _selectedChatModel.value,
+                        executeTool = { toolName, arguments ->
+                            executeAgentTool(toolName, arguments)
+                        }
+                    )
+                    val modelName = if (
+                        GeminiAiRepository.isDualEngineModel(_selectedChatModel.value)
+                    ) GeminiAiRepository.MODEL_FLASH else _selectedChatModel.value
+                    Triple(
+                        reply,
+                        executedTools.map { "Cyber Agent Tool: $it" },
+                        modelName
+                    )
                 }
                 appendAgentReply(
                     replyText,
                     effectiveModel,
-                    (appliedIds.map { "SkillMemory:$it" } + sources).distinct()
+                    (appliedIds.map { "SkillMemory:$it" } + providerSources).distinct()
                 )
-                _statusBanner.value = "وصل رد من مزود الذكاء الاصطناعي."
+                _statusBanner.value = if (providerSources.any { it.startsWith("Cyber Agent Tool:") }) {
+                    "تم تنفيذ إجراءات داخل مساحة العمل وإرجاع النتيجة."
+                } else {
+                    "وصل رد من مزود الذكاء الاصطناعي."
+                }
             } catch (error: Exception) {
                 Log.e(TAG, "Chat or agent task failed", error)
                 val errorText = "لم تُنفذ المهمة. السبب: ${error.localizedMessage ?: "خطأ غير معروف"}"
