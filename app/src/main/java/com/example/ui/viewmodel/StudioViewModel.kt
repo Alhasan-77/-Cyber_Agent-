@@ -1137,6 +1137,7 @@ class StudioViewModel(
                     preferredModel = _selectedChatModel.value
                 )
                 require(revisedFile.isNotBlank()) { "لم يرجع نموذج الذكاء الاصطناعي ملفاً معدلاً." }
+                require(revisedFile != currentCode) { "لم ينتج النموذج تغييراً في الملف؛ لم يتم حفظ تعديل." }
 
                 persistCurrentProject()
                 val projectId = _selectedProjectId.value
@@ -1155,7 +1156,12 @@ class StudioViewModel(
                 ).getOrElse { error -> throw error }
 
                 updateActiveBuffer(revisedFile)
-                val saveResult = persistCurrentProject()
+                val saveResult = try {
+                    persistCurrentProject()
+                } catch (saveError: Exception) {
+                    updateActiveBuffer(currentCode)
+                    throw saveError
+                }
                 "تم تطبيق الملف المعدل بالكامل على تبويب $tab وحفظه. أُنشئت نسخة احتياطية قبل التعديل ($backupVersion / $backupId).\n$saveResult\n\nراجع التغيير في المحرر قبل تشغيله." to
                     listOf("Cyber Agent Code Editor", "AI Full-File Revision", "Firestore Backup Snapshot", "Firestore Project Save")
             }
