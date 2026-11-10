@@ -1110,10 +1110,29 @@ class StudioViewModel(
                     preferredModel = _selectedChatModel.value
                 )
                 require(revisedFile.isNotBlank()) { "لم يرجع نموذج الذكاء الاصطناعي ملفاً معدلاً." }
+
+                persistCurrentProject()
+                val projectId = _selectedProjectId.value
+                    ?: throw IllegalStateException("تعذر تحديد المشروع لحفظ نسخة احتياطية قبل التعديل.")
+                val snapshotCount = (snapshotsState.value as? UiState.Success)?.data
+                    ?.count { it.projectId == projectId } ?: 0
+                val backupVersion = "agent-backup-${System.currentTimeMillis()}"
+                val backupId = repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = "نسخة احتياطية قبل تعديل الوكيل: ${originalPrompt.take(180)}",
+                    versionTag = backupVersion,
+                    htmlCode = _htmlBuffer.value,
+                    cssCode = _cssBuffer.value,
+                    jsCode = _jsBuffer.value,
+                    backendCode = _backendBuffer.value,
+                    addedLines = 0L,
+                    deletedLines = 0L
+                ).getOrElse { error -> throw error }
+
                 updateActiveBuffer(revisedFile)
                 val saveResult = persistCurrentProject()
-                "تم تطبيق التعديل المقترح على تبويب $tab وحفظ ملفات المشروع.\n$saveResult\n\nراجع التغيير في المحرر قبل تشغيله." to
-                    listOf("Cyber Agent Code Editor", "AI Code Suggestion", "Firestore Project Save")
+                "تم تطبيق الملف المعدل بالكامل على تبويب $tab وحفظه. أُنشئت نسخة احتياطية قبل التعديل ($backupVersion / $backupId).\n$saveResult\n\nراجع التغيير في المحرر قبل تشغيله." to
+                    listOf("Cyber Agent Code Editor", "AI Full-File Revision", "Firestore Backup Snapshot", "Firestore Project Save")
             }
         }
     }
