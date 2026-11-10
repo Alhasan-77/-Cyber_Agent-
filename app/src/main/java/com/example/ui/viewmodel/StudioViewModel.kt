@@ -1041,29 +1041,56 @@ class StudioViewModel(
         indexConfig: String
     ) {
         viewModelScope.launch {
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            repository.createCollectionSchema(
-                projectId = projectId,
-                collectionName = collectionName,
-                fieldsSpec = fieldsSpec,
-                sampleRecordsJson = sampleRecordsJson,
-                indexConfig = indexConfig
-            )
-            _statusBanner.value = "تم إنشاء مجموعة البيانات «$collectionName» في قاعدة البيانات السحابية"
+            val projectId = _selectedProjectId.value
+            if (projectId.isNullOrBlank()) {
+                _statusBanner.value = "حدد مشروعاً قبل إنشاء مجموعة البيانات."
+                return@launch
+            }
+            if (collectionName.isBlank()) {
+                _statusBanner.value = "اسم مجموعة البيانات مطلوب."
+                return@launch
+            }
+
+            _isBusy.value = true
+            try {
+                repository.createCollectionSchema(
+                    projectId = projectId,
+                    collectionName = collectionName.trim(),
+                    fieldsSpec = fieldsSpec,
+                    sampleRecordsJson = sampleRecordsJson,
+                    indexConfig = indexConfig
+                ).onSuccess {
+                    _statusBanner.value = "تم إنشاء مجموعة البيانات «$collectionName» وحفظها سحابياً."
+                }.onFailure { error ->
+                    _statusBanner.value = "تعذر إنشاء مجموعة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun appendRecordToCollection(schema: DbCollectionSchema, newRecordJsonObject: String) {
         viewModelScope.launch {
-            val currentJson = schema.sampleRecordsJson.trim()
-            val updatedJson = if (currentJson.endsWith("]") && currentJson.length > 2) {
-                currentJson.removeSuffix("]") + "," + newRecordJsonObject + "]"
-            } else {
-                "[$newRecordJsonObject]"
-            }
-            if (schema.createdAt != null) {
-                repository.updateCollectionSchema(schema.copy(sampleRecordsJson = updatedJson))
-                _statusBanner.value = "تم إدراج السجل الجديد في «${schema.collectionName}»"
+            try {
+                val currentRecords = kotlinx.serialization.json.Json.parseToJsonElement(
+                    schema.sampleRecordsJson.ifBlank { "[]" }
+                ) as? kotlinx.serialization.json.JsonArray
+                    ?: throw IllegalArgumentException("بيانات السجلات الحالية يجب أن تكون مصفوفة JSON.")
+                val newRecord = kotlinx.serialization.json.Json.parseToJsonElement(newRecordJsonObject)
+                require(newRecord is kotlinx.serialization.json.JsonObject) {
+                    "السجل الجديد يجب أن يكون كائن JSON."
+                }
+                val updatedJson = kotlinx.serialization.json.JsonArray(currentRecords + newRecord).toString()
+                repository.updateCollectionSchema(
+                    schema.copy(sampleRecordsJson = updatedJson)
+                ).onSuccess {
+                    _statusBanner.value = "تم إدراج السجل الجديد وحفظه في «${schema.collectionName}»."
+                }.onFailure { error ->
+                    _statusBanner.value = "تعذر إدراج السجل: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                }
+            } catch (error: Exception) {
+                _statusBanner.value = "بيانات السجل غير صالحة: ${error.localizedMessage ?: "تحقق من JSON"}"
             }
         }
     }
@@ -1087,9 +1114,23 @@ class StudioViewModel(
     }
 
     fun deleteDatabaseCollection(collectionId: String) {
+        if (collectionId.isBlank()) {
+            _statusBanner.value = "معرّف مجموعة البيانات غير صالح."
+            return
+        }
         viewModelScope.launch {
-            repository.deleteCollectionSchema(collectionId)
-            _statusBanner.value = "تم حذف مجموعة البيانات."
+            _isBusy.value = true
+            try {
+                repository.deleteCollectionSchema(collectionId)
+                    .onSuccess {
+                        _statusBanner.value = "تم حذف مجموعة البيانات من Firestore."
+                    }
+                    .onFailure { error ->
+                        _statusBanner.value = "تعذر حذف مجموعة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                    }
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
