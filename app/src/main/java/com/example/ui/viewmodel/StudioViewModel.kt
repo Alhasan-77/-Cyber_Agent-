@@ -1032,9 +1032,21 @@ class StudioViewModel(
             AgentTaskType.CREATE_SNAPSHOT -> {
                 val projectId = _selectedProjectId.value
                     ?: throw IllegalStateException("احفظ المشروع أولاً قبل إنشاء لقطة إصدار.")
-                val snapshotCount = (snapshotsState.value as? UiState.Success)?.data
-                    ?.count { it.projectId == projectId } ?: 0
-                val versionTag = "v1.${snapshotCount + 1}.0"
+                val projectSnapshots = (snapshotsState.value as? UiState.Success)?.data
+                    .orEmpty()
+                    .filter { it.projectId == projectId }
+                val previous = projectSnapshots.firstOrNull()
+                val previousLines = (
+                    previous?.htmlCode.orEmpty() + "\n" + previous?.cssCode.orEmpty() +
+                        "\n" + previous?.jsCode.orEmpty() + "\n" + previous?.backendCode.orEmpty()
+                    ).lines()
+                val currentLines = (
+                    _htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
+                        _jsBuffer.value + "\n" + _backendBuffer.value
+                    ).lines()
+                val added = currentLines.count { it !in previousLines }.toLong()
+                val deleted = previousLines.count { it !in currentLines }.toLong()
+                val versionTag = "v1.${projectSnapshots.size + 1}.0"
                 val snapshotId = repository.createSnapshot(
                     projectId = projectId,
                     commitMessage = originalPrompt.take(300),
@@ -1043,8 +1055,8 @@ class StudioViewModel(
                     cssCode = _cssBuffer.value,
                     jsCode = _jsBuffer.value,
                     backendCode = _backendBuffer.value,
-                    addedLines = 0L,
-                    deletedLines = 0L
+                    addedLines = added,
+                    deletedLines = deleted
                 ).getOrElse { error -> throw error }
                 appendConsoleLog("[Agent Task] Created snapshot $versionTag ($snapshotId).")
                 "تم إنشاء لقطة الإصدار $versionTag وحفظها في Firestore." to
