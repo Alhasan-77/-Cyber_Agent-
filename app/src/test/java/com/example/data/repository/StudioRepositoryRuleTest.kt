@@ -409,6 +409,16 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
             .collection("projects").document(projectId)
             .collection("data").document("orders")
             .collection("records").document(recordId)
+        val liveRecords = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeCollectionRecords(
+                projectId = projectId,
+                schemaId = schemaId,
+                collectionName = "orders"
+            ).first { records -> records.any { it.id == recordId } }
+        }
+        assertTrue(liveRecords.any { it.id == recordId })
+        assertTrue(liveRecords.first { it.id == recordId }.recordJson.contains("A-100"))
+
         val record = withTimeout(DEFAULT_TIMEOUT_MS) { recordRef.get().await() }
         assertTrue(record.exists())
         assertEquals(userId, record.getString("userId"))
