@@ -1,76 +1,56 @@
 # Cyber Agent — تشغيل التطبيق الحقيقي
 
-هذه الوثيقة تفصل بين وظائف التطبيق التي تنفذها الشيفرة فعلياً وبين الخدمات التي تتطلب إعداد مشروع Firebase أو مزوداً خارجياً.
+توضح هذه الوثيقة ما يعمل محلياً، وما يتطلب إعداد مشروع Firebase أو مزوداً خارجياً. نجاح بناء APK وحده لا يثبت اتصال الخدمات السحابية أو عملها على جهاز حقيقي.
 
 ## 1. إعداد Firebase
 
-1. أنشئ مشروع Firebase أو استخدم مشروعاً تملكه.
-2. أضف تطبيق Android بالمعرّف التالي:
-   `com.aistudio.novaforge.kxmpzq`
-3. نزّل ملف `google-services.json` وضعه في:
-   `app/google-services.json`
-   لا تضع الملف داخل المستودع العام إذا كانت سياسة مشروعك تمنع نشر إعداداته.
-   لبناء APK متصل بالمشروع عبر GitHub Actions، أضف محتوى الملف كـRepository Secret باسم `GOOGLE_SERVICES_JSON` من Settings → Secrets and variables → Actions.
-4. فعّل Google كموفر تسجيل دخول في Firebase Authentication.
-5. أضف بصمات شهادة التوقيع SHA-1 وSHA-256 لتطبيق Android في إعدادات Firebase؛ أضف بصمة debug للتطوير وبصمة release للتوزيع.
-6. أنشئ قاعدة Firestore بالمعرّف الذي يحدده مورد `firestore_database_id` في التطبيق، ثم انشر قواعد `firestore.rules`:
+1. أنشئ مشروع Firebase تملكه.
+2. أضف تطبيق Android بالمعرّف الدقيق: `com.aistudio.novaforge.kxmpzq`.
+3. نزّل `google-services.json` وضعه محلياً في `app/google-services.json`. لا ترفع الملف إلى مستودع عام.
+4. لتمكين CI من بناء APK مرتبط بالمشروع، أضف محتوى الملف كـGitHub Repository Secret باسم `GOOGLE_SERVICES_JSON` من Settings → Secrets and variables → Actions.
+5. فعّل Google ضمن Authentication → Sign-in method.
+6. أنشئ قاعدة Firestore بالمعرّف المحدد في `app/src/main/res/values/firebase_applet_config.xml`. لا تنشئ قاعدة باسم افتراضي مختلف.
+7. انشر القواعد من جذر المشروع باستخدام Firebase CLI:
    `firebase deploy --only firestore:rules`
-7. فعّل Firebase AI Logic واختر Gemini Developer API أو Agent Platform Gemini API حسب إعداد مشروعك.
+8. فعّل Firebase AI Logic واختر مزود Gemini المتاح في مشروعك. تحقق من توفر أسماء النماذج في حسابك ومن إعدادات الفوترة قبل تفعيل النماذج المدفوعة.
 
 ## 2. App Check
 
-Firebase AI Logic يتطلب App Check enforcement منذ 2 نوفمبر 2026.
+- في التطوير، يستخدم إصدار Debug مزود Debug App Check. شغّل التطبيق، خذ الرمز من Logcat، وسجّله في Firebase Console. لا تحفظ الرمز في Git أو داخل ملف عام.
+- في الإنتاج، يستخدم التطبيق Play Integrity. سجّل بصمة SHA-256 لشهادة التوقيع الفعلية في إعدادات تطبيق Firebase.
+- لا تفعّل Enforcement قبل تسجيل تطبيقك واختبار نسخة Debug ونسخة Release على جهاز حقيقي.
 
-- التطوير: استخدم Debug provider، ثم سجّل debug token في Firebase Console. لا تضع token في Git.
-- الإنتاج: سجّل تطبيق Android مع Play Integrity، وأضف بصمة SHA-256 الصحيحة، ثم فعّل enforcement بعد التأكد من نجاح التحقق.
-- يجب أن يتطابق إعداد App Check مع تطبيق Firebase المسجل ونسخة التوقيع المستخدمة.
+## 3. Gemini وOpenAI
 
-## 3. نماذج Gemini
+- Gemini يتصل عبر Firebase AI Logic؛ يحتاج مشروع Firebase مضبوطاً، ومزوداً مفعلاً، وحصة/فوترة مناسبة للنموذج.
+- لا تضع مفتاح OpenAI داخل APK أو BuildConfig في إصدار إنتاجي؛ يمكن استخراج الأسرار المضمنة في التطبيق. لتفعيل OpenAI بأمان، استخدم خادماً وسيطاً يحتفظ بالمفتاح في Secret Manager ويصادق طلبات التطبيق.
+- الوضع المزدوج لا يعني أن المزودين يعملان تلقائياً؛ تحقق من نجاح كل مزود على حدة.
 
-يستخدم الوكيل أدوات Function Calling محددة لتنفيذ إجراءات مساحة العمل. النماذج المدعومة في Firebase AI Logic لهذه الوظيفة تشمل Gemini 4 Argon وGemini 3.8 Flash وGemini 3.5 Flash-Lite.
+## 4. حدود الوكيل الحالية
 
-- Gemini 3.8 Flash هو المسار الافتراضي للوكيل عند اختيار الوضع المزدوج.
-- Gemini 4 Argon يتطلب خطة Blaze والفوترة.
-- توليد الصور عبر Nano Banana يتطلب تفعيل الفوترة.
-- أسماء النماذج يجب أن تبقى مطابقة لقائمة Firebase AI Logic الرسمية.
+الإجراءات المحلية المسموح بها في هذا الإصدار تشمل قراءة حالة مساحة العمل، وإنشاء مشروع وحفظه، وحفظ ملفات المحرر، وإنشاء لقطة إصدار، ومراجعة المصدر بمساعدة AI، واقتراح تعديل للكود النشط.
 
-## 4. مهام الوكيل الحالية
+لا ينفذ الوكيل أوامر shell عامة، ولا ينشر مواقع أو تطبيقات، ولا يشغّل اختبارات SAST/DAST حقيقية لمجرد طلب مراجعة AI. كما أن معاينة IDE ليست بيئة تشغيل Backend إنتاجية.
 
-بعد تسجيل الدخول وإعداد Firebase، يستطيع الوكيل تنفيذ الإجراءات المسموح بها التالية:
+## 5. الاختبارات والبناء محلياً
 
-- قراءة حالة مساحة العمل الحالية.
-- إنشاء مشروع جديد من وصف المستخدم، توليد ملفاته، حفظها في Firestore، وتهيئة المحرر.
-- حفظ ملفات المحرر في مشروع المستخدم على Firestore.
-- إنشاء لقطة إصدار محفوظة.
-- مراجعة الكود بمساعدة نموذج الذكاء الاصطناعي.
-- اقتراح تعديل للكود النشط، تطبيقه في المحرر، ثم حفظ المشروع.
-
-الوكيل لا ينفذ أوامر shell عشوائية، ولا يحذف المشاريع، ولا ينشر تطبيقات أو مواقع. لا يعتبر مراجعة النموذج بديلاً عن SAST/DAST أو اختبارات التشغيل.
-
-## 5. OpenAI
-
-لا تضع مفتاح OpenAI داخل APK أو `BuildConfig` في إصدار إنتاجي؛ يمكن استخراج القيم المضمنة في تطبيق Android. إذا أردت تفعيل OpenAI، اربطه بخادم وسيط موثوق يحتفظ بالمفتاح على الخادم، ثم اجعل التطبيق يتصل بنقطة النهاية الخاصة بك.
-
-## 6. وظائف غير مفعّلة حالياً
-
-- توليد ملفات فيديو أو موسيقى عبر مزود حقيقي غير مهيأ في هذا الإصدار.
-- النشر السحابي CI/CD غير مربوط بمزود نشر.
-- زر المراجعة التقليدي يقدم فحصاً أولياً للمصدر فقط؛ لا يشغّل ماسحاً أمنياً ديناميكياً.
-- معاينة IDE تشغّل HTML/CSS/JavaScript داخل WebView، لكنها لا تبني حزمة Android أو backend production.
-
-## 7. التحقق
+المتطلبات: JDK 21، Node.js 24.12 أو أحدث، Gradle حسب Wrapper المشروع، Firebase CLI.
 
 من جذر المستودع:
 
 ```bash
-firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest"
-gradle --no-daemon assembleDebug
-
-إذا لم يوجد ملف التوقيع المحلي `debug.keystore`، أنشئ مفتاح Debug محلياً بالأمر التالي من جذر المستودع (لا تستخدمه لتوقيع إصدار Release):
-
-```bash
+npm install
+firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest && npm run test:firestore-rules"
 keytool -genkeypair -noprompt -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-```
+gradle --no-daemon assembleDebug
 ```
 
-اختبارات CI تستخدم Firebase Auth وFirestore Emulator. نجاح الاختبارات لا يثبت تسجيل الدخول إلى مشروع Firebase الإنتاجي أو عمل App Check على جهاز حقيقي؛ يجب إجراء اختبار جهاز بعد إدخال إعدادات المشروع الفعلية.
+إذا كان `debug.keystore` موجوداً بالفعل، لا تنشئه مرة أخرى. ناتج Debug المتوقع هو `app/build/outputs/apk/debug/app-debug.apk`.
+
+## 6. إصدار Release
+
+لا تستخدم مفتاح Debug للنشر. أنشئ Upload Keystore خاصاً، واحتفظ بنسخة احتياطية آمنة منه، وخزّن بياناته في GitHub Secrets مثل `KEYSTORE_PATH` و`STORE_PASSWORD` و`KEY_PASSWORD`. يجب ألا تُرفع ملفات keystore أو كلمات المرور إلى Git. بعد التوقيع، سجّل بصمات شهادة Release في Firebase وجرّب تسجيل الدخول وApp Check من جهاز حقيقي.
+
+## 7. شروط اعتبار التطبيق جاهزاً
+
+لا تعتبر النسخة مكتملة حتى تتحقق جميع النقاط التالية: نجاح Kotlin/Robolectric tests، نجاح Firestore Rules tests على Emulator، نجاح assembleDebug، توفر APK كأثر CI، إعداد Firebase الفعلي، نجاح Google Sign-In وFirestore وGemini وApp Check على جهاز Android، واختبار عدم تسريب الأسرار. نجاح CI لا يثبت وحده عمل خدمات الإنتاج.
