@@ -21,6 +21,15 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.longOrNull
 import java.util.UUID
 
 class StudioRepository(private val db: FirebaseFirestore) {
@@ -42,6 +51,31 @@ class StudioRepository(private val db: FirebaseFirestore) {
         }
     }
 
+    private fun requireCollectionName(value: String) {
+        require(value.matches(Regex("^[A-Za-z][A-Za-z0-9_]{0,63}$"))) {
+            "Collection name must start with a letter and contain only letters, numbers, and underscores (max 64 characters)."
+        }
+    }
+
+    private fun parseSampleRecordsJson(value: String): JsonArray {
+        val parsed = Json.parseToJsonElement(value.ifBlank { "[]" }) as? JsonArray
+            ?: throw IllegalArgumentException("Sample records must be a JSON array.")
+        require(parsed.all { it is JsonObject }) {
+            "Each sample record must be a JSON object."
+        }
+        return parsed
+    }
+
+    private fun JsonElement.toFirestoreValue(): Any? = when (this) {
+        is JsonObject -> entries.associate { (key, value) -> key to value.toFirestoreValue() }
+        is JsonArray -> map { it.toFirestoreValue() }
+        is JsonPrimitive -> {
+            if (isString) content
+            else booleanOrNull ?: longOrNull ?: doubleOrNull ?: content
+        }
+        JsonNull -> null
+    }
+
     private suspend fun requireOwnedProject(uid: String, projectId: String) {
         requireText(projectId, "Project ID", 128)
         require(projectId.matches(Regex("^[a-zA-Z0-9_-]+$"))) { "Project ID contains unsupported characters." }
@@ -49,6 +83,25 @@ class StudioRepository(private val db: FirebaseFirestore) {
             .collection("projects").document(projectId).get().await()
         require(project.exists() && project.getString("userId") == uid) {
             "The project does not exist or does not belong to the signed-in user."
+        }
+    }
+
+    private suspend fun requireOwnedCollectionSchema(
+        uid: String,
+        projectId: String,
+        schemaId: String,
+        collectionName: String
+    ) {
+        requireText(schemaId, "Schema ID", 128)
+        val schema = db.collection("users").document(uid)
+            .collection("collections").document(schemaId).get().await()
+        require(
+            schema.exists() &&
+                schema.getString("userId") == uid &&
+                schema.getString("projectId") == projectId &&
+                schema.getString("collectionName") == collectionName
+        ) {
+            "The collection schema does not exist or does not belong to this project and user."
         }
     }
 
@@ -362,8 +415,10 @@ class StudioRepository(private val db: FirebaseFirestore) {
         val uid = requireUserId()
         requireOwnedProject(uid, projectId)
         requireText(collectionName, "Collection name", 80)
+        requireCollectionName(collectionName)
         requireText(fieldsSpec, "Collection fields specification", 5000)
         requireText(sampleRecordsJson, "Sample records JSON", 20000, allowBlank = true)
+        val normalizedSamples = Json.encodeToString(JsonArray.serializer(), parseSampleRecordsJson(sampleRecordsJson))
         requireText(indexConfig, "Index configuration", 500, allowBlank = true)
         val colId = "col_" + UUID.randomUUID().toString().replace("-", "").take(16)
         val docRef = db.collection("users").document(uid).collection("collections").document(colId)
@@ -372,7 +427,7 @@ class StudioRepository(private val db: FirebaseFirestore) {
             "projectId" to projectId,
             "collectionName" to collectionName,
             "fieldsSpec" to fieldsSpec,
-            "sampleRecordsJson" to sampleRecordsJson,
+            "sampleRecordsJson" to normalizedSamples,
             "indexConfig" to indexConfig,
             "createdAt" to FieldValue.serverTimestamp(),
             "updatedAt" to FieldValue.serverTimestamp()
@@ -388,13 +443,54 @@ class StudioRepository(private val db: FirebaseFirestore) {
         }
     }
 
+    suspend fun createCollectionRecord(
+        projectId: String,
+        schemaId: String,
+        collectionName: String,
+        recordJson: String
+    ): Result<String> = runCatchingCancellable {
+        val uid = requireUserId()
+        requireOwnedProject(uid, projectId)
+        requireCollectionName(collectionName)
+        requireText(recordJson, "Collection record JSON", 20000)
+        requireOwnedCollectionSchema(uid, projectId, schemaId, collectionName)
+
+        val parsedRecord = Json.parseToJsonElement(recordJson) as? JsonObject
+            ?: throw IllegalArgumentException("A collection record must be a JSON object.")
+        val recordId = "rec_" + UUID.randomUUID().toString().replace("-", "").take(16)
+        val document = db.collection("users").document(uid)
+            .collection("projects").document(projectId)
+            .collection("data").document(collectionName)
+            .collection("records").document(recordId)
+        val payload = mapOf(
+            "userId" to uid,
+            "projectId" to projectId,
+            "schemaId" to schemaId,
+            "collectionName" to collectionName,
+            "recordData" to parsedRecord.toFirestoreValue(),
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        try {
+            document.set(payload).await()
+            recordId
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            handleFirestoreError(error, OperationType.CREATE, document.path)
+            throw error
+        }
+    }
+
     suspend fun updateCollectionSchema(schema: DbCollectionSchema): Result<Unit> = runCatchingCancellable {
         val uid = requireUserId()
         require(schema.id.isNotBlank()) { "Schema ID must not be blank" }
         requireNotNull(schema.createdAt) { "Schema createdAt must not be null" }
         requireText(schema.collectionName, "Collection name", 80)
+        requireCollectionName(schema.collectionName)
         requireText(schema.fieldsSpec, "Collection fields specification", 5000)
         requireText(schema.sampleRecordsJson, "Sample records JSON", 20000, allowBlank = true)
+        val normalizedSamples = Json.encodeToString(JsonArray.serializer(), parseSampleRecordsJson(schema.sampleRecordsJson))
         requireText(schema.indexConfig, "Index configuration", 500, allowBlank = true)
         val docRef = db.collection("users").document(uid).collection("collections").document(schema.id)
         try {
@@ -403,7 +499,7 @@ class StudioRepository(private val db: FirebaseFirestore) {
                     userId = uid,
                     collectionName = schema.collectionName,
                     fieldsSpec = schema.fieldsSpec,
-                    sampleRecordsJson = schema.sampleRecordsJson,
+                    sampleRecordsJson = normalizedSamples,
                     indexConfig = schema.indexConfig,
                     updatedAt = null
                 )
