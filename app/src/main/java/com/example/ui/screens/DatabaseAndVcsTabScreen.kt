@@ -232,7 +232,7 @@ private fun FlexibleDatabaseSection(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "هذا القسم يحفظ وصف المخطط وعينات JSON فقط تحت users/{uid}/collections. لا ينشئ مجموعة تشغيلية مستقلة أو سجلات فعلية في collectionName.",
+                        text = "تعريف المخطط يُحفظ تحت users/{uid}/collections. السجلات الحقيقية تُحفظ تحت users/{uid}/projects/{projectId}/data/{collectionName}/records؛ وحقل sampleRecordsJson معاينة JSON مساعدة فقط.",
                         style = MaterialTheme.typography.bodySmall,
                         color = CyberAmber
                     )
@@ -367,7 +367,7 @@ private fun FlexibleDatabaseSection(
                         OutlinedTextField(
                             value = newRecordJson,
                             onValueChange = { newRecordJson = it },
-                            label = { Text("إضافة عينة JSON Object") },
+                            label = { Text("بيانات السجل الجديد (JSON Object)") },
                             singleLine = true,
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.weight(1f)
@@ -377,7 +377,7 @@ private fun FlexibleDatabaseSection(
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("add_record_${schema.id}")
                         ) {
-                            Text("+ عينة")
+                            Text("+ سجل فعلي")
                         }
                         Button(
                             onClick = { onGenerateBackendDao(schema) },
