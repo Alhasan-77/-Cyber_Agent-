@@ -180,6 +180,7 @@ fun DatabaseAndVcsTabScreen(
                 modifier = Modifier.fillMaxSize()
             )
             1 -> FlexibleDatabaseSection(
+                dataViewModel = dataViewModel,
                 collections = (collectionsState as? UiState.Success)?.data.orEmpty(),
                 onCreateCollection = onCreateCollection,
                 onAppendRecord = onAppendRecord,
@@ -200,6 +201,7 @@ fun DatabaseAndVcsTabScreen(
 
 @Composable
 private fun FlexibleDatabaseSection(
+    dataViewModel: DataViewModel,
     collections: List<DbCollectionSchema>,
     onCreateCollection: (String, String, String, String) -> Unit,
     onAppendRecord: (DbCollectionSchema, String) -> Unit,
