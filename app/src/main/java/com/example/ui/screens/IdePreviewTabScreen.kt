@@ -302,7 +302,6 @@ fun IdePreviewTabScreen(
                             enabled = !isBusy && aiPromptText.isNotBlank(),
                             onClick = {
                                 onTriggerInlineSuggestion(aiPromptText.trim())
-                                aiPromptText = ""
                             },
                             shape = RoundedCornerShape(50),
                             border = BorderStroke(1.dp, CyberBorder),
@@ -465,13 +464,13 @@ fun IdePreviewTabScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "🌐 المعاينة التفاعلية الحية (Gemini Canvas Preview)",
+                                text = "🌐 المعاينة التفاعلية المحلية (Android WebView)",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = CyberEmerald,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "تحديث تلقائي • DOM Ready",
+                                text = "HTML / CSS / JavaScript • محلي",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = CyberCyan
                             )
@@ -544,7 +543,7 @@ fun IdePreviewTabScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "🖥️ سجل التشغيل الفوري (${consoleLogs.size})",
+                                text = "🖥️ سجل WebView والواجهة (${consoleLogs.size})",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = CyberCyan,
                                 fontWeight = FontWeight.Bold
