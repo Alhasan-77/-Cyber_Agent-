@@ -28,6 +28,33 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(userId)/projects/$(projectId)).data.userId == request.auth.uid;
     }
 
+    function isValidCollectionName(name) {
+      return name is string && name.matches('^[A-Za-z][A-Za-z0-9_]{0,63}$');
+    }
+
+    function ownsCollectionSchema(userId, projectId, schemaId, collectionName) {
+      return isSignedIn() &&
+             request.auth.uid == userId &&
+             ownsProject(userId, projectId) &&
+             isValidId(schemaId) &&
+             isValidCollectionName(collectionName) &&
+             exists(/databases/$(database)/documents/users/$(userId)/collections/$(schemaId)) &&
+             get(/databases/$(database)/documents/users/$(userId)/collections/$(schemaId)).data.userId == userId &&
+             get(/databases/$(database)/documents/users/$(userId)/collections/$(schemaId)).data.projectId == projectId &&
+             get(/databases/$(database)/documents/users/$(userId)/collections/$(schemaId)).data.collectionName == collectionName;
+    }
+
+    function isValidCustomCollectionRecord(data, userId, projectId, collectionName) {
+      return data.userId is string && data.userId == userId &&
+             data.projectId is string && data.projectId == projectId &&
+             data.collectionName is string && data.collectionName == collectionName &&
+             data.schemaId is string &&
+             ownsCollectionSchema(userId, projectId, data.schemaId, collectionName) &&
+             data.recordData is map &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
     // Entity 0: UserProfile validation helper
     function isValidUserProfile(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
@@ -75,7 +102,7 @@ service cloud.firestore {
     function isValidDbCollectionSchema(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
              data.projectId is string && ownsProject(data.userId, data.projectId) &&
-             data.collectionName is string && data.collectionName.size() >= 1 && data.collectionName.size() <= 80 &&
+             isValidCollectionName(data.collectionName) &&
              data.fieldsSpec is string && data.fieldsSpec.size() >= 1 && data.fieldsSpec.size() <= 5000 &&
              data.sampleRecordsJson is string && data.sampleRecordsJson.size() <= 20000 &&
              data.indexConfig is string && data.indexConfig.size() <= 500 &&
@@ -156,6 +183,40 @@ service cloud.firestore {
                        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'language', 'htmlCode', 'cssCode', 'jsCode', 'backendCode', 'updatedAt']);
 
       allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(projectId) && existing().userId == request.auth.uid;
+    }
+
+    match /users/{userId}/projects/{projectId}/data/{collectionName}/records/{recordId} {
+      allow get: if isSignedIn() &&
+                    request.auth.uid == userId &&
+                    isValidId(userId) &&
+                    isValidId(projectId) &&
+                    isValidId(recordId) &&
+                    isValidCustomCollectionRecord(existing(), userId, projectId, collectionName);
+
+      allow list: if isSignedIn() &&
+                     request.auth.uid == userId &&
+                     isValidId(userId) &&
+                     isValidId(projectId) &&
+                     isValidCustomCollectionRecord(existing(), userId, projectId, collectionName);
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(projectId) &&
+                       isValidId(recordId) &&
+                       incoming().keys().hasAll(['userId', 'projectId', 'schemaId', 'collectionName', 'recordData', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'projectId', 'schemaId', 'collectionName', 'recordData', 'createdAt', 'updatedAt']) &&
+                       isValidCustomCollectionRecord(incoming(), userId, projectId, collectionName);
+
+      // Custom collection records are immutable; delete and recreate to change a record.
+      allow update: if false;
+
+      allow delete: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(projectId) &&
+                       isValidId(recordId) &&
+                       isValidCustomCollectionRecord(existing(), userId, projectId, collectionName);
     }
 
     match /users/{userId}/snapshots/{snapshotId} {
