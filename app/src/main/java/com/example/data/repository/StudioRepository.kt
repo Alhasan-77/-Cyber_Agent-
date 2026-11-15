@@ -740,7 +740,7 @@ class StudioRepository(private val db: FirebaseFirestore) {
                             updatedAt = null
                         )
                     ).await()
-                    return@runCatching
+                    return@runCatchingCancellable
                 }
             }
             val initialModel = preferredAiModel?.takeIf { it.isNotBlank() }?.take(100) ?: "gemini+chatgpt-dual"
