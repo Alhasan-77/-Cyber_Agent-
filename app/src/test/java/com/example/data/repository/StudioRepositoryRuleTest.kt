@@ -397,14 +397,19 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
             indexConfig = ""
         ).getOrThrow()
 
-        val recordId = withTimeout(DEFAULT_TIMEOUT_MS) {
+        val createRecordResult = withTimeout(DEFAULT_TIMEOUT_MS) {
             repository.createCollectionRecord(
                 projectId = projectId,
                 schemaId = schemaId,
                 collectionName = "orders",
                 recordJson = """{"orderId":"A-100","amount":12}"""
-            ).getOrThrow()
+            )
         }
+        assertTrue(
+            "createCollectionRecord failed: ${createRecordResult.exceptionOrNull()?.stackTraceToString()}",
+            createRecordResult.isSuccess
+        )
+        val recordId = createRecordResult.getOrThrow()
         val recordRef = firestore.collection("users").document(userId)
             .collection("projects").document(projectId)
             .collection("data").document("orders")
