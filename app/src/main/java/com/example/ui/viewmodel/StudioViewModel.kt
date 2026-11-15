@@ -538,6 +538,8 @@ class StudioViewModel(
                 }.onFailure { error ->
                     _statusBanner.value = "تعذر حفظ تقرير المراجعة: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Code review failed", error)
                 _statusBanner.value = "تعذرت مراجعة الكود: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -619,6 +621,8 @@ class StudioViewModel(
                     Log.w(TAG, "Initial project snapshot failed", error)
                 }
                 _statusBanner.value = "تم إنشاء مشروع البداية."
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 hasSeededInitialData = false
                 Log.e(TAG, "Initial workspace creation failed", error)
@@ -681,6 +685,8 @@ class StudioViewModel(
             _isBusy.value = true
             try {
                 _statusBanner.value = persistCurrentProject()
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Project save failed", error)
                 _statusBanner.value = "تعذر حفظ المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -762,6 +768,8 @@ class StudioViewModel(
             _isBusy.value = true
             try {
                 _statusBanner.value = createProjectFromBrief(name, description, language)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Project creation failed", error)
                 _statusBanner.value = "تعذر إنشاء المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -783,6 +791,8 @@ class StudioViewModel(
                     Log.e(TAG, "Project deletion failed", error)
                     _statusBanner.value = "تعذر حذف المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Project deletion failed", error)
                 _statusBanner.value = "تعذر حذف المشروع: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -831,6 +841,8 @@ class StudioViewModel(
                 }
                 appendConsoleLog("[AI Copilot] Added a suggestion to $currentTab via ${_selectedChatModel.value}$skillsNote")
                 _statusBanner.value = "تم إنشاء اقتراح برمجي وإضافته إلى تبويب $currentTab. لم يتم اختباره أو تشغيله."
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Inline code suggestion failed", error)
                 _statusBanner.value = "تعذر إنشاء الاقتراح: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -924,6 +936,8 @@ class StudioViewModel(
                 val skillsNote = appliedIds.take(3).joinToString(", ")
                 _statusBanner.value =
                     "تم توليد الملفات وحفظها في Firestore مع نسخة احتياطية ($backupVersion). لم يتم تشغيل مترجم أو نشر. المهارات: $skillsNote"
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Full-stack generation failed", error)
                 _statusBanner.value = "تعذر توليد الملفات أو حفظها: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -948,8 +962,7 @@ class StudioViewModel(
                     "\n" + previousSnap?.jsCode.orEmpty() + "\n" + previousSnap?.backendCode.orEmpty()).lines()
                 val currLines = (_htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
                     _jsBuffer.value + "\n" + _backendBuffer.value).lines()
-                val added = currLines.count { it !in prevLines }.toLong()
-                val deleted = prevLines.count { it !in currLines }.toLong()
+                val (added, deleted) = countLineChanges(prevLines, currLines)
                 val tag = versionTag.ifBlank {
                     "v1.${((snapshotsState.value as? UiState.Success)?.data?.size ?: 0) + 1}.0"
                 }
@@ -970,6 +983,8 @@ class StudioViewModel(
                     Log.e(TAG, "Version snapshot failed", error)
                     _statusBanner.value = "تعذر حفظ لقطة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Version snapshot failed", error)
                 _statusBanner.value = "تعذر حفظ لقطة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -984,16 +999,29 @@ class StudioViewModel(
             _isBusy.value = true
             try {
                 val projectId = _selectedProjectId.value
-                if (projectId.isNullOrBlank()) {
-                    _statusBanner.value = "اختر مشروعاً قبل استعادة الإصدار."
-                    return@launch
+                    ?: throw IllegalStateException("اختر مشروعاً قبل استعادة الإصدار.")
+                require(snapshot.userId == currentUserId && snapshot.projectId == projectId) {
+                    "لا يمكن استعادة لقطة إصدار لا تخص المشروع الحالي أو المستخدم الحالي."
                 }
-                val current = (projectsState.value as? UiState.Success)?.data
-                    ?.firstOrNull { it.id == projectId }
-                if (current == null || current.createdAt == null) {
-                    _statusBanner.value = "تعذر العثور على المشروع الحالي لحفظ النسخة المستعادة."
-                    return@launch
+                val current = repository.getProjectById(currentUserId, projectId).getOrThrow()
+                    ?: throw IllegalStateException("تعذر العثور على المشروع الحالي لحفظ النسخة المستعادة.")
+                requireNotNull(current.createdAt) {
+                    "بيانات المشروع الحالي غير مكتملة؛ لم يتم تعديل الملفات."
                 }
+
+                val backupVersion = "pre-restore-${System.currentTimeMillis()}"
+                repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = "Automatic backup before restoring ${snapshot.versionTag}",
+                    versionTag = backupVersion,
+                    htmlCode = current.htmlCode,
+                    cssCode = current.cssCode,
+                    jsCode = current.jsCode,
+                    backendCode = current.backendCode,
+                    addedLines = 0L,
+                    deletedLines = 0L
+                ).getOrElse { error -> throw error }
+
                 repository.updateProject(
                     current.copy(
                         htmlCode = snapshot.htmlCode,
@@ -1001,17 +1029,18 @@ class StudioViewModel(
                         jsCode = snapshot.jsCode,
                         backendCode = snapshot.backendCode
                     )
-                ).onSuccess {
-                    _htmlBuffer.value = snapshot.htmlCode
-                    _cssBuffer.value = snapshot.cssCode
-                    _jsBuffer.value = snapshot.jsCode
-                    _backendBuffer.value = snapshot.backendCode
-                    appendConsoleLog("[VCS Restore] Restored ${snapshot.versionTag} to cloud project.")
-                    _statusBanner.value = "تمت استعادة الإصدار ${snapshot.versionTag} وحفظه."
-                }.onFailure { error ->
-                    Log.e(TAG, "Version restore failed", error)
-                    _statusBanner.value = "تعذرت استعادة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
-                }
+                ).getOrElse { error -> throw error }
+
+                _htmlBuffer.value = snapshot.htmlCode
+                _cssBuffer.value = snapshot.cssCode
+                _jsBuffer.value = snapshot.jsCode
+                _backendBuffer.value = snapshot.backendCode
+                appendConsoleLog("[Workspace Restore] Restored ${snapshot.versionTag}; backup snapshot $backupVersion retained.")
+                _lastSyncTimestampLabel.value = currentTimeLabel()
+                _statusBanner.value =
+                    "تمت استعادة ${snapshot.versionTag} وحفظه. أُنشئت نسخة احتياطية قبل الاستعادة ($backupVersion)."
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Version restore failed", error)
                 _statusBanner.value = "تعذرت استعادة الإصدار: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1021,9 +1050,28 @@ class StudioViewModel(
         }
     }
 
+    private fun countLineChanges(previous: List<String>, current: List<String>): Pair<Long, Long> {
+        val oldCounts = previous.groupingBy { it }.eachCount()
+        val newCounts = current.groupingBy { it }.eachCount()
+        val allLines = oldCounts.keys + newCounts.keys
+        val added = allLines.sumOf { line ->
+            ((newCounts[line] ?: 0) - (oldCounts[line] ?: 0)).coerceAtLeast(0)
+        }
+        val deleted = allLines.sumOf { line ->
+            ((oldCounts[line] ?: 0) - (newCounts[line] ?: 0)).coerceAtLeast(0)
+        }
+        return added.toLong() to deleted.toLong()
+    }
+
     fun computeDiffAgainstCurrent(snapshot: VersionSnapshot): List<DiffLine> {
-        val oldLines = (snapshot.htmlCode + "\n" + snapshot.jsCode + "\n" + snapshot.backendCode).lines()
-        val newLines = (_htmlBuffer.value + "\n" + _jsBuffer.value + "\n" + _backendBuffer.value).lines()
+        val oldLines = (
+            snapshot.htmlCode + "\n" + snapshot.cssCode + "\n" +
+                snapshot.jsCode + "\n" + snapshot.backendCode
+            ).lines()
+        val newLines = (
+            _htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
+                _jsBuffer.value + "\n" + _backendBuffer.value
+            ).lines()
         val result = mutableListOf<DiffLine>()
         val maxLen = maxOf(oldLines.size, newLines.size).coerceAtMost(80)
         for (i in 0 until maxLen) {
@@ -1103,6 +1151,8 @@ class StudioViewModel(
                 }.onFailure { error ->
                     _statusBanner.value = "تعذر إدراج السجل: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -1322,6 +1372,9 @@ class StudioViewModel(
                 updateCodeBuffer(tab, revisedFile)
                 val saveResult = try {
                     persistCurrentProject()
+                } catch (saveError: CancellationException) {
+                    updateCodeBuffer(tab, currentCode)
+                    throw saveError
                 } catch (saveError: Exception) {
                     updateCodeBuffer(tab, currentCode)
                     throw saveError
@@ -1478,6 +1531,8 @@ class StudioViewModel(
                 } else {
                     "وصل رد من مزود الذكاء الاصطناعي."
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Chat or agent task failed", error)
                 val errorText = "لم تُنفذ المهمة. السبب: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1524,6 +1579,8 @@ class StudioViewModel(
                 )
                 _generatedAssets.value = listOf(asset) + _generatedAssets.value
                 _statusBanner.value = "تم توليد الصورة عبر ${asset.modelUsed} (${asset.metadataLabel})"
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Image generation failed", error)
                 _statusBanner.value = "تعذر توليد الصورة: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1550,6 +1607,8 @@ class StudioViewModel(
                 )
                 _generatedAssets.value = listOf(asset) + _generatedAssets.value
                 _statusBanner.value = "تم إعداد ملف الفيديو عبر ${asset.modelUsed} ($aspectRatio)"
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Video generation failed", error)
                 _statusBanner.value = "تعذر توليد الفيديو: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1575,6 +1634,8 @@ class StudioViewModel(
                     isVideo = isVideo
                 )
                 _statusBanner.value = "اكتمل تحليل الوسائط عبر ${GeminiAiRepository.MODEL_ARGON}"
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Media analysis failed", error)
                 _statusBanner.value = "تعذر تحليل الوسائط: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1592,6 +1653,8 @@ class StudioViewModel(
                 _lastTranscribedText.value = text
                 onTranscribed(text)
                 _statusBanner.value = "تم نسخ الصوت عبر ${GeminiAiRepository.MODEL_FLASH}"
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Audio transcription failed", error)
                 _statusBanner.value = "تعذر نسخ الصوت: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1609,6 +1672,8 @@ class StudioViewModel(
                 _liveVoiceHistory.value = _liveVoiceHistory.value +
                     listOf("👤 أنت: $spokenText", "🤖 Gemini (رد صوتي): $reply")
                 onReplyReady(reply)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Live voice turn failed", error)
                 _statusBanner.value = "تعذرت المحادثة الصوتية: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1651,6 +1716,8 @@ class StudioViewModel(
                 }.onFailure { error ->
                     _statusBanner.value = "اكتمل التحليل لكن تعذر حفظه: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Bioscience analysis failed", error)
                 _statusBanner.value = "تعذر تحليل التسلسل: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1691,6 +1758,8 @@ class StudioViewModel(
                 }.onFailure { error ->
                     _statusBanner.value = "تعذر حفظ التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Bio experiment save failed", error)
                 _statusBanner.value = "تعذر حفظ التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1712,6 +1781,8 @@ class StudioViewModel(
                     .onFailure { error ->
                         _statusBanner.value = "تعذر حذف التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
                     }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Bio experiment deletion failed", error)
                 _statusBanner.value = "تعذر حذف التجربة الحيوية: ${error.localizedMessage ?: "خطأ غير معروف"}"
@@ -1778,6 +1849,8 @@ class StudioViewModel(
                 } else {
                     "تم تحديث الملف الشخصي، لكن تعذرت مزامنة المهارات. زمن الاستجابة ${_syncLatencyMs.value}ms."
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 Log.e(TAG, "Manual cloud sync failed", error)
                 _statusBanner.value = "فشلت المزامنة: ${error.localizedMessage ?: "خطأ غير معروف"}"
