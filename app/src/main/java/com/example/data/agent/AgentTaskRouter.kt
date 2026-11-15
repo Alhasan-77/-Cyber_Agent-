@@ -23,7 +23,7 @@ object AgentTaskRouter {
     fun parseProjectRequest(prompt: String, fallbackLanguage: String = "Full-Stack Web"): AgentProjectRequest {
         val cleanPrompt = prompt.trim()
         val commandPrefix = Regex(
-            "^\\s*(?:من فضلك\\s*)?(?:أنشئ|انشئ)\\s+(?:لي\\s+)?مشروع\\s*|^\\s*(?:please\\s+)?(?:create|build)\\s+(?:a\\s+)?project\\s*",
+            "^\\s*(?:من فضلك\\s*)?(?:أنشئ|انشئ)\\s+(?:لي\\s+)?مشروع\\s*|^\\s*(?:please\\s+)?(?:create|build)\\s+(?:a\\s+)?(?:project\\s+)?",
             RegexOption.IGNORE_CASE
         )
         val withoutPrefix = cleanPrompt.replaceFirst(commandPrefix, "").trim()
