@@ -451,7 +451,19 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
             )
         }
         assertTrue(deleteResult.isSuccess)
-        assertTrue(withTimeout(DEFAULT_TIMEOUT_MS) { recordRef.get().await() }.exists().not())
+        val remainingRecords = withTimeout(DEFAULT_TIMEOUT_MS) {
+            firestore.collection("users").document(userId)
+                .collection("projects").document(projectId)
+                .collection("data").document("orders")
+                .collection("records")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("projectId", projectId)
+                .whereEqualTo("schemaId", schemaId)
+                .whereEqualTo("collectionName", "orders")
+                .get()
+                .await()
+        }
+        assertTrue(remainingRecords.isEmpty)
     }
 
     private companion object {
