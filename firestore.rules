@@ -44,12 +44,16 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(userId)/collections/$(schemaId)).data.collectionName == collectionName;
     }
 
-    function isValidCustomCollectionRecord(data, userId, projectId, collectionName) {
+    function isOwnedCustomCollectionRecord(data, userId, projectId, collectionName) {
       return data.userId is string && data.userId == userId &&
              data.projectId is string && data.projectId == projectId &&
              data.collectionName is string && data.collectionName == collectionName &&
              data.schemaId is string &&
-             ownsCollectionSchema(userId, projectId, data.schemaId, collectionName) &&
+             ownsCollectionSchema(userId, projectId, data.schemaId, collectionName);
+    }
+
+    function isValidCustomCollectionRecord(data, userId, projectId, collectionName) {
+      return isOwnedCustomCollectionRecord(data, userId, projectId, collectionName) &&
              data.recordData is map &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
              data.updatedAt is timestamp && data.updatedAt <= request.time;
@@ -191,7 +195,7 @@ service cloud.firestore {
                     isValidId(userId) &&
                     isValidId(projectId) &&
                     isValidId(recordId) &&
-                    isValidCustomCollectionRecord(existing(), userId, projectId, collectionName);
+                    isOwnedCustomCollectionRecord(existing(), userId, projectId, collectionName);
 
       // Query predicates bind userId, projectId, schemaId, and collectionName.
       // Avoid requiring non-queryable payload/timestamp fields in list authorization.
