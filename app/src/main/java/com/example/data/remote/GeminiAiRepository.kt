@@ -38,6 +38,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class GeminiAiRepository(
     @Suppress("UNUSED_PARAMETER")
@@ -99,24 +100,25 @@ class GeminiAiRepository(
     }
 
     private suspend fun forceRefreshAppCheckToken() {
-        runCatching {
-            val app = FirebaseApp.getInstance()
-            val appContext = app.applicationContext
-            val persistenceKey = app.persistenceKey
-            // Clear any stale cached JWT token so FirebaseAppCheck mints a fresh one
-            appContext.getSharedPreferences(
-                "com.google.firebase.appcheck.store.$persistenceKey",
-                Context.MODE_PRIVATE
-            ).edit().clear().commit()
-
+        try {
             suspendCancellableCoroutine { cont ->
                 FirebaseAppCheck.getInstance().getAppCheckToken(true)
-                    .addOnCompleteListener {
-                        if (cont.isActive) cont.resume(Unit)
+                    .addOnCompleteListener { task ->
+                        if (!cont.isActive) return@addOnCompleteListener
+                        if (task.isSuccessful) {
+                            cont.resume(Unit)
+                        } else {
+                            cont.resumeWithException(
+                                task.exception ?: IllegalStateException("Firebase App Check token refresh failed.")
+                            )
+                        }
                     }
             }
-        }.onFailure { err ->
-            Log.w(TAG, "App Check token force-refresh attempt warning", err)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.w(TAG, "App Check token force-refresh failed", error)
+            throw error
         }
     }
 
@@ -162,34 +164,42 @@ class GeminiAiRepository(
                 systemInstruction: String,
                 userPrompt: String,
                 useHighThinking: Boolean
-            ): Result<String> = runCatching {
-                when (provider) {
-                    AiEngineProvider.CHATGPT -> {
-                        val openAiModel = if (isOpenAiModel(targetModel)) targetModel else MODEL_GPT_4O
-                        callOpenAiChat(
-                            userPrompt = "$systemInstruction\n\n$userPrompt",
-                            openAiModel = openAiModel,
-                            useHighThinking = useHighThinking
-                        ).getOrThrow()
-                    }
-                    AiEngineProvider.DUAL_ENGINE -> {
-                        val (reply, _) = sendDualEngineMultiTurnChat(
-                            history = emptyList(),
-                            userPrompt = userPrompt,
-                            persona = AiRolePersona.FULLSTACK_ARCHITECT,
-                            useSearchGrounding = false,
-                            useHighThinking = useHighThinking
-                        )
-                        reply
-                    }
-                    AiEngineProvider.GEMINI -> {
-                        val geminiModel = resolveTextModel(targetModel)
-                        withTimeout(AI_TIMEOUT_MS) {
-                            executeWithAppCheckRetry {
-                                geminiModel.generateContent("$systemInstruction\n\n$userPrompt").text
-                            } ?: throw IllegalStateException("لم يُرجع مزود Gemini نصاً.")
+            ): Result<String> {
+                return try {
+                    Result.success(
+                        when (provider) {
+                            AiEngineProvider.CHATGPT -> {
+                                val openAiModel = if (isOpenAiModel(targetModel)) targetModel else MODEL_GPT_4O
+                                callOpenAiChat(
+                                    userPrompt = "$systemInstruction\n\n$userPrompt",
+                                    openAiModel = openAiModel,
+                                    useHighThinking = useHighThinking
+                                ).getOrThrow()
+                            }
+                            AiEngineProvider.DUAL_ENGINE -> {
+                                val (reply, _) = sendDualEngineMultiTurnChat(
+                                    history = emptyList(),
+                                    userPrompt = userPrompt,
+                                    persona = AiRolePersona.FULLSTACK_ARCHITECT,
+                                    useSearchGrounding = false,
+                                    useHighThinking = useHighThinking
+                                )
+                                reply
+                            }
+                            AiEngineProvider.GEMINI -> {
+                                val geminiModel = resolveTextModel(targetModel)
+                                withTimeout(AI_TIMEOUT_MS) {
+                                    executeWithAppCheckRetry {
+                                        geminiModel.generateContent("$systemInstruction\n\n$userPrompt").text
+                                    } ?: throw IllegalStateException("لم يُرجع مزود Gemini نصاً.")
+                                }
+                            }
                         }
-                    }
+                    )
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    Result.failure(error)
                 }
             }
         }
@@ -417,7 +427,8 @@ class GeminiAiRepository(
         persona: AiRolePersona = AiRolePersona.FULLSTACK_ARCHITECT,
         useHighThinking: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
+            Result.success(run {
             if (!OpenAiNetworkClient.isApiKeyConfigured()) {
                 throw IllegalStateException(
                     "مفتاح OPENAI_API_KEY غير مضبوط بعد في لوحة الأسرار (Secrets Panel) في AI Studio. " +
@@ -466,6 +477,11 @@ class GeminiAiRepository(
                 throw IllegalStateException("لم يُرجع نموذج ChatGPT ($openAiModel) نصاً في الاستجابة.")
             }
             reply
+            })
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
@@ -797,11 +813,16 @@ class GeminiAiRepository(
                 return@withContext gptText
             }
             if (!gptText.isNullOrBlank() && isDualEngineModel(preferredModel)) {
-                val geminiText = runCatching {
+                val geminiText = try {
                     withTimeout(AI_TIMEOUT_MS) {
                         executeWithAppCheckRetry { flashLiteModel.generateContent(prompt).text }
                     }
-                }.getOrNull()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    Log.w(TAG, "Gemini side-by-side suggestion failed; returning available OpenAI result.", error)
+                    null
+                }
                 return@withContext buildString {
                     if (!geminiText.isNullOrBlank()) {
                         appendLine("// --- [Gemini $MODEL_FLASH_LITE Suggestion] ---")
