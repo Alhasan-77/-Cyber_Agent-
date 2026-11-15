@@ -87,6 +87,11 @@ data class DbCollectionSchema(
     @ServerTimestamp val updatedAt: Timestamp? = null
 )
 
+data class DbCollectionRecord(
+    val id: String,
+    val recordJson: String
+)
+
 @IgnoreExtraProperties
 data class BuildExecutionLog(
     @DocumentId val id: String = "",
