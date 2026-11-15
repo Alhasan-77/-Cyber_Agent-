@@ -5,6 +5,7 @@ import com.example.R
 import com.example.data.model.BioExperimentRecord
 import com.example.data.model.BuildExecutionLog
 import com.example.data.model.DbCollectionSchema
+import com.example.data.model.DbCollectionRecord
 import com.example.data.model.StudioProject
 import com.example.data.model.UserProfile
 import com.example.data.model.VersionSnapshot
@@ -30,6 +31,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
+import org.json.JSONObject
 import java.util.UUID
 
 class StudioRepository(private val db: FirebaseFirestore) {
@@ -488,6 +490,40 @@ class StudioRepository(private val db: FirebaseFirestore) {
             handleFirestoreError(e, OperationType.CREATE, docRef.path)
             throw e
         }
+    }
+
+    fun observeCollectionRecords(
+        projectId: String,
+        schemaId: String,
+        collectionName: String
+    ): Flow<List<DbCollectionRecord>> = flow {
+        val uid = requireUserId()
+        requireOwnedProject(uid, projectId)
+        requireOwnedCollectionSchema(uid, projectId, schemaId, collectionName)
+        val recordsRef = db.collection("users").document(uid)
+            .collection("projects").document(projectId)
+            .collection("data").document(collectionName)
+            .collection("records")
+        emitAll(
+            recordsRef.whereEqualTo("userId", uid)
+                .whereEqualTo("projectId", projectId)
+                .whereEqualTo("schemaId", schemaId)
+                .whereEqualTo("collectionName", collectionName)
+                .snapshots()
+                .map { snapshot ->
+                    snapshot.documents.map { document ->
+                        val data = document.get("recordData") as? Map<*, *> ?: emptyMap<Any, Any>()
+                        DbCollectionRecord(
+                            id = document.id,
+                            recordJson = JSONObject(data).toString()
+                        )
+                    }
+                }
+                .catch { error ->
+                    if (error is Exception) handleFirestoreError(error, OperationType.LIST, recordsRef.path)
+                    throw error
+                }
+        )
     }
 
     suspend fun createCollectionRecord(
