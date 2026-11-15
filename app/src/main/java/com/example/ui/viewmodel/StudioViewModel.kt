@@ -1527,21 +1527,22 @@ class StudioViewModel(
                             persona = _selectedPersona.value,
                             useHighThinking = _useHighThinking.value
                         )
-                        openAiReview.onSuccess { gptReply ->
+                        if (openAiReview.isSuccess) {
+                            val gptReply = openAiReview.getOrThrow()
                             toolSources += "OpenAI Chat Completions API (second-engine review)"
                             Triple(
                                 "$geminiReply\\n\\n━━━━━━━━━━━━━━━━━━━━━━━━\\nمراجعة المحرك الثاني (ChatGPT):\\n$gptReply",
                                 toolSources.distinct(),
                                 "Gemini + ChatGPT"
                             )
-                        }.onFailure {
+                        } else {
                             toolSources += "OpenAI API unavailable; Gemini-only response"
                             Triple(
                                 "$geminiReply\\n\\nتنبيه: تم تنفيذ المحرك الأول Gemini فقط؛ لم يتوفر رد ChatGPT في هذه المحادثة. تحقق من إعداد OpenAI API.",
                                 toolSources.distinct(),
                                 "Gemini Agent (ChatGPT unavailable)"
                             )
-                        }.getOrThrowOrNull()
+                        }
                     } else {
                         Triple(geminiReply, toolSources.distinct(), _selectedChatModel.value)
                     }
