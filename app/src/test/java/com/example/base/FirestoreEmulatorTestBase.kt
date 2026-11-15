@@ -36,8 +36,9 @@ abstract class FirestoreEmulatorTestBase {
         val resId = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)
         databaseId = if (resId != 0) context.getString(resId) else "ai-studio-android-novaforg-6912163c-aa3c-4903-a89e-6df061c893e0"
 
-        val app = if (FirebaseApp.getApps(context).isEmpty()) {
-            val newApp = FirebaseApp.initializeApp(
+        val app = FirebaseApp.getApps(context)
+            .firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
+            ?: FirebaseApp.initializeApp(
                 context,
                 FirebaseOptions.Builder()
                     .setApplicationId("com.aistudio.novaforge.kxmpzq")
@@ -45,17 +46,19 @@ abstract class FirestoreEmulatorTestBase {
                     .setApiKey("fake-api-key-for-emulator")
                     .build()
             )
-            val newFirestore = FirebaseFirestore.getInstance(newApp, databaseId)
-            newFirestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
-            newFirestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
-                .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
-                .build()
+            ?: throw IllegalStateException("FirebaseApp could not be initialized for emulator tests.")
 
-            val newAuth = FirebaseAuth.getInstance(newApp)
-            newAuth.useEmulator(EMULATOR_HOST, AUTH_PORT)
-            newApp
-        } else {
-            FirebaseApp.getInstance()
+        synchronized(configuredEmulatorApps) {
+            if (app.name !in configuredEmulatorApps) {
+                val emulatorFirestore = FirebaseFirestore.getInstance(app, databaseId)
+                emulatorFirestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
+                emulatorFirestore.firestoreSettings = FirebaseFirestoreSettings.Builder()
+                    .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
+                    .build()
+
+                FirebaseAuth.getInstance(app).useEmulator(EMULATOR_HOST, AUTH_PORT)
+                configuredEmulatorApps += app.name
+            }
         }
 
         firestore = FirebaseFirestore.getInstance(app, databaseId)
@@ -90,6 +93,7 @@ abstract class FirestoreEmulatorTestBase {
     }
 
     private companion object {
+        val configuredEmulatorApps = mutableSetOf<String>()
         const val EMULATOR_HOST = "127.0.0.1"
         const val FIRESTORE_PORT = 8085
         const val AUTH_PORT = 9099
