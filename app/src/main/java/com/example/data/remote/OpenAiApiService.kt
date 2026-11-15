@@ -1,6 +1,6 @@
 package com.example.data.remote
 
-import com.example.BuildConfig
+import com.google.firebase.FirebaseApp
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -11,7 +11,6 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.Header
 import retrofit2.http.POST
-import java.net.URI
 import java.util.concurrent.TimeUnit
 
 enum class AiEngineProvider(
@@ -104,9 +103,10 @@ object OpenAiNetworkClient {
     }
 
     private fun configuredBaseUrl(): String {
-        val value = BuildConfig.OPENAI_PROXY_BASE_URL.trim()
-        if (value.isBlank()) return "https://localhost/"
-        return if (value.endsWith("/")) value else "$value/"
+        val projectId = FirebaseApp.getInstance().options.projectId
+            ?.takeIf { it.matches(Regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")) }
+            ?: throw IllegalStateException("Firebase project ID is missing or invalid.")
+        return "https://us-central1-$projectId.cloudfunctions.net/"
     }
 
     private val okHttpClient = OkHttpClient.Builder()
@@ -125,13 +125,9 @@ object OpenAiNetworkClient {
     }
 
     fun isProxyConfigured(): Boolean {
-        val value = BuildConfig.OPENAI_PROXY_BASE_URL.trim()
-        if (value.isBlank()) return false
         return runCatching {
-            val uri = URI(value)
-            uri.scheme.equals("https", ignoreCase = true) &&
-                !uri.host.isNullOrBlank() &&
-                uri.userInfo == null
+            val projectId = FirebaseApp.getInstance().options.projectId ?: return false
+            projectId.matches(Regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$"))
         }.getOrDefault(false)
     }
 

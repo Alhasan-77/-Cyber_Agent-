@@ -459,7 +459,7 @@ class GeminiAiRepository(
             Result.success(run {
             if (!OpenAiNetworkClient.isProxyConfigured()) {
                 throw IllegalStateException(
-                    "خادم OpenAI الوسيط غير مضبوط. انشر الدالة openaiChatCompletion واضبط OPENAI_PROXY_BASE_URL في إعدادات البناء."
+                    "خادم OpenAI الوسيط غير مضبوط. انشر الدالة openaiChatCompletion واضبط Firebase Authentication وApp Check."
                 )
             }
 
@@ -611,7 +611,7 @@ class GeminiAiRepository(
                 appendLine(gptReply)
             }.onFailure { err ->
                 appendLine("⚠️ تعذر إكمال اتصال خادم ChatGPT الوسيط (${err.localizedMessage}).")
-                appendLine("💡 لتفعيله، انشر Cloud Function باسم `openaiChatCompletion` واضبط `OPENAI_PROXY_BASE_URL` في إعدادات البناء.")
+                appendLine("💡 لتفعيله، انشر Cloud Function باسم `openaiChatCompletion` وسيتصل التطبيق بها عبر مشروع Firebase المسجل.")
             }
         }.trim()
 
@@ -621,7 +621,7 @@ class GeminiAiRepository(
             if (openAiResult.isSuccess) {
                 add("OpenAI Chat Completions API ($openAiModel)")
             } else {
-                add("OpenAI API Status: ${OpenAiNetworkClient.getKeyStatusSummaryAr()}")
+                add("OpenAI API Status: ${OpenAiNetworkClient.getProxyStatusSummaryAr()}")
             }
         }.distinct()
 
@@ -674,7 +674,7 @@ class GeminiAiRepository(
         val combined = buildString {
             appendLine("ℹ️ **ملاحظة محرك ChatGPT ($openAiModel):** ${error?.localizedMessage ?: "تعذر الاتصال بخادم OpenAI الوسيط"}")
             if (!OpenAiNetworkClient.isProxyConfigured()) {
-                appendLine("🔐 **إعداد ChatGPT:** انشر الدالة `openaiChatCompletion` واضبط عنوانها في `OPENAI_PROXY_BASE_URL`. لا تضع مفتاح OpenAI في التطبيق.")
+                appendLine("🔐 **إعداد ChatGPT:** انشر الدالة `openaiChatCompletion`؛ يستنتج التطبيق عنوانها من مشروع Firebase. لا تضع مفتاح OpenAI في التطبيق.")
             }
             appendLine()
             appendLine("🔄 **الاستجابة المساندة الفورية عبر محرك Gemini المدمج:**")

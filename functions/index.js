@@ -20,19 +20,22 @@ const DAILY_REQUEST_LIMIT = 50;
 async function consumeDailyQuota(uid) {
   const day = new Date().toISOString().slice(0, 10);
   const uidHash = crypto.createHash("sha256").update(uid).digest("hex");
-  const usageRef = getFirestore()
-    .collection("_openaiUsage")
-    .doc(`${uidHash}_${day}`);
+  // Keep one quota document per user instead of creating a new document every day.
+  const usageRef = getFirestore().collection("_openaiUsage").doc(uidHash);
 
   await getFirestore().runTransaction(async (transaction) => {
     const snapshot = await transaction.get(usageRef);
-    const currentCount = snapshot.exists ? Number(snapshot.get("requestCount") || 0) : 0;
+    const storedDay = snapshot.exists ? snapshot.get("day") : null;
+    const currentCount = storedDay === day
+      ? Number(snapshot.get("requestCount") || 0)
+      : 0;
     if (currentCount >= DAILY_REQUEST_LIMIT) {
       const error = new Error("Daily ChatGPT request limit reached.");
       error.statusCode = 429;
       throw error;
     }
     transaction.set(usageRef, {
+      day,
       requestCount: currentCount + 1,
       updatedAt: FieldValue.serverTimestamp(),
     });

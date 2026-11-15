@@ -24,10 +24,10 @@
 
 - Gemini يتصل عبر Firebase AI Logic؛ يحتاج مشروع Firebase مضبوطاً، ومزوداً مفعلاً، وApp Check مسجلاً. قد تتطلب بعض النماذج خطة Blaze.
 - لا يرسل تطبيق Android مفتاح OpenAI إلى OpenAI مباشرة. يرسل طلب ChatGPT إلى Cloud Function باسم `openaiChatCompletion` مع Firebase ID token وApp Check token. تتحقق الدالة من الاثنين، وتطبق حداً يومياً قدره 50 طلباً لكل مستخدم، ثم تستدعي OpenAI بالمفتاح المحفوظ في Firebase Secret Manager.
+- عنوان الدالة يُشتق داخل التطبيق من Firebase Project ID في `google-services.json` ويُثبّت على نطاق `us-central1` الخاص بمشروع Firebase نفسه؛ لا يوجد عنوان خادم خارجي يمكن تغييره لإرسال رموز Firebase إلى مضيف غير موثوق.
 - أنشئ السر من جذر المشروع باستخدام `firebase functions:secrets:set OPENAI_API_KEY`، ثم انشر الدالة باستخدام `firebase deploy --only functions:openaiChatCompletion`.
-- اضبط عنوان الدالة في ملف `.env` المحلي، مثلاً: `OPENAI_PROXY_BASE_URL=https://us-central1-PROJECT_ID.cloudfunctions.net/`، واستبدل `PROJECT_ID` بمعرّف مشروعك. أضف القيمة نفسها كـGitHub Actions Secret باسم `OPENAI_PROXY_BASE_URL` ليظهر اتصال ChatGPT في بناء CI.
-- لا تضف `OPENAI_API_KEY` إلى `.env` أو BuildConfig أو APK. المفتاح مطلوب على الخادم فقط.
-- الوضع المزدوج يرجع إلى Gemini عند عدم إعداد الخادم الوسيط أو فشل طلب OpenAI؛ أما اختيار ChatGPT مباشرة فيحتاج عنوان الخادم الوسيط وإعدادات Firebase الصحيحة.
+- يتطلب نشر Cloud Functions خطة Firebase Blaze مع تفعيل الفوترة؛ كما أن استخدام OpenAI نفسه يخضع لفوترة OpenAI. لا تضف `OPENAI_API_KEY` إلى `.env` أو BuildConfig أو APK. المفتاح مطلوب على الخادم فقط.
+- الوضع المزدوج يرجع إلى Gemini عند فشل طلب OpenAI؛ أما اختيار ChatGPT مباشرة فيحتاج مشروع Firebase مضبوطاً والدالة المنشورة وتسجيل App Check.
 
 ## 4. حدود الوكيل الحالية
 
@@ -37,7 +37,7 @@
 
 ## 5. الاختبارات والبناء محلياً
 
-المتطلبات: JDK 21، Node.js 24.12 أو أحدث، Gradle حسب Wrapper المشروع، Firebase CLI.
+المتطلبات: JDK 21، Node.js 22، Gradle حسب Wrapper المشروع، Firebase CLI.
 
 من جذر المستودع:
 
