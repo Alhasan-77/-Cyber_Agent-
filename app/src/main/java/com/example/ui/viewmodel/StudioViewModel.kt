@@ -1127,7 +1127,7 @@ class StudioViewModel(
                     sampleRecordsJson = sampleRecordsJson,
                     indexConfig = indexConfig
                 ).onSuccess {
-                    _statusBanner.value = "تم إنشاء مجموعة البيانات «$collectionName» وحفظها سحابياً."
+                    _statusBanner.value = "تم حفظ مخطط المجموعة «$collectionName» في Firestore. إنشاء السجلات الفعلية يتم من خلال DAO أو تبويب عينات JSON."
                 }.onFailure { error ->
                     _statusBanner.value = "تعذر إنشاء مجموعة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
@@ -1139,49 +1139,92 @@ class StudioViewModel(
 
     fun appendRecordToCollection(schema: DbCollectionSchema, newRecordJsonObject: String) {
         viewModelScope.launch {
+            _isBusy.value = true
             try {
                 val currentRecords = kotlinx.serialization.json.Json.parseToJsonElement(
                     schema.sampleRecordsJson.ifBlank { "[]" }
                 ) as? kotlinx.serialization.json.JsonArray
-                    ?: throw IllegalArgumentException("بيانات السجلات الحالية يجب أن تكون مصفوفة JSON.")
+                    ?: throw IllegalArgumentException("معاينة عينات البيانات يجب أن تكون مصفوفة JSON.")
                 val newRecord = kotlinx.serialization.json.Json.parseToJsonElement(newRecordJsonObject)
                 require(newRecord is kotlinx.serialization.json.JsonObject) {
                     "السجل الجديد يجب أن يكون كائن JSON."
                 }
+
+                val recordId = repository.createCollectionRecord(
+                    projectId = schema.projectId,
+                    schemaId = schema.id,
+                    collectionName = schema.collectionName,
+                    recordJson = newRecordJsonObject
+                ).getOrElse { error -> throw error }
+
                 val updatedJson = kotlinx.serialization.json.JsonArray(currentRecords + newRecord).toString()
-                repository.updateCollectionSchema(
+                val sampleUpdate = repository.updateCollectionSchema(
                     schema.copy(sampleRecordsJson = updatedJson)
-                ).onSuccess {
-                    _statusBanner.value = "تم إدراج السجل الجديد وحفظه في «${schema.collectionName}»."
-                }.onFailure { error ->
-                    _statusBanner.value = "تعذر إدراج السجل: ${error.localizedMessage ?: "خطأ غير معروف"}"
+                )
+                if (sampleUpdate.isSuccess) {
+                    _statusBanner.value =
+                        "تم حفظ سجل فعلي في Firestore (المعرّف: $recordId) وتحديث معاينة JSON للمجموعة ${schema.collectionName}."
+                } else {
+                    _statusBanner.value =
+                        "تم حفظ السجل الفعلي في Firestore (المعرّف: $recordId)، لكن تعذر تحديث معاينة JSON: ${sampleUpdate.exceptionOrNull()?.localizedMessage ?: "خطأ غير معروف"}"
                 }
             } catch (error: CancellationException) {
                 throw error
-            } catch (error: CancellationException) {
-                throw error
             } catch (error: Exception) {
-                _statusBanner.value = "بيانات السجل غير صالحة: ${error.localizedMessage ?: "تحقق من JSON"}"
+                Log.e(TAG, "Custom collection record creation failed", error)
+                _statusBanner.value = "تعذر حفظ السجل الفعلي أو عينة JSON: ${error.localizedMessage ?: "تحقق من JSON"}"
+            } finally {
+                _isBusy.value = false
             }
         }
     }
 
     fun generateBackendCodeFromSchema(schema: DbCollectionSchema) {
+        val repositoryName = "${schema.collectionName.replaceFirstChar { it.uppercase() }}Repository"
         val generatedRepoCode = """
-            // Generated Data Access Layer & REST Endpoint for Collection: ${schema.collectionName}
+            // Generated Firestore Data Access Layer for: ${schema.collectionName}
             // Schema Fields: ${schema.fieldsSpec}
             // Index Strategy: ${schema.indexConfig}
-            class ${schema.collectionName.replaceFirstChar { it.uppercase() }}Repository(private val db: FirebaseFirestore) {
-                fun observeRecords(userId: String) =
-                    db.collection("users").document(userId)
-                      .collection("${schema.collectionName}")
-                      .whereEqualTo("userId", userId)
-                      .snapshots()
+            // Records are stored under the owning project and protected by firestore.rules.
+            class $repositoryName(
+                private val db: FirebaseFirestore,
+                private val userId: String,
+                private val projectId: String
+            ) {
+                private val records = db.collection("users").document(userId)
+                    .collection("projects").document(projectId)
+                    .collection("data").document("${schema.collectionName}")
+                    .collection("records")
+
+                fun observeRecords() = records
+                    .whereEqualTo("userId", userId)
+                    .whereEqualTo("projectId", projectId)
+                    .whereEqualTo("schemaId", "${schema.id}")
+                    .snapshots()
+
+                suspend fun addRecord(recordData: Map<String, Any?>): String {
+                    val ref = records.document()
+                    ref.set(mapOf(
+                        "userId" to userId,
+                        "projectId" to projectId,
+                        "schemaId" to "${schema.id}",
+                        "collectionName" to "${schema.collectionName}",
+                        "recordData" to recordData,
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )).await()
+                    return ref.id
+                }
+
+                suspend fun deleteRecord(recordId: String) {
+                    records.document(recordId).delete().await()
+                }
             }
         """.trimIndent()
         _backendBuffer.value = _backendBuffer.value + "\n\n" + generatedRepoCode
         _activeCodeTab.value = "Backend"
-        _statusBanner.value = "تم توليد كود الواجهة الخلفية من جدول «${schema.collectionName}» وإضافته للمحرر!"
+        _statusBanner.value =
+            "تم توليد قالب DAO لمسار السجلات الفعلية في Firestore وإضافته للمحرر. راجع imports وقواعد Firestore قبل دمجه."
     }
 
     fun deleteDatabaseCollection(collectionId: String) {
