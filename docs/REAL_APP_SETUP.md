@@ -72,3 +72,16 @@ gradle --no-daemon assembleDebug
 على Linux استخدم `base64 -w 0 my-upload-key.jks`. على macOS استخدم `base64 my-upload-key.jks | tr -d '\\n'`. على Windows PowerShell استخدم `[Convert]::ToBase64String([IO.File]::ReadAllBytes("my-upload-key.jks"))`.
 
 بعد إضافة الأسرار، يشغّل CI خطوة `assembleRelease` ويرفع `cyber-agent-release-apk`. لا ترسل JKS أو كلمات المرور في المحادثة أو ترفعها إلى Git. إذا لم تُضبط الأسرار، يستمر Debug بناءً وتظل خطوة Release متخطاة.
+
+## 9. النشر اليدوي لخدمات Firebase عبر GitHub Actions
+
+لتمكين مسار النشر اليدوي:
+
+1. افتح المشروع الصحيح في Firebase Console، وتأكد من تفعيل Firestore وقاعدة البيانات ذات المعرّف المحدد في `firebase.json`.
+2. فعّل خطة Blaze، لأن Cloud Functions تحتاج خطة فوترة مدفوعة.
+3. أنشئ OpenAI API key، ثم نفّذ محلياً `firebase functions:secrets:set OPENAI_API_KEY --project PROJECT_ID`. أدخل القيمة في الطرفية فقط، ولا تضعها في GitHub أو المحادثة.
+4. أنشئ حساب خدمة Google Cloud مخصصاً للنشر بصلاحيات لازمة لنشر Firebase Functions وقواعد Firestore وقراءة Secret Manager وكتابة Artifact Registry. لا تستخدم حسابك الشخصي.
+5. أضف أسرار المستودع التالية: `FIREBASE_PROJECT_ID` بمعرّف مشروع Firebase، و`FIREBASE_SERVICE_ACCOUNT` بمحتوى JSON لحساب الخدمة.
+6. افتح GitHub → Actions → Deploy Firebase backend → Run workflow. تتحقق المهمة من وجود سر OpenAI ثم تنشر قواعد Firestore ودالة `openaiChatCompletion`.
+
+المهمة لا تنفذ النشر عند كل commit. يلزم تشغيلها يدوياً بعد مراجعة الفرع والتأكد من المشروع الهدف، ويجب ألا تمنح حساب الخدمة صلاحيات أوسع من اللازم.
