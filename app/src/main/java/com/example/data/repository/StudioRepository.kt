@@ -509,6 +509,7 @@ class StudioRepository(private val db: FirebaseFirestore) {
                 .whereEqualTo("projectId", projectId)
                 .whereEqualTo("schemaId", schemaId)
                 .whereEqualTo("collectionName", collectionName)
+                .limit(100)
                 .snapshots()
                 .map { snapshot ->
                     snapshot.documents.map { document ->
