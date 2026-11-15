@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
-import com.example.BuildConfig
 import com.example.data.model.AiRolePersona
 import com.example.data.model.ChatMessage
 import com.example.data.model.GeneratedMediaAsset
@@ -23,6 +22,10 @@ import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.auth.FirebaseAuth
+import com.google.android.gms.tasks.Task
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -431,6 +434,20 @@ class GeminiAiRepository(
         }
     }
 
+    private suspend fun <T> awaitFirebaseTask(task: Task<T>): T =
+        suspendCancellableCoroutine { continuation ->
+            task.addOnCompleteListener { completed ->
+                if (!continuation.isActive) return@addOnCompleteListener
+                if (completed.isSuccessful) {
+                    continuation.resume(completed.result)
+                } else {
+                    continuation.resumeWithException(
+                        completed.exception ?: IllegalStateException("Firebase request failed.")
+                    )
+                }
+            }
+        }
+
     suspend fun callOpenAiChat(
         history: List<ChatMessage> = emptyList(),
         userPrompt: String,
@@ -440,12 +457,21 @@ class GeminiAiRepository(
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             Result.success(run {
-            if (!OpenAiNetworkClient.isApiKeyConfigured()) {
+            if (!OpenAiNetworkClient.isProxyConfigured()) {
                 throw IllegalStateException(
-                    "مفتاح OPENAI_API_KEY غير مضبوط بعد في لوحة الأسرار (Secrets Panel) في AI Studio. " +
-                        "أضف المفتاح باسم OPENAI_API_KEY في لوحة Secrets ليتم حقنه تلقائياً عبر BuildConfig.OPENAI_API_KEY."
+                    "خادم OpenAI الوسيط غير مضبوط. انشر الدالة openaiChatCompletion واضبط OPENAI_PROXY_BASE_URL في إعدادات البناء."
                 )
             }
+
+            val signedInUser = FirebaseAuth.getInstance().currentUser
+                ?: throw IllegalStateException("يجب تسجيل الدخول قبل استخدام ChatGPT.")
+            val firebaseIdToken = awaitFirebaseTask(signedInUser.getIdToken(false)).token
+                ?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("تعذر الحصول على رمز تسجيل الدخول لخادم ChatGPT.")
+            val appCheckToken = awaitFirebaseTask(
+                FirebaseAppCheck.getInstance().getAppCheckToken(false)
+            ).token?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("تعذر الحصول على رمز App Check لخادم ChatGPT.")
 
             val systemContent = buildString {
                 appendLine("[System Role: ${persona.titleAr}]")
@@ -470,6 +496,8 @@ class GeminiAiRepository(
 
             val response = withTimeout(AI_TIMEOUT_MS) {
                 openAiService.createChatCompletion(
+                    authorization = "Bearer $firebaseIdToken",
+                    appCheckToken = appCheckToken,
                     request = OpenAiChatCompletionRequest(
                         model = openAiModel,
                         messages = messages,
@@ -582,8 +610,8 @@ class GeminiAiRepository(
             openAiResult.onSuccess { gptReply ->
                 appendLine(gptReply)
             }.onFailure { err ->
-                appendLine("⚠️ تعذر إكمال اتصال ChatGPT المباشر (${err.localizedMessage}).")
-                appendLine("💡 للتفعيل الفوري: افتح **لوحة الأسرار (Secrets Panel)** في AI Studio وأضف مفتاحك تحت الاسم `OPENAI_API_KEY` ليتم قراءته عبر `BuildConfig.OPENAI_API_KEY`.")
+                appendLine("⚠️ تعذر إكمال اتصال خادم ChatGPT الوسيط (${err.localizedMessage}).")
+                appendLine("💡 لتفعيله، انشر Cloud Function باسم `openaiChatCompletion` واضبط `OPENAI_PROXY_BASE_URL` في إعدادات البناء.")
             }
         }.trim()
 
@@ -619,12 +647,12 @@ class GeminiAiRepository(
         openAiResult.onSuccess { reply ->
             return Pair(
                 reply,
-                listOf("OpenAI ChatGPT API ($openAiModel • BuildConfig.OPENAI_API_KEY)")
+                listOf("OpenAI secure Firebase proxy ($openAiModel)")
             )
         }
 
         val error = openAiResult.exceptionOrNull()
-        if (error != null && OpenAiNetworkClient.isApiKeyConfigured()) {
+        if (error != null && OpenAiNetworkClient.isProxyConfigured()) {
             GlobalExceptionHandler.reportError(
                 phase = "OpenAI Chat ($openAiModel)",
                 throwable = error,
@@ -633,7 +661,7 @@ class GeminiAiRepository(
             )
         }
 
-        // Seamless fallback to Gemini alongside clear instructions for OPENAI_API_KEY
+        // Seamless fallback to Gemini alongside clear instructions for the secure OpenAI proxy
         val (geminiBackup, geminiSources) = sendGeminiSingleEngineChat(
             history = history,
             userPrompt = userPrompt,
@@ -644,9 +672,9 @@ class GeminiAiRepository(
         )
 
         val combined = buildString {
-            appendLine("ℹ️ **ملاحظة محرك ChatGPT ($openAiModel):** ${error?.localizedMessage ?: "تعذر الاتصال بـ OpenAI API"}")
-            if (!OpenAiNetworkClient.isApiKeyConfigured()) {
-                appendLine("🔑 **طريقة ربط مفتاح ChatGPT بأمان:** افتح لوحة **Secrets** في AI Studio وأدخل مفتاحك في الحقل `OPENAI_API_KEY` (يُقرأ تلقائياً عبر `BuildConfig.OPENAI_API_KEY`).")
+            appendLine("ℹ️ **ملاحظة محرك ChatGPT ($openAiModel):** ${error?.localizedMessage ?: "تعذر الاتصال بخادم OpenAI الوسيط"}")
+            if (!OpenAiNetworkClient.isProxyConfigured()) {
+                appendLine("🔐 **إعداد ChatGPT:** انشر الدالة `openaiChatCompletion` واضبط عنوانها في `OPENAI_PROXY_BASE_URL`. لا تضع مفتاح OpenAI في التطبيق.")
             }
             appendLine()
             appendLine("🔄 **الاستجابة المساندة الفورية عبر محرك Gemini المدمج:**")
@@ -729,7 +757,7 @@ class GeminiAiRepository(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Gemini Chat error ($effectiveModel)", e)
-            if (OpenAiNetworkClient.isApiKeyConfigured()) {
+            if (OpenAiNetworkClient.isProxyConfigured()) {
                 val backupGpt = callOpenAiChat(
                     history = history,
                     userPrompt = userPrompt,
@@ -812,7 +840,7 @@ class GeminiAiRepository(
             Provide a concise, high-performance code completion or enhancement snippet ready to insert.
         """.trimIndent()
 
-        if (isOpenAiModel(preferredModel) || (isDualEngineModel(preferredModel) && OpenAiNetworkClient.isApiKeyConfigured())) {
+        if (isOpenAiModel(preferredModel) || (isDualEngineModel(preferredModel) && OpenAiNetworkClient.isProxyConfigured())) {
             val openAiRes = callOpenAiChat(
                 userPrompt = prompt,
                 openAiModel = MODEL_GPT_4O_MINI,
@@ -882,7 +910,7 @@ class GeminiAiRepository(
             Return fenced code blocks labelled html, css, javascript, and $stackLanguage. Do not claim any service is deployed or connected. Do not invent runtime metrics or backend status.
         """.trimIndent()
 
-        if (isOpenAiModel(preferredModel) && OpenAiNetworkClient.isApiKeyConfigured()) {
+        if (isOpenAiModel(preferredModel) && OpenAiNetworkClient.isProxyConfigured()) {
             val gptOut = callOpenAiChat(
                 userPrompt = prompt,
                 openAiModel = MODEL_GPT_4O,
@@ -901,7 +929,7 @@ class GeminiAiRepository(
                     response.text
                 }
             }
-            val openAiSupplement = if (OpenAiNetworkClient.isApiKeyConfigured()) {
+            val openAiSupplement = if (OpenAiNetworkClient.isProxyConfigured()) {
                 callOpenAiChat(
                     userPrompt = "Provide a concise production-ready backend controller ($stackLanguage) for: $projectBrief",
                     openAiModel = MODEL_GPT_4O_MINI,
@@ -1161,7 +1189,7 @@ class GeminiAiRepository(
             Provide functional domain insights, structural folding predictions, and a complete Python (Biopython) analysis script in Arabic.
         """.trimIndent()
 
-        if (isOpenAiModel(preferredModel) && OpenAiNetworkClient.isApiKeyConfigured()) {
+        if (isOpenAiModel(preferredModel) && OpenAiNetworkClient.isProxyConfigured()) {
             val gptBio = callOpenAiChat(
                 userPrompt = prompt,
                 openAiModel = MODEL_GPT_4O,
@@ -1179,7 +1207,7 @@ class GeminiAiRepository(
                     argonModel.generateContent(prompt).text
                 }
             }
-            val openAiBioNote = if (OpenAiNetworkClient.isApiKeyConfigured()) {
+            val openAiBioNote = if (OpenAiNetworkClient.isProxyConfigured()) {
                 callOpenAiChat(
                     userPrompt = "Provide a concise clinical & structural validation summary in Arabic for this sequence and goal: $researchGoal (Length=$length)",
                     openAiModel = MODEL_GPT_4O_MINI,

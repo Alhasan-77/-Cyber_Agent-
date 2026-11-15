@@ -22,9 +22,12 @@
 
 ## 3. Gemini وOpenAI
 
-- Gemini يتصل عبر Firebase AI Logic؛ يحتاج مشروع Firebase مضبوطاً، ومزوداً مفعلاً، وحصة/فوترة مناسبة للنموذج.
-- لا تضع مفتاح OpenAI داخل APK أو BuildConfig في إصدار إنتاجي؛ يمكن استخراج الأسرار المضمنة في التطبيق. لتفعيل OpenAI بأمان، استخدم خادماً وسيطاً يحتفظ بالمفتاح في Secret Manager ويصادق طلبات التطبيق.
-- الوضع المزدوج لا يعني أن المزودين يعملان تلقائياً؛ تحقق من نجاح كل مزود على حدة.
+- Gemini يتصل عبر Firebase AI Logic؛ يحتاج مشروع Firebase مضبوطاً، ومزوداً مفعلاً، وApp Check مسجلاً. قد تتطلب بعض النماذج خطة Blaze.
+- لا يرسل تطبيق Android مفتاح OpenAI إلى OpenAI مباشرة. يرسل طلب ChatGPT إلى Cloud Function باسم `openaiChatCompletion` مع Firebase ID token وApp Check token. تتحقق الدالة من الاثنين، وتطبق حداً يومياً قدره 50 طلباً لكل مستخدم، ثم تستدعي OpenAI بالمفتاح المحفوظ في Firebase Secret Manager.
+- أنشئ السر من جذر المشروع باستخدام `firebase functions:secrets:set OPENAI_API_KEY`، ثم انشر الدالة باستخدام `firebase deploy --only functions:openaiChatCompletion`.
+- اضبط عنوان الدالة في ملف `.env` المحلي، مثلاً: `OPENAI_PROXY_BASE_URL=https://us-central1-PROJECT_ID.cloudfunctions.net/`، واستبدل `PROJECT_ID` بمعرّف مشروعك. أضف القيمة نفسها كـGitHub Actions Secret باسم `OPENAI_PROXY_BASE_URL` ليظهر اتصال ChatGPT في بناء CI.
+- لا تضف `OPENAI_API_KEY` إلى `.env` أو BuildConfig أو APK. المفتاح مطلوب على الخادم فقط.
+- الوضع المزدوج يرجع إلى Gemini عند عدم إعداد الخادم الوسيط أو فشل طلب OpenAI؛ أما اختيار ChatGPT مباشرة فيحتاج عنوان الخادم الوسيط وإعدادات Firebase الصحيحة.
 
 ## 4. حدود الوكيل الحالية
 
@@ -40,7 +43,8 @@
 
 ```bash
 npm install
-firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest && npm run test:firestore-rules"
+npm --prefix functions install
+firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest && npm run test:firestore-rules && npm run test:functions"
 keytool -genkeypair -noprompt -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 gradle --no-daemon assembleDebug
 ```

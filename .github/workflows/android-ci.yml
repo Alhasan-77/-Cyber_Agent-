@@ -36,7 +36,18 @@ jobs:
 
       - name: Create local secrets file with safe empty defaults
         run: |
-          printf '%s\n' 'OPENAI_API_KEY="\"\""' > .env
+          printf '%s\n' 'OPENAI_PROXY_BASE_URL=""' > .env
+
+      - name: Configure secure OpenAI proxy URL when repository secret is available
+        env:
+          OPENAI_PROXY_BASE_URL: ${{ secrets.OPENAI_PROXY_BASE_URL }}
+        run: |
+          if [ -n "$OPENAI_PROXY_BASE_URL" ]; then
+            printf 'OPENAI_PROXY_BASE_URL="%s"\n' "$OPENAI_PROXY_BASE_URL" >> .env
+            echo "OpenAI proxy endpoint loaded from repository secret."
+          else
+            echo "OPENAI_PROXY_BASE_URL is not configured; ChatGPT requests will stay disabled."
+          fi
 
       - name: Configure Firebase Android app when repository secret is available
         env:
@@ -57,11 +68,14 @@ jobs:
       - name: Install Firestore rules test dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Install Firebase Functions dependencies
+        run: npm --prefix functions install --no-audit --no-fund
+
       - name: Install Firebase CLI
         run: npm install --global firebase-tools@14
 
-      - name: Run Kotlin, Robolectric, and Firestore rules tests with emulators
-        run: firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest && npm run test:firestore-rules"
+      - name: Run Kotlin, Robolectric, Firestore rules, and Functions validation tests
+        run: firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest && npm run test:firestore-rules && npm run test:functions"
 
       - name: Upload unit test reports
         if: always()

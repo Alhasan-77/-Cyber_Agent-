@@ -4,42 +4,25 @@ import com.example.BuildConfig
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.Header
 import retrofit2.http.POST
+import java.net.URI
 import java.util.concurrent.TimeUnit
 
-/**
- * High-level AI Engine Provider allowing users to switch between Gemini, ChatGPT, or Dual Engine.
- */
 enum class AiEngineProvider(
     val id: String,
     val titleAr: String,
     val shortBadge: String,
     val defaultModelId: String
 ) {
-    GEMINI(
-        id = "GEMINI",
-        titleAr = "🔷 Gemini (Firebase AI)",
-        shortBadge = "Gemini",
-        defaultModelId = "gemini-3.8-flash"
-    ),
-    CHATGPT(
-        id = "CHATGPT",
-        titleAr = "🟢 ChatGPT (OpenAI API)",
-        shortBadge = "ChatGPT",
-        defaultModelId = "gpt-4o"
-    ),
-    DUAL_ENGINE(
-        id = "DUAL_ENGINE",
-        titleAr = "🤝 مزدوج (Gemini + ChatGPT)",
-        shortBadge = "Dual AI",
-        defaultModelId = "gemini+chatgpt-dual"
-    );
+    GEMINI("GEMINI", "🔷 Gemini (Firebase AI)", "Gemini", "gemini-3.8-flash"),
+    CHATGPT("CHATGPT", "🟢 ChatGPT (Secure Proxy)", "ChatGPT", "gpt-4o"),
+    DUAL_ENGINE("DUAL_ENGINE", "🤝 مزدوج (Gemini + ChatGPT)", "Dual AI", "gemini+chatgpt-dual");
 
     companion object {
         fun fromModelId(modelId: String): AiEngineProvider {
@@ -52,9 +35,6 @@ enum class AiEngineProvider(
     }
 }
 
-/**
- * Common interface for AI text generation clients injected into the prompt service.
- */
 interface AiTextGenerationClient {
     val provider: AiEngineProvider
     val modelId: String
@@ -103,80 +83,72 @@ data class OpenAiErrorDetail(
     val code: String? = null
 )
 
-/**
- * Retrofit service interface for the OpenAI Chat Completions API.
- */
 interface OpenAiApiService {
-    @POST("v1/chat/completions")
+    @POST("openaiChatCompletion")
     suspend fun createChatCompletion(
+        @Header("Authorization") authorization: String,
+        @Header("X-Firebase-AppCheck") appCheckToken: String,
         @Body request: OpenAiChatCompletionRequest
     ): OpenAiChatCompletionResponse
 }
 
+/**
+ * The Android client talks only to the Firebase HTTPS proxy.
+ * OpenAI provider credentials are never read from or packaged in BuildConfig.
+ */
 object OpenAiNetworkClient {
-    private const val BASE_URL = "https://api.openai.com/"
-    const val PLACEHOLDER_KEY = ""
-    private const val DEFAULT_PLUGIN_PLACEHOLDER = "OPENAI_API_KEY_DEFAULT_VALUE"
-
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
         explicitNulls = false
     }
 
-    private val authInterceptor = Interceptor { chain ->
-        val original = chain.request()
-        val existingAuth = original.header("Authorization")
-        val configuredKey = getConfiguredApiKey()
-        val requestBuilder = original.newBuilder()
-            .header("Content-Type", "application/json")
-        if (existingAuth.isNullOrBlank() && !isApiKeyConfigured()) {
-            throw IllegalStateException("مفتاح OpenAI غير مضبوط. أضف OPENAI_API_KEY في إعدادات الأسرار.")
-        }
-        if (existingAuth.isNullOrBlank()) {
-            requestBuilder.header("Authorization", "Bearer $configuredKey")
-        }
-        chain.proceed(requestBuilder.build())
+    private fun configuredBaseUrl(): String {
+        val value = BuildConfig.OPENAI_PROXY_BASE_URL.trim()
+        if (value.isBlank()) return "https://localhost/"
+        return if (value.endsWith("/")) value else "$value/"
     }
 
     private val okHttpClient = OkHttpClient.Builder()
-        .addInterceptor(authInterceptor)
-        .connectTimeout(45, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS)
-        .writeTimeout(45, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(100, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
     val service: OpenAiApiService by lazy {
         Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(configuredBaseUrl())
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(OpenAiApiService::class.java)
     }
 
-    fun getConfiguredApiKey(): String {
+    fun isProxyConfigured(): Boolean {
+        val value = BuildConfig.OPENAI_PROXY_BASE_URL.trim()
+        if (value.isBlank()) return false
         return runCatching {
-            BuildConfig.OPENAI_API_KEY.trim().removeSurrounding("\"").trim()
-        }.getOrDefault("")
+            val uri = URI(value)
+            uri.scheme.equals("https", ignoreCase = true) &&
+                !uri.host.isNullOrBlank() &&
+                uri.userInfo == null
+        }.getOrDefault(false)
     }
 
-    fun isApiKeyConfigured(): Boolean {
-        val key = getConfiguredApiKey()
-        return key.isNotBlank() &&
-            key != DEFAULT_PLUGIN_PLACEHOLDER &&
-            !key.startsWith("YOUR_")
-    }
-
-    /**
-     * A locally present key is not proof that the remote API accepts it.
-     * Never expose even a partial API key in UI status text.
-     */
-    fun getKeyStatusSummaryAr(): String {
-        return if (isApiKeyConfigured()) {
-            "تم ضبط المفتاح محلياً؛ لم يتم التحقق من صلاحيته بعد"
+    fun getProxyStatusSummaryAr(): String {
+        return if (isProxyConfigured()) {
+            "عنوان خادم OpenAI مضبوط؛ لم يتم التحقق من الاتصال بعد"
         } else {
-            "مفتاح OpenAI غير مضبوط"
+            "خادم OpenAI الوسيط غير مضبوط"
         }
     }
+
+    @Deprecated("Use isProxyConfigured()")
+    fun isApiKeyConfigured(): Boolean = isProxyConfigured()
+
+    @Deprecated("Use getProxyStatusSummaryAr()")
+    fun getKeyStatusSummaryAr(): String = getProxyStatusSummaryAr()
+
+    @Deprecated("Provider keys must never be stored in the Android app.")
+    fun getConfiguredApiKey(): String = ""
 }
