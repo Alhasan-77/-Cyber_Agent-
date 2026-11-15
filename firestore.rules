@@ -195,7 +195,7 @@ service cloud.firestore {
                     isValidId(userId) &&
                     isValidId(projectId) &&
                     isValidId(recordId) &&
-                    isOwnedCustomCollectionRecord(existing(), userId, projectId, collectionName);
+                    (resource == null || isOwnedCustomCollectionRecord(existing(), userId, projectId, collectionName));
 
       // Query predicates bind userId, projectId, schemaId, and collectionName.
       // Avoid requiring non-queryable payload/timestamp fields in list authorization.
