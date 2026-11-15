@@ -527,6 +527,31 @@ class StudioRepository(private val db: FirebaseFirestore) {
         }
     }
 
+    suspend fun deleteCollectionRecord(
+        projectId: String,
+        schemaId: String,
+        collectionName: String,
+        recordId: String
+    ): Result<Unit> = runCatchingCancellable {
+        val uid = requireUserId()
+        requireOwnedProject(uid, projectId)
+        requireCollectionName(collectionName)
+        requireText(recordId, "Record ID", 128)
+        requireOwnedCollectionSchema(uid, projectId, schemaId, collectionName)
+        val document = db.collection("users").document(uid)
+            .collection("projects").document(projectId)
+            .collection("data").document(collectionName)
+            .collection("records").document(recordId)
+        try {
+            document.delete().await()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            handleFirestoreError(error, OperationType.DELETE, document.path)
+            throw error
+        }
+    }
+
     suspend fun updateCollectionSchema(schema: DbCollectionSchema): Result<Unit> = runCatchingCancellable {
         val uid = requireUserId()
         require(schema.id.isNotBlank()) { "Schema ID must not be blank" }
