@@ -234,7 +234,7 @@ private fun FlexibleDatabaseSection(
                     Text(
                         text = "تعريف المخطط يُحفظ تحت users/{uid}/collections. السجلات الحقيقية تُحفظ تحت users/{uid}/projects/{projectId}/data/{collectionName}/records؛ وحقل sampleRecordsJson معاينة JSON مساعدة فقط.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = CyberAmber
+                        color = CyberCyan
                     )
                     OutlinedTextField(
                         value = colName,
