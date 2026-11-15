@@ -153,7 +153,7 @@ fun DatabaseAndVcsTabScreen(
                 FilterChip(
                     selected = activeSubTab == 2,
                     onClick = { activeSubTab = 2 },
-                    label = { Text("الإصدارات و Git") },
+                    label = { Text("إصدارات مساحة العمل") },
                     leadingIcon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     shape = RoundedCornerShape(50),
                     colors = FilterChipDefaults.filterChipColors(
@@ -405,12 +405,11 @@ private fun VersionControlSection(
     onComputeDiff: (VersionSnapshot) -> List<DiffLine>
 ) {
     var commitMessage by remember { mutableStateOf("") }
-    var versionTag by remember { mutableStateOf("v1.${snapshots.size + 1}.0") }
+    var versionTag by remember(snapshots.size) { mutableStateOf("v1.${snapshots.size + 1}.0") }
     var selectedDiffSnapshot by remember { mutableStateOf<VersionSnapshot?>(snapshots.firstOrNull()) }
 
-    val diffLines = remember(selectedDiffSnapshot) {
-        selectedDiffSnapshot?.let { onComputeDiff(it) }.orEmpty()
-    }
+    // Recompute against the current editor buffers on each screen recomposition.
+    val diffLines = selectedDiffSnapshot?.let { onComputeDiff(it) }.orEmpty()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -430,7 +429,7 @@ private fun VersionControlSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "إدارة الفروع البرمجية وحفظ اللقطات السحابية",
+                        text = "وسوم مساحة العمل وحفظ لقطات الإصدارات السحابية",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberTextPrimary,
                         fontWeight = FontWeight.Bold
@@ -440,7 +439,7 @@ private fun VersionControlSection(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "الفرع:",
+                            text = "وسم مساحة العمل:",
                             style = MaterialTheme.typography.labelMedium,
                             color = CyberTextSecondary
                         )
@@ -454,6 +453,11 @@ private fun VersionControlSection(
                             )
                         }
                     }
+                    Text(
+                        text = "هذه وسوم محلية لتنظيم مساحة العمل فقط؛ لا يتم تنفيذ أوامر Git أو إنشاء فروع فعلية.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CyberTextSecondary
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -471,7 +475,7 @@ private fun VersionControlSection(
                         OutlinedTextField(
                             value = commitMessage,
                             onValueChange = { commitMessage = it },
-                            label = { Text("رسالة التوثيق (Commit Message)") },
+                            label = { Text("رسالة الإصدار") },
                             placeholder = { Text("إضافة واجهة التفاعل وتحديث قاعدة البيانات...") },
                             singleLine = true,
                             shape = RoundedCornerShape(16.dp),
@@ -486,8 +490,6 @@ private fun VersionControlSection(
                                 commitMessage.ifBlank { "تحديث الكود والمخططات السحابية" },
                                 versionTag
                             )
-                            commitMessage = ""
-                            versionTag = "v1.${snapshots.size + 2}.0"
                         },
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
@@ -497,7 +499,7 @@ private fun VersionControlSection(
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, tint = CyberBackground)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("التزام وحفظ الإصدار في السحابة (Commit Snapshot)", color = CyberBackground, fontWeight = FontWeight.Bold)
+                        Text("حفظ لقطة الإصدار في Firestore", color = CyberBackground, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -577,7 +579,7 @@ private fun VersionControlSection(
         // Snapshot History List
         item {
             Text(
-                text = "سجل الإصدارات السحابية (Commit History)",
+                text = "سجل لقطات الإصدارات السحابية",
                 style = MaterialTheme.typography.titleMedium,
                 color = CyberTextPrimary,
                 fontWeight = FontWeight.Bold
