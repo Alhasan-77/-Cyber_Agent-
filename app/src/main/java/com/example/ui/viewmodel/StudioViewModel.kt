@@ -661,8 +661,9 @@ class StudioViewModel(
         val selectedId = _selectedProjectId.value
         val existing = selectedId?.let { projectId ->
             repository.getProjectById(currentUserId, projectId).getOrElse { error -> throw error }
+                ?: throw IllegalStateException("المشروع المحدد لم يعد موجوداً؛ لم يتم إنشاء مشروع بديل أو تغيير معرّف المشروع.")
         }
-        val result = if (existing != null) {
+        val result = if (selectedId != null && existing != null) {
             repository.updateProject(
                 existing.copy(
                     name = _editorName.value,
