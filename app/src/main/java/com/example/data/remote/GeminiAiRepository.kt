@@ -327,6 +327,7 @@ class GeminiAiRepository(
         val chat = createAgentModel(preferredModel).startChat()
         var response = withTimeout(AI_TIMEOUT_MS) { chat.sendMessage(agentPrompt) }
         val executedTools = mutableListOf<String>()
+        val failedTools = mutableListOf<String>()
         var rounds = 0
 
         while (response.functionCalls.isNotEmpty()) {
@@ -347,7 +348,12 @@ class GeminiAiRepository(
                     )
                 }
                 if (result["ok"] == JsonPrimitive(true)) {
-                    executedTools += call.name
+                    executedTools += "Cyber Agent Tool: ${call.name}"
+                } else {
+                    val failureMessage = result["error"]?.toString()?.trim('"')
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "Tool execution failed without a detailed error."
+                    failedTools += "Cyber Agent Tool Failed: ${call.name} — $failureMessage"
                 }
                 FunctionResponsePart(call.name, result, call.id)
             }
@@ -362,7 +368,13 @@ class GeminiAiRepository(
         val finalText = response.text?.trim()
             ?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("لم يُرجع وكيل Gemini استجابة نهائية.")
-        finalText to executedTools.distinct()
+        val outcomeText = if (failedTools.isNotEmpty()) {
+            "تنبيه التنفيذ: لم تنجح كل الأدوات المطلوبة. الأدوات التي أخفقت: " +
+                failedTools.joinToString(" | ") + "\\n\\n" + finalText
+        } else {
+            finalText
+        }
+        (outcomeText to (executedTools + failedTools).distinct())
     }
 
     private val flashModel: GenerativeModel by lazy {
