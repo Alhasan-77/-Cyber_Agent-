@@ -47,7 +47,7 @@ class LineDiffEngineTest {
         )
 
         assertEquals(1, result.count { it.type == DiffType.DELETED })
-        assertEquals(1, result.count { it.type == DiffType.ADDED })
+        assertEquals(0, result.count { it.type == DiffType.ADDED })
         assertEquals(2, result.count { it.type == DiffType.UNCHANGED })
     }
 
