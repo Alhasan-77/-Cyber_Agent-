@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,8 +41,8 @@ import com.example.ui.screens.DashboardTabScreen
 import com.example.ui.screens.DatabaseAndVcsTabScreen
 import com.example.ui.screens.IdePreviewTabScreen
 import com.example.ui.screens.SkillsMemoryHubTabScreen
-import com.example.ui.screens.onGoogleSignInClicked
 import com.example.ui.screens.signOutUser
+import com.example.ui.screens.switchGoogleAccount
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.DataViewModel
 import com.example.ui.viewmodel.StudioViewModel
@@ -202,12 +203,14 @@ fun AppNavigation(auth: FirebaseAuth? = null) {
     if (user == null) {
         AuthScreen(onAuthSuccess = { currentUser = resolvedAuth.currentUser })
     } else {
-        NovaForgeStudioShell(
-            currentUserId = user.uid,
-            userEmail = user.email ?: "Cloud Developer",
-            userDisplayName = user.displayName ?: "NovaForge Developer",
-            userPhotoUrl = user.photoUrl?.toString().orEmpty()
-        )
+        key(user.uid) {
+            NovaForgeStudioShell(
+                currentUserId = user.uid,
+                userEmail = user.email ?: "Cloud Developer",
+                userDisplayName = user.displayName ?: "NovaForge Developer",
+                userPhotoUrl = user.photoUrl?.toString().orEmpty()
+            )
+        }
     }
 }
 
@@ -425,7 +428,7 @@ fun NovaForgeStudioShell(
         onToggleAiProvider = { viewModel.toggleAiProvider(it) },
         onForceCloudSync = { viewModel.forceManualCloudSync() },
         onSwitchGoogleAccount = {
-            onGoogleSignInClicked(
+            switchGoogleAccount(
                 context = context,
                 credentialManager = credentialManager,
                 onAuthSuccess = { viewModel.forceManualCloudSync() },
