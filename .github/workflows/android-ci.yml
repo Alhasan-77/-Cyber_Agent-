@@ -66,7 +66,7 @@ jobs:
         run: node --check functions/index.js && node --check functions/src/validation.js
 
       - name: Run Kotlin, Robolectric, Firestore rules, and Functions validation tests
-        run: firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest && npm run test:firestore-rules && npm run test:functions"
+        run: firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon lintDebug testDebugUnitTest && npm run test:firestore-rules && npm run test:functions"
 
       - name: Upload unit test reports
         if: always()
@@ -93,6 +93,38 @@ jobs:
 
       - name: Assemble debug APK
         run: gradle --no-daemon assembleDebug
+
+      - name: Prepare optional release signing
+        id: release_signing
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
+            printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/cyber-agent-upload.jks"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/cyber-agent-upload.jks" >> "$GITHUB_ENV"
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Release build skipped: release signing secrets are not configured."
+          fi
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+
+      - name: Assemble signed release APK
+        if: steps.release_signing.outputs.ready == 'true'
+        env:
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: gradle --no-daemon assembleRelease
+
+      - name: Upload signed release APK
+        if: steps.release_signing.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyber-agent-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload debug APK
         if: success()

@@ -20,3 +20,4 @@ debug.keystore
 
 # Node.js dependencies
 node_modules/
+my-upload-key.jks

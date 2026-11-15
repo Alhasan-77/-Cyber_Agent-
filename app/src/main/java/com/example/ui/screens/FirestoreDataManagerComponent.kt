@@ -34,7 +34,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MenuOpen
+import androidx.compose.material.icons.automirrored.filled.MenuOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
@@ -272,7 +272,7 @@ private fun FirestoreWorkspaceTopBar(
                         modifier = Modifier.testTag("toggle_firestore_sidebar_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MenuOpen,
+                            imageVector = Icons.AutoMirrored.Filled.MenuOpen,
                             contentDescription = "إظهار أو إخفاء الشريط الجانبي للمجموعات",
                             tint = if (isSidebarVisible) CyberCyan else MaterialTheme.colorScheme.onSurfaceVariant
                         )

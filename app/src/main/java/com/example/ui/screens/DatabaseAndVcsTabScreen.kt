@@ -396,7 +396,7 @@ private fun FlexibleDatabaseSection(
                             style = MaterialTheme.typography.bodySmall
                         )
                         is UiState.Success<*> -> {
-                            val records = recordState.data as? List<DbCollectionRecord> ?: emptyList()
+                            val records = (recordState.data as? List<*>)?.filterIsInstance<DbCollectionRecord>().orEmpty()
                             if (records.isEmpty()) {
                                 Text(
                                     "لا توجد سجلات فعلية بعد. أضف أول سجل من الحقل أدناه.",

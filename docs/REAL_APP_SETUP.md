@@ -58,3 +58,17 @@ gradle --no-daemon assembleDebug
 ## 7. شروط اعتبار التطبيق جاهزاً
 
 لا تعتبر النسخة مكتملة حتى تتحقق جميع النقاط التالية: نجاح Kotlin/Robolectric tests، نجاح Firestore Rules tests على Emulator، نجاح assembleDebug، توفر APK كأثر CI، إعداد Firebase الفعلي، نجاح Google Sign-In وFirestore وGemini وApp Check على جهاز Android، واختبار عدم تسريب الأسرار. نجاح CI لا يثبت وحده عمل خدمات الإنتاج.
+
+
+## 8. إعداد بناء Release الاختياري في GitHub Actions
+
+بعد إنشاء Upload Keystore محلياً والاحتفاظ بنسخة احتياطية آمنة منه، أضف القيم التالية في GitHub → Settings → Secrets and variables → Actions:
+
+- `RELEASE_KEYSTORE_BASE64`: محتوى ملف JKS بعد تحويله إلى Base64.
+- `RELEASE_STORE_PASSWORD`: كلمة مرور مخزن الشهادة.
+- `RELEASE_KEY_PASSWORD`: كلمة مرور المفتاح.
+- يجب أن يكون اسم alias داخل JKS هو `upload` كما هو محدد في إعداد Gradle.
+
+على Linux استخدم `base64 -w 0 my-upload-key.jks`. على macOS استخدم `base64 my-upload-key.jks | tr -d '\\n'`. على Windows PowerShell استخدم `[Convert]::ToBase64String([IO.File]::ReadAllBytes("my-upload-key.jks"))`.
+
+بعد إضافة الأسرار، يشغّل CI خطوة `assembleRelease` ويرفع `cyber-agent-release-apk`. لا ترسل JKS أو كلمات المرور في المحادثة أو ترفعها إلى Git. إذا لم تُضبط الأسرار، يستمر Debug بناءً وتظل خطوة Release متخطاة.
