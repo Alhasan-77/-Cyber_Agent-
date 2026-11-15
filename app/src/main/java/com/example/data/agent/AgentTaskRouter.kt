@@ -10,11 +10,45 @@ enum class AgentTaskType {
     EDIT_ACTIVE_CODE
 }
 
+data class AgentProjectRequest(
+    val name: String,
+    val language: String
+)
+
 /**
  * Routes only explicit, bounded workspace commands to local executors.
  * General questions remain normal AI chat; ambiguous requests are never executed.
  */
 object AgentTaskRouter {
+    fun parseProjectRequest(prompt: String, fallbackLanguage: String = "Full-Stack Web"): AgentProjectRequest {
+        val cleanPrompt = prompt.trim()
+        val commandPrefix = Regex(
+            "^\\s*(?:من فضلك\\s*)?(?:أنشئ|انشئ)\\s+(?:لي\\s+)?مشروع\\s*|^\\s*(?:please\\s+)?(?:create|build)\\s+(?:a\\s+)?project\\s*",
+            RegexOption.IGNORE_CASE
+        )
+        val withoutPrefix = cleanPrompt.replaceFirst(commandPrefix, "").trim()
+        val stackMatch = Regex(
+            "\\s+(?:باستخدام|مع|using|with)\\s+(.+)$",
+            RegexOption.IGNORE_CASE
+        ).find(withoutPrefix)
+        val requestedLanguage = stackMatch?.groupValues?.get(1)?.trim()
+            ?.takeIf { it.isNotBlank() }
+        val name = if (stackMatch != null) {
+            withoutPrefix.substring(0, stackMatch.range.first).trim()
+        } else {
+            withoutPrefix
+        }.take(80)
+
+        require(name.isNotBlank()) {
+            "حدد اسم المشروع بعد أمر الإنشاء."
+        }
+
+        return AgentProjectRequest(
+            name = name,
+            language = (requestedLanguage ?: fallbackLanguage).ifBlank { "Full-Stack Web" }.take(50)
+        )
+    }
+
     fun route(prompt: String): AgentTaskType? {
         val normalized = normalize(prompt)
         if (normalized.isBlank()) return null
