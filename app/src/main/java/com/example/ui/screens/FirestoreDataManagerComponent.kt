@@ -1055,8 +1055,8 @@ private fun CentralCreateDocumentView(
         )
         DataViewModel.COLLECTION_BIO_EXPERIMENTS -> Triple(
             "إنشاء التجارب الحيوية من تبويب المختبر فقط",
-            "أدخل التسلسل الحقيقي في مختبر العلوم الحيوية",
-            "هذا المدير لا ينشئ بيانات حيوية افتراضية"
+            "هذا النموذج غير مخصص لإنشاء سجل تجربة",
+            "استخدم مختبر العلوم الحيوية مع تسلسل حقيقي ونتائج فعلية"
         )
         DataViewModel.COLLECTION_SNAPSHOTS -> Triple(
             "وسم الإصدار (اتركه فارغاً لتوليده)",
@@ -1127,6 +1127,14 @@ private fun CentralCreateDocumentView(
             }
         }
 
+        if (collectionId == DataViewModel.COLLECTION_BIO_EXPERIMENTS) {
+            Text(
+                text = "إنشاء سجلات التجارب الحيوية متاح من تبويب مختبر العلوم الحيوية فقط، بعد إدخال تسلسل حقيقي وتشغيل التحليل. مدير المستندات لا ينشئ نتائج أو درجات افتراضية.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = CyberAmber
+            )
+        }
+
         OutlinedTextField(
             value = primaryInput,
             onValueChange = { primaryInput = it },
@@ -1169,6 +1177,7 @@ private fun CentralCreateDocumentView(
                 Text("إلغاء", color = MaterialTheme.colorScheme.onSurface)
             }
             Button(
+                enabled = collectionId != DataViewModel.COLLECTION_BIO_EXPERIMENTS,
                 onClick = {
                     // Keep entered values until the ViewModel confirms success and closes the form.
                     onCreateDocument(primaryInput, secondaryInput, thirdInput)
@@ -1180,7 +1189,12 @@ private fun CentralCreateDocumentView(
             ) {
                 Icon(Icons.Default.Save, contentDescription = null, tint = CyberBackground)
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("حفظ المستند في Cloud Firestore", color = CyberBackground, fontWeight = FontWeight.Bold)
+                Text(
+                    if (collectionId == DataViewModel.COLLECTION_BIO_EXPERIMENTS) "استخدم مختبر العلوم الحيوية"
+                    else "حفظ المستند في Cloud Firestore",
+                    color = CyberBackground,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
