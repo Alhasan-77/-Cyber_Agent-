@@ -296,7 +296,7 @@ private fun FirestoreWorkspaceTopBar(
                         )
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Text(
-                                text = "DB: ${databaseId.take(22)}... | Scope: /users/${userId.take(10)}... | ${latencyMs}ms",
+                                text = "DB: ${databaseId.take(22)}... | Scope: /users/${userId.take(10)}... | ${if (latencyMs > 0L) "${latencyMs}ms" else "—"}",
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontFamily = JetBrainsMonoFontFamily
                                 ),
@@ -1054,14 +1054,14 @@ private fun CentralCreateDocumentView(
             "بيئة/لغة التطوير (language)"
         )
         DataViewModel.COLLECTION_BIO_EXPERIMENTS -> Triple(
-            "عنوان التجربة الحيوية (title)",
-            "نوع الأداة (PROTEIN_FOLDING / CRISPR / GENOMICS)",
-            "ملخص التقرير والنتائج (summaryReport)"
+            "إنشاء التجارب الحيوية من تبويب المختبر فقط",
+            "أدخل التسلسل الحقيقي في مختبر العلوم الحيوية",
+            "هذا المدير لا ينشئ بيانات حيوية افتراضية"
         )
         DataViewModel.COLLECTION_SNAPSHOTS -> Triple(
-            "وسم الإصدار (versionTag مثل v1.4.0)",
-            "رسالة التوثيق (commitMessage)",
-            "ملاحظات الإصدار"
+            "وسم الإصدار (اتركه فارغاً لتوليده)",
+            "رسالة التوثيق (اختياري)",
+            "ملاحظات الإصدار (اختياري)"
         )
         else -> Triple(
             "مرحلة العملية (stage مثل SECURITY_SCAN)",
@@ -1170,10 +1170,8 @@ private fun CentralCreateDocumentView(
             }
             Button(
                 onClick = {
+                    // Keep entered values until the ViewModel confirms success and closes the form.
                     onCreateDocument(primaryInput, secondaryInput, thirdInput)
-                    primaryInput = ""
-                    secondaryInput = ""
-                    thirdInput = ""
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
                 modifier = Modifier
