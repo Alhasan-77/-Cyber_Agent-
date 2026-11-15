@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.webkit.WebSettings
 import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
@@ -492,7 +493,22 @@ fun IdePreviewTabScreen(
                                     WebView(ctx).apply {
                                         settings.javaScriptEnabled = true
                                         settings.domStorageEnabled = true
-                                        webViewClient = WebViewClient()
+                                        settings.allowFileAccess = false
+                                        settings.allowContentAccess = false
+                                        settings.javaScriptCanOpenWindowsAutomatically = false
+                                        settings.setSupportMultipleWindows(false)
+                                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                            settings.safeBrowsingEnabled = true
+                                        }
+                                        webViewClient = object : WebViewClient() {
+                                            override fun shouldOverrideUrlLoading(
+                                                view: WebView?,
+                                                request: android.webkit.WebResourceRequest?
+                                            ): Boolean {
+                                                return request?.url?.host != "novaforge.local"
+                                            }
+                                        }
                                         webChromeClient = object : WebChromeClient() {
                                             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                                                 val msg = consoleMessage?.message()
