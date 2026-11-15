@@ -272,6 +272,51 @@ class StudioRepository(private val db: FirebaseFirestore) {
             "The project does not belong to the signed-in user."
         }
 
+        // Remove real custom collection records while their owning schema documents still exist.
+        val ownedSchemas = try {
+            userDoc.collection("collections")
+                .whereEqualTo("userId", uid)
+                .whereEqualTo("projectId", projectId)
+                .get()
+                .await()
+                .documents
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            handleFirestoreError(error, OperationType.LIST, userDoc.collection("collections").path)
+            throw error
+        }
+        for (schema in ownedSchemas) {
+            val collectionName = schema.getString("collectionName")
+                ?: throw IllegalStateException("A linked schema is missing its collection name.")
+            requireCollectionName(collectionName)
+            val recordsRef = projectRef.collection("data").document(collectionName).collection("records")
+            val records = try {
+                recordsRef.whereEqualTo("userId", uid)
+                    .whereEqualTo("projectId", projectId)
+                    .get()
+                    .await()
+                    .documents
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                handleFirestoreError(error, OperationType.LIST, recordsRef.path)
+                throw error
+            }
+            records.chunked(400).forEach { chunk ->
+                val batch = db.batch()
+                chunk.forEach { document -> batch.delete(document.reference) }
+                try {
+                    batch.commit().await()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    handleFirestoreError(error, OperationType.DELETE, recordsRef.path)
+                    throw error
+                }
+            }
+        }
+
         // Firestore does not cascade deletes into sibling subcollections. Remove only records
         // explicitly owned by this user and linked to this project before deleting the parent.
         val dependentCollections = listOf("snapshots", "collections", "logs")
@@ -418,7 +463,7 @@ class StudioRepository(private val db: FirebaseFirestore) {
         requireCollectionName(collectionName)
         requireText(fieldsSpec, "Collection fields specification", 5000)
         requireText(sampleRecordsJson, "Sample records JSON", 20000, allowBlank = true)
-        val normalizedSamples = Json.encodeToString(JsonArray.serializer(), parseSampleRecordsJson(sampleRecordsJson))
+        val normalizedSamples = parseSampleRecordsJson(sampleRecordsJson).toString()
         requireText(indexConfig, "Index configuration", 500, allowBlank = true)
         val colId = "col_" + UUID.randomUUID().toString().replace("-", "").take(16)
         val docRef = db.collection("users").document(uid).collection("collections").document(colId)
@@ -490,7 +535,7 @@ class StudioRepository(private val db: FirebaseFirestore) {
         requireCollectionName(schema.collectionName)
         requireText(schema.fieldsSpec, "Collection fields specification", 5000)
         requireText(schema.sampleRecordsJson, "Sample records JSON", 20000, allowBlank = true)
-        val normalizedSamples = Json.encodeToString(JsonArray.serializer(), parseSampleRecordsJson(schema.sampleRecordsJson))
+        val normalizedSamples = parseSampleRecordsJson(schema.sampleRecordsJson).toString()
         requireText(schema.indexConfig, "Index configuration", 500, allowBlank = true)
         val docRef = db.collection("users").document(uid).collection("collections").document(schema.id)
         try {
@@ -514,14 +559,61 @@ class StudioRepository(private val db: FirebaseFirestore) {
 
     suspend fun deleteCollectionSchema(collectionId: String): Result<Unit> = runCatchingCancellable {
         val uid = requireUserId()
+        requireText(collectionId, "Collection schema ID", 128)
         val docRef = db.collection("users").document(uid).collection("collections").document(collectionId)
+        val schema = try {
+            docRef.get().await()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            handleFirestoreError(error, OperationType.GET, docRef.path)
+            throw error
+        }
+        if (!schema.exists()) return@runCatchingCancellable
+        require(schema.getString("userId") == uid) { "The collection schema does not belong to the signed-in user." }
+        val projectId = schema.getString("projectId")
+            ?: throw IllegalStateException("The collection schema has no project reference.")
+        val collectionName = schema.getString("collectionName")
+            ?: throw IllegalStateException("The collection schema has no collection name.")
+        requireOwnedProject(uid, projectId)
+        requireCollectionName(collectionName)
+
+        val recordsRef = db.collection("users").document(uid)
+            .collection("projects").document(projectId)
+            .collection("data").document(collectionName).collection("records")
+        val records = try {
+            recordsRef.whereEqualTo("userId", uid)
+                .whereEqualTo("projectId", projectId)
+                .whereEqualTo("schemaId", collectionId)
+                .get()
+                .await()
+                .documents
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            handleFirestoreError(error, OperationType.LIST, recordsRef.path)
+            throw error
+        }
+        records.chunked(400).forEach { chunk ->
+            val batch = db.batch()
+            chunk.forEach { document -> batch.delete(document.reference) }
+            try {
+                batch.commit().await()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                handleFirestoreError(error, OperationType.DELETE, recordsRef.path)
+                throw error
+            }
+        }
+
         try {
             docRef.delete().await()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, docRef.path)
-            throw e
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            handleFirestoreError(error, OperationType.DELETE, docRef.path)
+            throw error
         }
     }
 
