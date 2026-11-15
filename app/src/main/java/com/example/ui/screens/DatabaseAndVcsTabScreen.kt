@@ -40,6 +40,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -207,17 +209,7 @@ private fun FlexibleDatabaseSection(
     var fieldsSpec by remember { mutableStateOf("id:UUID, title:String, status:String, priority:Int") }
     var indexSpec by remember { mutableStateOf("Composite Index: (status ASC, priority DESC)") }
     var visualQueryFilter by remember { mutableStateOf("") }
-    var newRecordJson by remember { mutableStateOf("") }
-    val isRecordJsonValid = remember(newRecordJson) {
-        if (newRecordJson.isBlank()) {
-            false
-        } else {
-            runCatching {
-                kotlinx.serialization.json.Json.parseToJsonElement(newRecordJson)
-                    is kotlinx.serialization.json.JsonObject
-            }.getOrDefault(false)
-        }
-    }
+    val recordsBySchema by dataViewModel.collectionRecordsState.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -315,6 +307,20 @@ private fun FlexibleDatabaseSection(
             },
             key = { it.id }
         ) { schema ->
+            var newRecordJson by remember(schema.id) { mutableStateOf("") }
+            val isRecordJsonValid = remember(newRecordJson) {
+                if (newRecordJson.isBlank()) {
+                    false
+                } else {
+                    runCatching {
+                        kotlinx.serialization.json.Json.parseToJsonElement(newRecordJson)
+                            is kotlinx.serialization.json.JsonObject
+                    }.getOrDefault(false)
+                }
+            }
+            LaunchedEffect(schema.id) {
+                dataViewModel.observeCollectionRecords(schema)
+            }
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
@@ -367,6 +373,67 @@ private fun FlexibleDatabaseSection(
                                 .background(CyberSurfaceElevated)
                                 .padding(12.dp)
                         )
+                    }
+
+                    Text(
+                        text = "السجلات الفعلية في Firestore",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = CyberTextPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    when (val recordState = recordsBySchema[schema.id]) {
+                        null, UiState.Loading -> Text(
+                            "جارٍ تحميل السجلات الفعلية...",
+                            color = CyberTextSecondary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        is UiState.Error -> Text(
+                            "تعذر تحميل السجلات: ${recordState.message}",
+                            color = CyberCoral,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        is UiState.Success -> {
+                            if (recordState.data.isEmpty()) {
+                                Text(
+                                    "لا توجد سجلات فعلية بعد. أضف أول سجل من الحقل أدناه.",
+                                    color = CyberTextSecondary,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            } else {
+                                recordState.data.forEach { record ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                            Text(
+                                                text = record.recordJson,
+                                                color = CyberTextPrimary,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontFamily = JetBrainsMonoFontFamily
+                                                ),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .background(CyberSurfaceElevated, RoundedCornerShape(10.dp))
+                                                    .padding(8.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                dataViewModel.deleteCollectionRecord(schema, record.id)
+                                            }
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "حذف السجل ${record.id}",
+                                                tint = CyberCoral
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Row(
