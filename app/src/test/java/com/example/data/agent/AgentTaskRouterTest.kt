@@ -22,6 +22,32 @@ class AgentTaskRouterTest {
     }
 
     @Test
+    fun parsesArabicAndEnglishProjectTechnologyWithoutDroppingTheStack() {
+        val arabic = AgentTaskRouter.parseProjectRequest(
+            "أنشئ مشروع متجر إلكتروني باستخدام React و Firebase",
+            fallbackLanguage = "Full-Stack Web"
+        )
+        assertEquals("متجر إلكتروني", arabic.name)
+        assertEquals("React و Firebase", arabic.language)
+
+        val english = AgentTaskRouter.parseProjectRequest(
+            "Create a mobile app with Kotlin and Jetpack Compose"
+        )
+        assertEquals("mobile app", english.name)
+        assertEquals("Kotlin and Jetpack Compose", english.language)
+    }
+
+    @Test
+    fun projectRequestUsesConfiguredFallbackWhenNoStackWasProvided() {
+        val request = AgentTaskRouter.parseProjectRequest(
+            "أنشئ مشروع إدارة المخزون",
+            fallbackLanguage = "Python + FastAPI"
+        )
+        assertEquals("إدارة المخزون", request.name)
+        assertEquals("Python + FastAPI", request.language)
+    }
+
+    @Test
     fun doesNotExecuteAmbiguousOrOrdinaryChat() {
         assertNull(AgentTaskRouter.route(""))
         assertNull(AgentTaskRouter.route("كيف أتعلم Kotlin؟"))
