@@ -9,6 +9,7 @@ import com.example.data.model.StudioProject
 import com.example.data.model.UserProfile
 import com.example.data.model.VersionSnapshot
 import com.google.firebase.Firebase
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -31,7 +32,9 @@ class StudioRepository(private val db: FirebaseFirestore) {
         )
     )
 
-    private val auth = Firebase.auth
+    private val auth: FirebaseAuth by lazy {
+        runCatching { FirebaseAuth.getInstance(db.app) }.getOrElse { Firebase.auth }
+    }
 
     private fun requireUserId(): String {
         return auth.currentUser?.uid

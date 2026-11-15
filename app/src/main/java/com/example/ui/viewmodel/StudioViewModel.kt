@@ -59,13 +59,11 @@ class StudioViewModel(
         .map<UserProfile?, UiState<UserProfile?>> { profile ->
             _lastSyncTimestampLabel.value = currentTimeLabel()
             val savedModel = profile?.preferredAiModel?.takeIf { it.isNotBlank() }
-            if (savedModel != null) {
+            if (savedModel != null && !hasRestoredPreferredModelFromCloud) {
                 val normalized = GeminiAiRepository.normalizePreferredModel(savedModel)
-                if (!hasRestoredPreferredModelFromCloud || _selectedChatModel.value != normalized) {
-                    hasRestoredPreferredModelFromCloud = true
-                    _selectedChatModel.value = normalized
-                    aiRepository.setActiveModel(normalized)
-                }
+                hasRestoredPreferredModelFromCloud = true
+                _selectedChatModel.value = normalized
+                aiRepository.setActiveModel(normalized)
             }
             UiState.Success(profile)
         }

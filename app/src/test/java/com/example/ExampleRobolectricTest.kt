@@ -5,6 +5,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -16,11 +17,15 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.remote.GeminiAiRepository
 import com.example.data.skills.BioscienceSimulationEngine
 import com.example.data.skills.BioscienceWorkflowMode
+import com.example.ui.components.AppErrorReport
+import com.example.ui.components.ErrorBoundaryBanner
 import com.example.ui.components.MainScreenLayout
 import com.example.ui.components.SKILLS_HUB_TAB_INDEX
 import com.example.ui.components.StudioBottomTab
+import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.BioscienceLabTabScreen
 import com.example.ui.theme.MyApplicationTheme
 import org.junit.Assert.assertEquals
@@ -71,34 +76,39 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("main_top_app_bar").assertIsDisplayed()
         composeTestRule.onNodeWithTag("top_skills_memory_button").assertIsDisplayed()
 
-        // Verify all 5 bottom navigation tabs are displayed
-        composeTestRule.onNodeWithTag("nav_tab_dashboard").assertIsDisplayed().assertIsSelected()
-        composeTestRule.onNodeWithTag("nav_tab_ide").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("nav_tab_db_vcs").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("nav_tab_ai_media").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("nav_tab_bioscience").assertIsDisplayed()
+        // Verify all 5 bottom navigation tabs are displayed and clickable
+        composeTestRule.onNodeWithTag("nav_tab_dashboard").performScrollTo().assertIsDisplayed().assertIsSelected()
+        composeTestRule.onNodeWithTag("nav_tab_ide").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("nav_tab_db_vcs").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("nav_tab_ai_media").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("nav_tab_bioscience").performScrollTo().assertIsDisplayed()
 
         // Switch through the 5 bottom tabs
-        composeTestRule.onNodeWithTag("nav_tab_ide").performClick()
+        composeTestRule.onNodeWithTag("nav_tab_ide").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
         assertEquals(StudioBottomTab.IDE.index, activeTab)
 
-        composeTestRule.onNodeWithTag("nav_tab_db_vcs").performClick()
+        composeTestRule.onNodeWithTag("nav_tab_db_vcs").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
         assertEquals(StudioBottomTab.DB_VCS.index, activeTab)
 
-        composeTestRule.onNodeWithTag("nav_tab_ai_media").performClick()
+        composeTestRule.onNodeWithTag("nav_tab_ai_media").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
         assertEquals(StudioBottomTab.AI_MEDIA.index, activeTab)
 
-        composeTestRule.onNodeWithTag("nav_tab_bioscience").performClick()
+        composeTestRule.onNodeWithTag("nav_tab_bioscience").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
         assertEquals(StudioBottomTab.BIOSCIENCE.index, activeTab)
 
         // Click the Top Bar 'Skills' action button
         composeTestRule.onNodeWithTag("top_skills_memory_button").performClick()
+        composeTestRule.waitForIdle()
         assertEquals(SKILLS_HUB_TAB_INDEX, activeTab)
     }
 
     @Test
     fun `main screen layout supports minimalist navigation drawer and bottom centered sparkle prompt input`() {
-        var activeTab = StudioBottomTab.DASHBOARD.index
+        var activeTab by mutableIntStateOf(StudioBottomTab.DASHBOARD.index)
         var submittedPrompt = ""
 
         composeTestRule.setContent {
@@ -132,8 +142,8 @@ class ExampleRobolectricTest {
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithTag("gemini_navigation_drawer").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("drawer_new_prompt_button").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("drawer_nav_tab_bioscience").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("drawer_new_prompt_button").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("drawer_nav_tab_bioscience").performScrollTo().assertIsDisplayed().performClick()
         composeTestRule.waitForIdle()
         assertEquals(StudioBottomTab.BIOSCIENCE.index, activeTab)
 
@@ -236,7 +246,7 @@ class ExampleRobolectricTest {
 
     @Test
     fun `ai engine control bar toggles between Gemini and ChatGPT and opens model dropdown`() {
-        var selectedModel = "gemini-3.8-flash"
+        var selectedModel by mutableStateOf("gemini-3.8-flash")
         var toggledToChatGpt = false
 
         composeTestRule.setContent {
@@ -262,12 +272,77 @@ class ExampleRobolectricTest {
 
         composeTestRule.onNodeWithTag("ai_engine_control_bar").assertIsDisplayed()
         composeTestRule.onNodeWithTag("ai_provider_toggle").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
         assertTrue(toggledToChatGpt)
         assertEquals("gpt-4o", selectedModel)
 
         composeTestRule.onNodeWithTag("ai_model_dropdown_button").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("ai_dropdown_option_gemini-4-argon").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
         assertEquals("gemini-4-argon", selectedModel)
+
+        composeTestRule.onNodeWithTag("ai_model_dropdown_button").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("ai_dropdown_option_${GeminiAiRepository.MODEL_DUAL_ENGINE}")
+            .assertIsDisplayed()
+            .performClick()
+        composeTestRule.waitForIdle()
+        assertEquals(GeminiAiRepository.MODEL_DUAL_ENGINE, selectedModel)
+    }
+
+    @Test
+    fun `auth screen renders google sign in button safely when firebase is uninitialized`() {
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                AuthScreen(onAuthSuccess = {})
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("auth_screen_root").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("google_sign_in_button").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `error boundary banner shows safe non-blocking warning and dismisses cleanly`() {
+        var dismissed by mutableStateOf(false)
+        var retried by mutableStateOf(false)
+        val report = AppErrorReport(
+            serviceName = "OpenAI",
+            phase = "API Key Check",
+            title = "تنبيه تهيئة الخدمة",
+            message = "مفتاح OPENAI_API_KEY غير مضبوط بعد",
+            exceptionType = "IllegalStateException",
+            stackTrace = "at com.example.data.remote.OpenAiNetworkClient",
+            recoverySuggestion = "أضف OPENAI_API_KEY في لوحة Secrets"
+        )
+
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                if (!dismissed) {
+                    ErrorBoundaryBanner(
+                        errorReport = report,
+                        onRetry = { retried = true },
+                        onDismiss = { dismissed = true }
+                    )
+                } else {
+                    Text(
+                        text = "DismissedCleanly",
+                        modifier = Modifier.testTag("banner_dismissed_indicator")
+                    )
+                }
+            }
+        }
+
+        composeTestRule.onNodeWithTag("error_boundary_banner").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("error_boundary_retry_button").performClick()
+        assertTrue(retried)
+
+        composeTestRule.onNodeWithTag("error_boundary_dismiss_button").performClick()
+        composeTestRule.waitForIdle()
+        assertTrue(dismissed)
+        composeTestRule.onNodeWithTag("banner_dismissed_indicator").assertIsDisplayed()
     }
 }
 

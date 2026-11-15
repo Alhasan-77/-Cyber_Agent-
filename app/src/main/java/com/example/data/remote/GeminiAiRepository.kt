@@ -610,10 +610,13 @@ class GeminiAiRepository(
         val accumulated = StringBuilder()
         try {
             withTimeout(AI_TIMEOUT_MS) {
-                model.generateContentStream(fullPrompt).collect { chunk ->
-                    chunk.text?.let { part ->
-                        accumulated.append(part)
-                        onChunk(accumulated.toString())
+                executeWithAppCheckRetry {
+                    accumulated.clear()
+                    model.generateContentStream(fullPrompt).collect { chunk ->
+                        chunk.text?.let { part ->
+                            accumulated.append(part)
+                            onChunk(accumulated.toString())
+                        }
                     }
                 }
             }
