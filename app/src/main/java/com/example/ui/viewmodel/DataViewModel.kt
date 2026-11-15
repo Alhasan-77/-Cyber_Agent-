@@ -75,6 +75,9 @@ class DataViewModel(
     private val _selectedDocumentId = MutableStateFlow<String?>(null)
     val selectedDocumentId: StateFlow<String?> = _selectedDocumentId.asStateFlow()
 
+    private val _selectedDataProjectId = MutableStateFlow<String?>(null)
+    val selectedDataProjectId: StateFlow<String?> = _selectedDataProjectId.asStateFlow()
+
     private val _isCreatingNewDocument = MutableStateFlow(false)
     val isCreatingNewDocument: StateFlow<Boolean> = _isCreatingNewDocument.asStateFlow()
 
@@ -475,6 +478,10 @@ class DataViewModel(
 
     fun selectDocument(documentId: String?) {
         _selectedDocumentId.value = documentId
+        if (_selectedCollectionId.value == COLLECTION_PROJECTS && documentId != null) {
+            _selectedDataProjectId.value = documentId
+            _dataStatusMessage.value = "تم اختيار المشروع $documentId. ستُربط به لقطات الإصدارات والمخططات وسجلات العمليات الجديدة."
+        }
         _isCreatingNewDocument.value = false
     }
 
@@ -722,6 +729,9 @@ class DataViewModel(
                 if (_selectedDocumentId.value == documentId) {
                     _selectedDocumentId.value = null
                 }
+                if (collectionId == COLLECTION_PROJECTS && _selectedDataProjectId.value == documentId) {
+                    _selectedDataProjectId.value = null
+                }
                 val msg = "تم حذف المستند ($documentId) من مجموعة $collectionId"
                 _mutationState.value = UiState.Success(msg)
                 _dataStatusMessage.value = msg
@@ -735,9 +745,23 @@ class DataViewModel(
     }
 
     private suspend fun resolveProjectForDataOperation(): StudioProject {
-        val loaded = (projectsState.value as? UiState.Success)?.data.orEmpty()
-        return loaded.firstOrNull() ?: repository.getUserProjects().getOrThrow().firstOrNull()
-            ?: throw IllegalStateException("أنشئ مشروعاً أولاً قبل إضافة مخطط أو لقطة أو سجل عملية.")
+        val projects = (projectsState.value as? UiState.Success)?.data
+            ?: repository.getUserProjects().getOrThrow()
+        val selectedId = _selectedDataProjectId.value
+
+        if (!selectedId.isNullOrBlank()) {
+            return projects.firstOrNull { it.id == selectedId }
+                ?: repository.getProjectById(currentUserId, selectedId).getOrThrow()
+                ?: throw IllegalStateException("المشروع المختار لم يعد موجوداً. اختر مشروعاً آخر.")
+        }
+
+        return when (projects.size) {
+            0 -> throw IllegalStateException("أنشئ مشروعاً أولاً قبل إضافة مخطط أو لقطة أو سجل عملية.")
+            1 -> projects.single()
+            else -> throw IllegalStateException(
+                "لديك أكثر من مشروع. افتح مجموعة projects واختر المشروع المطلوب أولاً؛ لن أربط السجل بمشروع عشوائي."
+            )
+        }
     }
 
     private fun countLineChanges(previous: String, current: String): Pair<Long, Long> {
