@@ -7,6 +7,7 @@ import com.example.R
 import com.example.data.model.BioExperimentRecord
 import com.example.data.model.BuildExecutionLog
 import com.example.data.model.DbCollectionSchema
+import com.example.data.model.DbCollectionRecord
 import com.example.data.model.FirestoreCollectionInfo
 import com.example.data.model.FirestoreConnectionStatus
 import com.example.data.model.FirestoreDocumentItem
@@ -18,7 +19,9 @@ import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -109,6 +112,12 @@ class DataViewModel(
     private val _mutationState =
         MutableStateFlow<UiState<String>>(UiState.Success("Ready"))
     val mutationState: StateFlow<UiState<String>> = _mutationState.asStateFlow()
+
+    private val _collectionRecordsState =
+        MutableStateFlow<Map<String, UiState<List<DbCollectionRecord>>>>(emptyMap())
+    val collectionRecordsState: StateFlow<Map<String, UiState<List<DbCollectionRecord>>>> =
+        _collectionRecordsState.asStateFlow()
+    private val collectionRecordJobs = mutableMapOf<String, Job>()
 
     // Two-Tier Kotlin Flow Error Handling for all Firestore collections
     val schemasState: StateFlow<UiState<List<DbCollectionSchema>>> = repository.observeCollections()
@@ -474,6 +483,52 @@ class DataViewModel(
         _selectedCollectionId.value = collectionId
         _selectedDocumentId.value = null
         _isCreatingNewDocument.value = false
+    }
+
+    fun observeCollectionRecords(schema: DbCollectionSchema) {
+        if (schema.userId != currentUserId || schema.id.isBlank()) {
+            _collectionRecordsState.value = _collectionRecordsState.value +
+                (schema.id to UiState.Error("مخطط المجموعة لا يخص المستخدم الحالي أو معرّفه غير صالح."))
+            return
+        }
+        if (collectionRecordJobs[schema.id]?.isActive == true) return
+
+        _collectionRecordsState.value = _collectionRecordsState.value + (schema.id to UiState.Loading)
+        collectionRecordJobs[schema.id] = viewModelScope.launch {
+            try {
+                repository.observeCollectionRecords(
+                    projectId = schema.projectId,
+                    schemaId = schema.id,
+                    collectionName = schema.collectionName
+                ).collect { records ->
+                    _collectionRecordsState.value =
+                        _collectionRecordsState.value + (schema.id to UiState.Success(records))
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _collectionRecordsState.value = _collectionRecordsState.value +
+                    (schema.id to UiState.Error(error.localizedMessage ?: "تعذر تحميل سجلات المجموعة."))
+            }
+        }
+    }
+
+    fun deleteCollectionRecord(schema: DbCollectionSchema, recordId: String) {
+        viewModelScope.launch {
+            _mutationState.value = UiState.Loading
+            repository.deleteCollectionRecord(
+                projectId = schema.projectId,
+                schemaId = schema.id,
+                collectionName = schema.collectionName,
+                recordId = recordId
+            ).onSuccess {
+                _mutationState.value = UiState.Success("تم حذف السجل $recordId.")
+                _dataStatusMessage.value = "تم حذف السجل من مجموعة ${schema.collectionName}."
+            }.onFailure { error ->
+                _mutationState.value = UiState.Error(error.localizedMessage ?: "تعذر حذف السجل.")
+                _dataStatusMessage.value = "تعذر حذف السجل: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            }
+        }
     }
 
     fun selectDocument(documentId: String?) {
