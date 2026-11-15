@@ -207,7 +207,17 @@ private fun FlexibleDatabaseSection(
     var fieldsSpec by remember { mutableStateOf("id:UUID, title:String, status:String, priority:Int") }
     var indexSpec by remember { mutableStateOf("Composite Index: (status ASC, priority DESC)") }
     var visualQueryFilter by remember { mutableStateOf("") }
-    var newRecordJson by remember { mutableStateOf("""{"id":"rec_101","title":"عملية سحابية جديدة","status":"ACTIVE"}""") }
+    var newRecordJson by remember { mutableStateOf("") }
+    val isRecordJsonValid = remember(newRecordJson) {
+        if (newRecordJson.isBlank()) {
+            false
+        } else {
+            runCatching {
+                kotlinx.serialization.json.Json.parseToJsonElement(newRecordJson)
+                    is kotlinx.serialization.json.JsonObject
+            }.getOrDefault(false)
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -368,11 +378,16 @@ private fun FlexibleDatabaseSection(
                             value = newRecordJson,
                             onValueChange = { newRecordJson = it },
                             label = { Text("بيانات السجل الجديد (JSON Object)") },
+                            isError = newRecordJson.isNotBlank() && !isRecordJsonValid,
+                            supportingText = {
+                                Text(if (isRecordJsonValid) "كائن JSON صالح" else "أدخل كائناً بصيغة { \"key\": \"value\" }")
+                            },
                             singleLine = true,
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedButton(
+                            enabled = isRecordJsonValid,
                             onClick = { onAppendRecord(schema, newRecordJson) },
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("add_record_${schema.id}")
