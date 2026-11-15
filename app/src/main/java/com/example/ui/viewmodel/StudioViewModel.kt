@@ -5,13 +5,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.agent.AgentTaskRouter
 import com.example.data.agent.AgentTaskType
+import com.example.data.diff.LineDiffEngine
 import com.example.data.model.AiRolePersona
 import com.example.data.model.BioExperimentRecord
 import com.example.data.model.BuildExecutionLog
 import com.example.data.model.ChatMessage
 import com.example.data.model.DbCollectionSchema
 import com.example.data.model.DiffLine
-import com.example.data.model.DiffType
 import com.example.data.model.GeneratedMediaAsset
 import com.example.data.model.StudioProject
 import com.example.data.model.UiState
@@ -1072,28 +1072,7 @@ class StudioViewModel(
             _htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
                 _jsBuffer.value + "\n" + _backendBuffer.value
             ).lines()
-        val result = mutableListOf<DiffLine>()
-        val maxLen = maxOf(oldLines.size, newLines.size).coerceAtMost(80)
-        for (i in 0 until maxLen) {
-            val oldLine = oldLines.getOrNull(i)
-            val newLine = newLines.getOrNull(i)
-            when {
-                oldLine == newLine && oldLine != null -> {
-                    result.add(DiffLine(i + 1, "  $oldLine", DiffType.UNCHANGED))
-                }
-                oldLine != null && newLine != null -> {
-                    result.add(DiffLine(i + 1, "- $oldLine", DiffType.DELETED))
-                    result.add(DiffLine(i + 1, "+ $newLine", DiffType.ADDED))
-                }
-                oldLine != null -> {
-                    result.add(DiffLine(i + 1, "- $oldLine", DiffType.DELETED))
-                }
-                newLine != null -> {
-                    result.add(DiffLine(i + 1, "+ $newLine", DiffType.ADDED))
-                }
-            }
-        }
-        return result
+        return LineDiffEngine.compute(oldLines, newLines)
     }
 
     fun createDatabaseCollection(
@@ -1279,8 +1258,7 @@ class StudioViewModel(
                     _htmlBuffer.value + "\n" + _cssBuffer.value + "\n" +
                         _jsBuffer.value + "\n" + _backendBuffer.value
                     ).lines()
-                val added = currentLines.count { it !in previousLines }.toLong()
-                val deleted = previousLines.count { it !in currentLines }.toLong()
+                val (added, deleted) = countLineChanges(previousLines, currentLines)
                 val versionTag = "v1.${projectSnapshots.size + 1}.0"
                 val snapshotId = repository.createSnapshot(
                     projectId = projectId,
