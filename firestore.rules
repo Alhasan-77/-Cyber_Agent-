@@ -165,7 +165,7 @@ service cloud.firestore {
     }
 
     match /users/{userId}/projects/{projectId} {
-      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(projectId) && existing().userId == request.auth.uid;
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(projectId) && (resource == null || existing().userId == request.auth.uid);
       allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
 
       allow create: if isSignedIn() &&
