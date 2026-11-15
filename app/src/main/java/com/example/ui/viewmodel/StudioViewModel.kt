@@ -1505,7 +1505,7 @@ class StudioViewModel(
                     ) GeminiAiRepository.MODEL_FLASH else _selectedChatModel.value
                     Triple(
                         reply,
-                        executedTools.map { "Cyber Agent Tool: $it" },
+                        executedTools,
                         modelName
                     )
                 }
@@ -1514,10 +1514,16 @@ class StudioViewModel(
                     effectiveModel,
                     (appliedIds.map { "SkillMemory:$it" } + providerSources).distinct()
                 )
-                _statusBanner.value = if (providerSources.any { it.startsWith("Cyber Agent Tool:") }) {
-                    "تم تنفيذ إجراءات داخل مساحة العمل وإرجاع النتيجة."
-                } else {
-                    "وصل رد من مزود الذكاء الاصطناعي."
+                val hasSuccessfulTool = providerSources.any { it.startsWith("Cyber Agent Tool:") }
+                val hasFailedTool = providerSources.any { it.startsWith("Cyber Agent Tool Failed:") }
+                _statusBanner.value = when {
+                    hasSuccessfulTool && hasFailedTool ->
+                        "تم تنفيذ بعض الإجراءات، وتعذر تنفيذ إجراءات أخرى. راجع تفاصيل الرد."
+                    hasSuccessfulTool ->
+                        "تم تنفيذ إجراءات داخل مساحة العمل وإرجاع النتيجة."
+                    hasFailedTool ->
+                        "تعذرت بعض إجراءات الوكيل. لم تُسجّل كنجاح؛ راجع تفاصيل الرد."
+                    else -> "وصل رد من مزود الذكاء الاصطناعي."
                 }
             } catch (error: CancellationException) {
                 throw error
