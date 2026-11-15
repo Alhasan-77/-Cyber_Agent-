@@ -284,13 +284,23 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
             addedLines = 1L,
             deletedLines = 0L
         ).getOrThrow()
-        repository.createCollectionSchema(
+        val schemaId = repository.createCollectionSchema(
             projectId = projectToDelete,
             collectionName = "delete_records",
             fieldsSpec = "id:string",
             sampleRecordsJson = "[]",
             indexConfig = ""
         ).getOrThrow()
+        val recordId = repository.createCollectionRecord(
+            projectId = projectToDelete,
+            schemaId = schemaId,
+            collectionName = "delete_records",
+            recordJson = """{"id":"record-to-delete"}"""
+        ).getOrThrow()
+        val deletedRecordRef = firestore.collection("users").document(aliceUid)
+            .collection("projects").document(projectToDelete)
+            .collection("data").document("delete_records")
+            .collection("records").document(recordId)
         repository.createBuildLog(
             projectId = projectToDelete,
             stage = "TEST",
@@ -315,6 +325,7 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
         }
         assertTrue(deleteResult.isSuccess)
         assertEquals(null, repository.getProjectById(aliceUid, projectToDelete).getOrThrow())
+        assertTrue(withTimeout(DEFAULT_TIMEOUT_MS) { deletedRecordRef.get().await() }.exists().not())
 
         val snapshots = repository.getSnapshots().getOrThrow()
         assertTrue(snapshots.none { it.projectId == projectToDelete })
