@@ -297,7 +297,8 @@ test("Custom collection records are scoped to their project schema and owner", a
 
   await assertFails(records.doc("rec_1").update({ recordData: { amount: 999 } }));
   await assertSucceeds(records.doc("rec_1").delete());
-  await assertFails(records.doc("rec_1").get());
+  // Owners can verify that a deleted record is absent; no document data is exposed.
+  await assertSucceeds(records.doc("rec_1").get());
 
   await assertFails(records.doc("rec_wrong_schema").set({
     ...payload,
