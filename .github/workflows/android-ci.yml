@@ -54,11 +54,14 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install Firestore rules test dependencies
+        run: npm install --no-audit --no-fund
+
       - name: Install Firebase CLI
         run: npm install --global firebase-tools@14
 
-      - name: Run unit and Robolectric tests with Auth and Firestore emulators
-        run: firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest"
+      - name: Run Kotlin, Robolectric, and Firestore rules tests with emulators
+        run: firebase emulators:exec --project demo-no-project --only auth,firestore "gradle --no-daemon testDebugUnitTest && npm run test:firestore-rules"
 
       - name: Upload unit test reports
         if: always()
