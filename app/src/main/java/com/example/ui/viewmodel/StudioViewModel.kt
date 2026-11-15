@@ -55,17 +55,16 @@ class StudioViewModel(
     val userPhotoUrl: String = ""
 ) : ViewModel() {
 
-    private val _syncLatencyMs = MutableStateFlow(16L)
+    private val _syncLatencyMs = MutableStateFlow(0L)
     val syncLatencyMs: StateFlow<Long> = _syncLatencyMs.asStateFlow()
 
-    private val _lastSyncTimestampLabel = MutableStateFlow(currentTimeLabel())
+    private val _lastSyncTimestampLabel = MutableStateFlow("لم تتم المزامنة بعد")
     val lastSyncTimestampLabel: StateFlow<String> = _lastSyncTimestampLabel.asStateFlow()
 
     private var hasRestoredPreferredModelFromCloud = false
 
     val userProfileState: StateFlow<UiState<UserProfile?>> = repository.observeUserProfile()
         .map<UserProfile?, UiState<UserProfile?>> { profile ->
-            _lastSyncTimestampLabel.value = currentTimeLabel()
             val savedModel = profile?.preferredAiModel?.takeIf { it.isNotBlank() }
             if (savedModel != null) {
                 val normalized = GeminiAiRepository.normalizePreferredModel(savedModel)
@@ -86,7 +85,6 @@ class StudioViewModel(
     val projectsState: StateFlow<UiState<List<StudioProject>>> = repository.observeProjects()
         .map<List<StudioProject>, UiState<List<StudioProject>>> { list ->
             val sorted = list.sortedByDescending { it.updatedAt ?: it.createdAt ?: Timestamp(0, 0) }
-            _lastSyncTimestampLabel.value = currentTimeLabel()
             if (sorted.isNotEmpty() && _selectedProjectId.value == null) {
                 selectProject(sorted.first())
             } else if (sorted.isEmpty() && !hasSeededInitialData) {
@@ -103,7 +101,6 @@ class StudioViewModel(
 
     val bioExperimentsState: StateFlow<UiState<List<BioExperimentRecord>>> = repository.observeBioExperiments()
         .map<List<BioExperimentRecord>, UiState<List<BioExperimentRecord>>> { list ->
-            _lastSyncTimestampLabel.value = currentTimeLabel()
             UiState.Success(list.sortedByDescending { it.updatedAt ?: it.createdAt ?: Timestamp(0, 0) })
         }
         .catch { e ->
@@ -179,8 +176,8 @@ class StudioViewModel(
 
     private val _consoleLogs = MutableStateFlow<List<String>>(
         listOf(
-            "[NovaForge Cloud] Runtime container initialized (Node 22 / Kotlin 2.2 / Python 3.12)",
-            "[Live Preview] WebView DOM & JS Bridge ready."
+            "[Workspace] Editor state initialized; no remote runtime is attached.",
+            "[Live Preview] WebView preview initializes when the preview screen opens."
         )
     )
     val consoleLogs: StateFlow<List<String>> = _consoleLogs.asStateFlow()
@@ -427,8 +424,8 @@ class StudioViewModel(
 
     fun setActiveBranch(branch: String) {
         _activeBranch.value = branch
-        appendConsoleLog("[Git/VCS] Switched active branch to '$branch'")
-        _statusBanner.value = "تم التبديل إلى الفرع البرمجي: $branch"
+        appendConsoleLog("[Workspace] Changed the local workspace branch label to '$branch'; no Git operation was run.")
+        _statusBanner.value = "تم تغيير وسم مساحة العمل محلياً إلى $branch. لم يتم تبديل فرع Git فعلياً."
     }
 
     fun appendConsoleLog(logLine: String) {
