@@ -226,10 +226,15 @@ private fun FlexibleDatabaseSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "مصمم المخططات ومجموعات البيانات السحابية",
+                        text = "مخططات مجموعات البيانات (Schema Metadata)",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberTextPrimary,
                         fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "هذا القسم يحفظ وصف المخطط وعينات JSON فقط تحت users/{uid}/collections. لا ينشئ مجموعة تشغيلية مستقلة أو سجلات فعلية في collectionName.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CyberAmber
                     )
                     OutlinedTextField(
                         value = colName,
@@ -253,15 +258,14 @@ private fun FlexibleDatabaseSection(
                             .testTag("db_fields_spec_input")
                     )
                     Button(
+                        enabled = colName.isNotBlank() && fieldsSpec.isNotBlank(),
                         onClick = {
-                            val safeName = colName.ifBlank { "cloud_entities_${collections.size + 1}" }
                             onCreateCollection(
-                                safeName,
-                                fieldsSpec,
-                                """[{"id":"item_1","name":"سجل أولي في $safeName","status":"ACTIVE"}]""",
+                                colName.trim(),
+                                fieldsSpec.trim(),
+                                "[]",
                                 indexSpec
                             )
-                            colName = ""
                         },
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
@@ -271,7 +275,7 @@ private fun FlexibleDatabaseSection(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, tint = CyberBackground)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("إنشاء مجموعة بيانات جديدة في Firestore", color = CyberBackground, fontWeight = FontWeight.Bold)
+                        Text("حفظ مخطط المجموعة في Firestore", color = CyberBackground, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -363,7 +367,7 @@ private fun FlexibleDatabaseSection(
                         OutlinedTextField(
                             value = newRecordJson,
                             onValueChange = { newRecordJson = it },
-                            label = { Text("إدراج سجل JSON") },
+                            label = { Text("إضافة عينة JSON Object") },
                             singleLine = true,
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.weight(1f)
@@ -373,7 +377,7 @@ private fun FlexibleDatabaseSection(
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("add_record_${schema.id}")
                         ) {
-                            Text("+ سجل")
+                            Text("+ عينة")
                         }
                         Button(
                             onClick = { onGenerateBackendDao(schema) },
