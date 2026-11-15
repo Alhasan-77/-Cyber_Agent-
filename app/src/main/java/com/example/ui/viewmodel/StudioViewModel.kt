@@ -1200,6 +1200,7 @@ class StudioViewModel(
                     .whereEqualTo("userId", userId)
                     .whereEqualTo("projectId", projectId)
                     .whereEqualTo("schemaId", "${schema.id}")
+                    .whereEqualTo("collectionName", "${schema.collectionName}")
                     .snapshots()
 
                 suspend fun addRecord(recordData: Map<String, Any?>): String {
