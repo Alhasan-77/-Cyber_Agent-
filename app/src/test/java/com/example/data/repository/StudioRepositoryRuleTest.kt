@@ -197,10 +197,19 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
     fun createUpdateAndDeleteCollection_authenticatedOwner_succeeds() = runBlocking {
         signInTestUser(ALICE_EMAIL)
         val repository = StudioRepository(firestore)
+        val projectId = repository.createProject(
+            name = "Schema owner project",
+            description = "Parent record for the test collection",
+            language = "Kotlin",
+            htmlCode = "",
+            cssCode = "",
+            jsCode = "",
+            backendCode = ""
+        ).getOrThrow()
 
         val collectionId = withTimeout(DEFAULT_TIMEOUT_MS) {
             repository.createCollectionSchema(
-                projectId = "project-test",
+                projectId = projectId,
                 collectionName = "agent_records",
                 fieldsSpec = "name:string, enabled:boolean",
                 sampleRecordsJson = """[{"name":"first","enabled":true}]""",
@@ -237,6 +246,121 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
             repository.observeCollections().first { list -> list.none { it.id == collectionId } }
         }
         assertTrue(remaining.none { it.id == collectionId })
+    }
+
+    @Test
+    fun deleteProject_cascadesOnlyItsDependentRecords() = runBlocking {
+        val aliceUid = signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+
+        val projectToDelete = repository.createProject(
+            name = "Delete cascade test",
+            description = "Project whose linked records should be deleted",
+            language = "Kotlin",
+            htmlCode = "<h1>Delete me</h1>",
+            cssCode = "",
+            jsCode = "",
+            backendCode = ""
+        ).getOrThrow()
+        val projectToKeep = repository.createProject(
+            name = "Keep cascade test",
+            description = "Unrelated project should remain",
+            language = "Kotlin",
+            htmlCode = "<h1>Keep me</h1>",
+            cssCode = "",
+            jsCode = "",
+            backendCode = ""
+        ).getOrThrow()
+
+        repository.createSnapshot(
+            projectId = projectToDelete,
+            commitMessage = "Delete with parent",
+            versionTag = "v1.0.0",
+            htmlCode = "<h1>Delete me</h1>",
+            cssCode = "",
+            jsCode = "",
+            backendCode = "",
+            addedLines = 1L,
+            deletedLines = 0L
+        ).getOrThrow()
+        repository.createCollectionSchema(
+            projectId = projectToDelete,
+            collectionName = "delete_records",
+            fieldsSpec = "id:string",
+            sampleRecordsJson = "[]",
+            indexConfig = ""
+        ).getOrThrow()
+        repository.createBuildLog(
+            projectId = projectToDelete,
+            stage = "TEST",
+            status = "WARNING",
+            durationMs = 0L,
+            reportSummary = "Deletion cascade test."
+        ).getOrThrow()
+        repository.createSnapshot(
+            projectId = projectToKeep,
+            commitMessage = "Keep with parent",
+            versionTag = "v1.0.0",
+            htmlCode = "<h1>Keep me</h1>",
+            cssCode = "",
+            jsCode = "",
+            backendCode = "",
+            addedLines = 1L,
+            deletedLines = 0L
+        ).getOrThrow()
+
+        val deleteResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.deleteProject(projectToDelete)
+        }
+        assertTrue(deleteResult.isSuccess)
+        assertEquals(null, repository.getProjectById(aliceUid, projectToDelete).getOrThrow())
+
+        val snapshots = repository.getSnapshots().getOrThrow()
+        assertTrue(snapshots.none { it.projectId == projectToDelete })
+        assertTrue(snapshots.any { it.projectId == projectToKeep })
+
+        val schemas = repository.getCollectionSchemas().getOrThrow()
+        assertTrue(schemas.none { it.projectId == projectToDelete })
+
+        val logs = repository.getBuildLogs().getOrThrow()
+        assertTrue(logs.none { it.projectId == projectToDelete })
+    }
+
+    @Test
+    fun dependentRecords_rejectUnknownParentProject() = runBlocking {
+        signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+
+        val snapshot = repository.createSnapshot(
+            projectId = "missing_parent",
+            commitMessage = "Invalid parent",
+            versionTag = "v1.0.0",
+            htmlCode = "",
+            cssCode = "",
+            jsCode = "",
+            backendCode = "",
+            addedLines = 0L,
+            deletedLines = 0L
+        )
+        assertTrue(snapshot.isFailure)
+
+        val schema = repository.createCollectionSchema(
+            projectId = "missing_parent",
+            collectionName = "invalid_records",
+            fieldsSpec = "id:string",
+            sampleRecordsJson = "[]",
+            indexConfig = ""
+        )
+        assertTrue(schema.isFailure)
+
+        val log = repository.createBuildLog(
+            projectId = "missing_parent",
+            stage = "TEST",
+            status = "WARNING",
+            durationMs = 0L,
+            reportSummary = "Invalid parent should be rejected."
+        )
+        assertTrue(log.isFailure)
     }
 
     private companion object {
