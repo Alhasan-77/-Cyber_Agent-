@@ -291,6 +291,7 @@ test("Custom collection records are scoped to their project schema and owner", a
     records.where("userId", "==", ALICE_UID)
       .where("projectId", "==", "proj_records")
       .where("schemaId", "==", "schema_orders")
+      .where("collectionName", "==", "orders")
       .get()
   );
 
