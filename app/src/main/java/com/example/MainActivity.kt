@@ -62,63 +62,53 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 
 private const val TAG = "AppCheckInit"
-private const val DEBUG_TOKEN_EXTRA = "FIREBASE_APPCHECK_DEBUG_TOKEN"
-private const val DEBUG_STORE_PREFIX = "com.google.firebase.appcheck.debug.store."
-private const val DEBUG_SECRET_KEY = "com.google.firebase.appcheck.debug.DEBUG_SECRET"
+private val appCheckInitializationLock = Any()
 
-fun configureAppCheck(context: Context, intent: Intent?) {
-    try {
-        if (FirebaseApp.getApps(context).isEmpty()) {
-            FirebaseApp.initializeApp(context)
-        }
+@Volatile
+private var appCheckProviderInstalled = false
 
-        val appCheck = FirebaseAppCheck.getInstance()
-        if (BuildConfig.DEBUG) {
-            val debugToken = intent?.getStringExtra(DEBUG_TOKEN_EXTRA)
-            val persistenceKey = FirebaseApp.getInstance().persistenceKey
-            if (!debugToken.isNullOrBlank()) {
-                context.getSharedPreferences(
-                    "$DEBUG_STORE_PREFIX$persistenceKey",
-                    Context.MODE_PRIVATE
-                ).edit()
-                    .putString(DEBUG_SECRET_KEY, debugToken)
-                    .apply()
-
-                context.getSharedPreferences(
-                    "com.google.firebase.appcheck.store.$persistenceKey",
-                    Context.MODE_PRIVATE
-                ).edit().clear().apply()
-                Log.d(TAG, "App Check debug token configured.")
-            } else {
-                Log.w(TAG, "No App Check debug token was provided.")
+fun configureAppCheck(context: Context) {
+    synchronized(appCheckInitializationLock) {
+        if (appCheckProviderInstalled) return
+        try {
+            val appContext = context.applicationContext
+            if (FirebaseApp.getApps(appContext).isEmpty()) {
+                FirebaseApp.initializeApp(appContext)
             }
 
-            appCheck.installAppCheckProviderFactory(
+            val appCheck = FirebaseAppCheck.getInstance()
+            val providerFactory = if (BuildConfig.DEBUG) {
                 DebugAppCheckProviderFactory.getInstance()
-            )
-            Log.d(TAG, "Debug App Check provider installed.")
-        } else {
-            appCheck.installAppCheckProviderFactory(
+            } else {
                 PlayIntegrityAppCheckProviderFactory.getInstance()
+            }
+            appCheck.installAppCheckProviderFactory(providerFactory)
+            appCheckProviderInstalled = true
+
+            if (BuildConfig.DEBUG) {
+                Log.i(
+                    TAG,
+                    "Debug App Check provider installed. Register its generated debug token in Firebase Console before enforcing App Check."
+                )
+            } else {
+                Log.i(TAG, "Play Integrity App Check provider installed.")
+            }
+        } catch (error: Exception) {
+            Log.e(TAG, "Failed to initialize Firebase App Check", error)
+            GlobalExceptionHandler.reportError(
+                phase = "Firebase App Check Initialization",
+                throwable = error,
+                isFatal = false,
+                serviceName = "Firebase"
             )
-            Log.d(TAG, "Play Integrity App Check provider installed.")
         }
-    } catch (error: Exception) {
-        Log.e(TAG, "Failed to initialize Firebase App Check", error)
-        GlobalExceptionHandler.reportError(
-            phase = "Firebase App Check Initialization",
-            throwable = error,
-            isFatal = false,
-            serviceName = "Firebase"
-        )
     }
 }
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // STEP 1: Configure App Check with launch intent before any UI or Firebase operations
-        configureAppCheck(this, intent)
+        configureAppCheck(this)
         GlobalExceptionHandler.install()
         GlobalExceptionHandler.verifyStartupInitialization(this)
         enableEdgeToEdge()
@@ -126,7 +116,7 @@ class MainActivity : ComponentActivity() {
             MyApplicationTheme {
                 ErrorBoundary(
                     onRetryInitialization = {
-                        configureAppCheck(this@MainActivity, intent)
+                        configureAppCheck(this@MainActivity)
                         GlobalExceptionHandler.verifyStartupInitialization(this@MainActivity)
                     }
                 ) {
