@@ -20,6 +20,14 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function ownsProject(userId, projectId) {
+      return request.auth != null &&
+             request.auth.uid == userId &&
+             isValidId(projectId) &&
+             exists(/databases/$(database)/documents/users/$(userId)/projects/$(projectId)) &&
+             get(/databases/$(database)/documents/users/$(userId)/projects/$(projectId)).data.userId == request.auth.uid;
+    }
+
     // Entity 0: UserProfile validation helper
     function isValidUserProfile(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
@@ -51,7 +59,7 @@ service cloud.firestore {
     // Entity 2: VersionSnapshot validation helper
     function isValidVersionSnapshot(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
-             data.projectId is string && isValidId(data.projectId) &&
+             data.projectId is string && ownsProject(data.userId, data.projectId) &&
              data.commitMessage is string && data.commitMessage.size() >= 1 && data.commitMessage.size() <= 300 &&
              data.versionTag is string && data.versionTag.size() >= 1 && data.versionTag.size() <= 40 &&
              data.htmlCode is string && data.htmlCode.size() <= 50000 &&
@@ -66,7 +74,7 @@ service cloud.firestore {
     // Entity 3: DbCollectionSchema validation helper
     function isValidDbCollectionSchema(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
-             data.projectId is string && isValidId(data.projectId) &&
+             data.projectId is string && ownsProject(data.userId, data.projectId) &&
              data.collectionName is string && data.collectionName.size() >= 1 && data.collectionName.size() <= 80 &&
              data.fieldsSpec is string && data.fieldsSpec.size() >= 1 && data.fieldsSpec.size() <= 5000 &&
              data.sampleRecordsJson is string && data.sampleRecordsJson.size() <= 20000 &&
@@ -78,7 +86,7 @@ service cloud.firestore {
     // Entity 4: BuildExecutionLog validation helper
     function isValidBuildExecutionLog(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
-             data.projectId is string && isValidId(data.projectId) &&
+             data.projectId is string && ownsProject(data.userId, data.projectId) &&
              data.stage is string && data.stage.size() >= 1 && data.stage.size() <= 60 &&
              data.status is string && (data.status in ['SUCCESS', 'WARNING', 'ERROR', 'RUNNING']) &&
              data.durationMs is int && data.durationMs >= 0 && data.durationMs <= 3600000 &&
