@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.tasks.await
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -361,6 +362,75 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
             reportSummary = "Invalid parent should be rejected."
         )
         assertTrue(log.isFailure)
+    }
+
+    @Test
+    fun createAndDeleteCustomCollectionRecord_requiresOwnedProjectAndSchema() = runBlocking {
+        val userId = signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+
+        val projectId = repository.createProject(
+            name = "Custom records project",
+            description = "Test real collection records",
+            language = "Kotlin",
+            htmlCode = "",
+            cssCode = "",
+            jsCode = "",
+            backendCode = ""
+        ).getOrThrow()
+        val schemaId = repository.createCollectionSchema(
+            projectId = projectId,
+            collectionName = "orders",
+            fieldsSpec = "orderId:string,amount:number",
+            sampleRecordsJson = "[]",
+            indexConfig = ""
+        ).getOrThrow()
+
+        val recordId = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.createCollectionRecord(
+                projectId = projectId,
+                schemaId = schemaId,
+                collectionName = "orders",
+                recordJson = """{"orderId":"A-100","amount":12}"""
+            ).getOrThrow()
+        }
+        val recordRef = firestore.collection("users").document(userId)
+            .collection("projects").document(projectId)
+            .collection("data").document("orders")
+            .collection("records").document(recordId)
+        val record = withTimeout(DEFAULT_TIMEOUT_MS) { recordRef.get().await() }
+        assertTrue(record.exists())
+        assertEquals(userId, record.getString("userId"))
+        assertEquals(projectId, record.getString("projectId"))
+        assertEquals(schemaId, record.getString("schemaId"))
+        assertEquals("A-100", record.get("recordData.orderId"))
+
+        val invalidJson = repository.createCollectionRecord(
+            projectId = projectId,
+            schemaId = schemaId,
+            collectionName = "orders",
+            recordJson = """["not","an","object"]"""
+        )
+        assertTrue(invalidJson.isFailure)
+
+        val missingSchema = repository.createCollectionRecord(
+            projectId = projectId,
+            schemaId = "missing_schema",
+            collectionName = "orders",
+            recordJson = """{"orderId":"A-101"}"""
+        )
+        assertTrue(missingSchema.isFailure)
+
+        val deleteResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.deleteCollectionRecord(
+                projectId = projectId,
+                schemaId = schemaId,
+                collectionName = "orders",
+                recordId = recordId
+            )
+        }
+        assertTrue(deleteResult.isSuccess)
+        assertTrue(withTimeout(DEFAULT_TIMEOUT_MS) { recordRef.get().await() }.exists().not())
     }
 
     private companion object {
