@@ -36,8 +36,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.ByteArrayOutputStream
 import java.util.UUID
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 class GeminiAiRepository(
     @Suppress("UNUSED_PARAMETER")
@@ -105,10 +103,12 @@ class GeminiAiRepository(
                     .addOnCompleteListener { task ->
                         if (!cont.isActive) return@addOnCompleteListener
                         if (task.isSuccessful) {
-                            cont.resume(Unit)
+                            cont.resumeWith(Result.success(Unit))
                         } else {
-                            cont.resumeWithException(
-                                task.exception ?: IllegalStateException("Firebase App Check token refresh failed.")
+                            cont.resumeWith(
+                                Result.failure(
+                                    task.exception ?: IllegalStateException("Firebase App Check token refresh failed.")
+                                )
                             )
                         }
                     }
