@@ -1182,6 +1182,11 @@ class StudioViewModel(
     fun generateBackendCodeFromSchema(schema: DbCollectionSchema) {
         val repositoryName = "${schema.collectionName.replaceFirstChar { it.uppercase() }}Repository"
         val generatedRepoCode = """
+            import com.google.firebase.firestore.FieldValue
+            import com.google.firebase.firestore.FirebaseFirestore
+            import com.google.firebase.firestore.snapshots
+            import kotlinx.coroutines.tasks.await
+
             // Generated Firestore Data Access Layer for: ${schema.collectionName}
             // Schema Fields: ${schema.fieldsSpec}
             // Index Strategy: ${schema.indexConfig}
