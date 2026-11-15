@@ -58,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.example.data.model.DbCollectionSchema
+import com.example.data.model.DbCollectionRecord
 import com.example.data.model.DiffLine
 import com.example.data.model.DiffType
 import com.example.data.model.UiState
@@ -313,8 +314,8 @@ private fun FlexibleDatabaseSection(
                     false
                 } else {
                     runCatching {
-                        kotlinx.serialization.json.Json.parseToJsonElement(newRecordJson)
-                            is kotlinx.serialization.json.JsonObject
+                        kotlinx.serialization.json.Json.parseToJsonElement(newRecordJson) is
+                            kotlinx.serialization.json.JsonObject
                     }.getOrDefault(false)
                 }
             }
@@ -392,15 +393,16 @@ private fun FlexibleDatabaseSection(
                             color = CyberCoral,
                             style = MaterialTheme.typography.bodySmall
                         )
-                        is UiState.Success -> {
-                            if (recordState.data.isEmpty()) {
+                        is UiState.Success<*> -> {
+                            val records = recordState.data as? List<DbCollectionRecord> ?: emptyList()
+                            if (records.isEmpty()) {
                                 Text(
                                     "لا توجد سجلات فعلية بعد. أضف أول سجل من الحقل أدناه.",
                                     color = CyberTextSecondary,
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             } else {
-                                recordState.data.forEach { record ->
+                                records.forEach { record ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
