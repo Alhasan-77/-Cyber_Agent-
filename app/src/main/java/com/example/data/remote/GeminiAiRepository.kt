@@ -496,6 +496,7 @@ class GeminiAiRepository(
 
             val response = withTimeout(AI_TIMEOUT_MS) {
                 openAiService.createChatCompletion(
+                    url = OpenAiNetworkClient.getCompletionUrl(),
                     authorization = "Bearer $firebaseIdToken",
                     appCheckToken = appCheckToken,
                     request = OpenAiChatCompletionRequest(

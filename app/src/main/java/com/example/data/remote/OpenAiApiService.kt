@@ -11,6 +11,7 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.Url
 import java.util.concurrent.TimeUnit
 
 enum class AiEngineProvider(
@@ -83,8 +84,9 @@ data class OpenAiErrorDetail(
 )
 
 interface OpenAiApiService {
-    @POST("openaiChatCompletion")
+    @POST
     suspend fun createChatCompletion(
+        @Url url: String,
         @Header("Authorization") authorization: String,
         @Header("X-Firebase-AppCheck") appCheckToken: String,
         @Body request: OpenAiChatCompletionRequest
@@ -102,11 +104,13 @@ object OpenAiNetworkClient {
         explicitNulls = false
     }
 
-    private fun configuredBaseUrl(): String {
+    private const val RETROFIT_PLACEHOLDER_BASE_URL = "https://localhost/"
+
+    fun getCompletionUrl(): String {
         val projectId = FirebaseApp.getInstance().options.projectId
             ?.takeIf { it.matches(Regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")) }
             ?: throw IllegalStateException("Firebase project ID is missing or invalid.")
-        return "https://us-central1-$projectId.cloudfunctions.net/"
+        return "https://us-central1-$projectId.cloudfunctions.net/openaiChatCompletion"
     }
 
     private val okHttpClient = OkHttpClient.Builder()
@@ -117,7 +121,7 @@ object OpenAiNetworkClient {
 
     val service: OpenAiApiService by lazy {
         Retrofit.Builder()
-            .baseUrl(configuredBaseUrl())
+            .baseUrl(RETROFIT_PLACEHOLDER_BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
@@ -126,8 +130,7 @@ object OpenAiNetworkClient {
 
     fun isProxyConfigured(): Boolean {
         return runCatching {
-            val projectId = FirebaseApp.getInstance().options.projectId ?: return false
-            projectId.matches(Regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$"))
+            getCompletionUrl().startsWith("https://us-central1-")
         }.getOrDefault(false)
     }
 
