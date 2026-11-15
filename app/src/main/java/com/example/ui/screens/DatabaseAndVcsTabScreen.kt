@@ -40,6 +40,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -56,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.example.data.model.DbCollectionSchema
+import com.example.data.model.DbCollectionRecord
 import com.example.data.model.DiffLine
 import com.example.data.model.DiffType
 import com.example.data.model.UiState
@@ -153,7 +156,7 @@ fun DatabaseAndVcsTabScreen(
                 FilterChip(
                     selected = activeSubTab == 2,
                     onClick = { activeSubTab = 2 },
-                    label = { Text("الإصدارات و Git") },
+                    label = { Text("إصدارات مساحة العمل") },
                     leadingIcon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     shape = RoundedCornerShape(50),
                     colors = FilterChipDefaults.filterChipColors(
@@ -177,6 +180,7 @@ fun DatabaseAndVcsTabScreen(
                 modifier = Modifier.fillMaxSize()
             )
             1 -> FlexibleDatabaseSection(
+                dataViewModel = dataViewModel,
                 collections = (collectionsState as? UiState.Success)?.data.orEmpty(),
                 onCreateCollection = onCreateCollection,
                 onAppendRecord = onAppendRecord,
@@ -197,6 +201,7 @@ fun DatabaseAndVcsTabScreen(
 
 @Composable
 private fun FlexibleDatabaseSection(
+    dataViewModel: DataViewModel,
     collections: List<DbCollectionSchema>,
     onCreateCollection: (String, String, String, String) -> Unit,
     onAppendRecord: (DbCollectionSchema, String) -> Unit,
@@ -207,7 +212,7 @@ private fun FlexibleDatabaseSection(
     var fieldsSpec by remember { mutableStateOf("id:UUID, title:String, status:String, priority:Int") }
     var indexSpec by remember { mutableStateOf("Composite Index: (status ASC, priority DESC)") }
     var visualQueryFilter by remember { mutableStateOf("") }
-    var newRecordJson by remember { mutableStateOf("""{"id":"rec_101","title":"عملية سحابية جديدة","status":"ACTIVE"}""") }
+    val recordsBySchema by dataViewModel.collectionRecordsState.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -226,10 +231,15 @@ private fun FlexibleDatabaseSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "مصمم المخططات ومجموعات البيانات السحابية",
+                        text = "مخططات مجموعات البيانات (Schema Metadata)",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberTextPrimary,
                         fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "تعريف المخطط يُحفظ تحت users/{uid}/collections. السجلات الحقيقية تُحفظ تحت users/{uid}/projects/{projectId}/data/{collectionName}/records؛ وحقل sampleRecordsJson معاينة JSON مساعدة فقط.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CyberCyan
                     )
                     OutlinedTextField(
                         value = colName,
@@ -253,15 +263,14 @@ private fun FlexibleDatabaseSection(
                             .testTag("db_fields_spec_input")
                     )
                     Button(
+                        enabled = colName.isNotBlank() && fieldsSpec.isNotBlank(),
                         onClick = {
-                            val safeName = colName.ifBlank { "cloud_entities_${collections.size + 1}" }
                             onCreateCollection(
-                                safeName,
-                                fieldsSpec,
-                                """[{"id":"item_1","name":"سجل أولي في $safeName","status":"ACTIVE"}]""",
+                                colName.trim(),
+                                fieldsSpec.trim(),
+                                "[]",
                                 indexSpec
                             )
-                            colName = ""
                         },
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),
@@ -271,7 +280,7 @@ private fun FlexibleDatabaseSection(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, tint = CyberBackground)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("إنشاء مجموعة بيانات جديدة في Firestore", color = CyberBackground, fontWeight = FontWeight.Bold)
+                        Text("حفظ مخطط المجموعة في Firestore", color = CyberBackground, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -301,6 +310,20 @@ private fun FlexibleDatabaseSection(
             },
             key = { it.id }
         ) { schema ->
+            var newRecordJson by remember(schema.id) { mutableStateOf("") }
+            val isRecordJsonValid = remember(newRecordJson) {
+                if (newRecordJson.isBlank()) {
+                    false
+                } else {
+                    runCatching {
+                        kotlinx.serialization.json.Json.parseToJsonElement(newRecordJson) is
+                            kotlinx.serialization.json.JsonObject
+                    }.getOrDefault(false)
+                }
+            }
+            LaunchedEffect(schema.id) {
+                dataViewModel.observeCollectionRecords(schema)
+            }
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = CyberSurface),
@@ -355,6 +378,68 @@ private fun FlexibleDatabaseSection(
                         )
                     }
 
+                    Text(
+                        text = "السجلات الفعلية في Firestore",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = CyberTextPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    when (val recordState = recordsBySchema[schema.id]) {
+                        null, UiState.Loading -> Text(
+                            "جارٍ تحميل السجلات الفعلية...",
+                            color = CyberTextSecondary,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        is UiState.Error -> Text(
+                            "تعذر تحميل السجلات: ${recordState.message}",
+                            color = CyberCoral,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        is UiState.Success<*> -> {
+                            val records = (recordState.data as? List<*>)?.filterIsInstance<DbCollectionRecord>().orEmpty()
+                            if (records.isEmpty()) {
+                                Text(
+                                    "لا توجد سجلات فعلية بعد. أضف أول سجل من الحقل أدناه.",
+                                    color = CyberTextSecondary,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            } else {
+                                records.forEach { record ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                            Text(
+                                                text = record.recordJson,
+                                                color = CyberTextPrimary,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontFamily = JetBrainsMonoFontFamily
+                                                ),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .background(CyberSurfaceElevated, RoundedCornerShape(10.dp))
+                                                    .padding(8.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                dataViewModel.deleteCollectionRecord(schema, record.id)
+                                            }
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "حذف السجل ${record.id}",
+                                                tint = CyberCoral
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -363,17 +448,22 @@ private fun FlexibleDatabaseSection(
                         OutlinedTextField(
                             value = newRecordJson,
                             onValueChange = { newRecordJson = it },
-                            label = { Text("إدراج سجل JSON") },
+                            label = { Text("بيانات السجل الجديد (JSON Object)") },
+                            isError = newRecordJson.isNotBlank() && !isRecordJsonValid,
+                            supportingText = {
+                                Text(if (isRecordJsonValid) "كائن JSON صالح" else "أدخل كائناً بصيغة { \"key\": \"value\" }")
+                            },
                             singleLine = true,
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedButton(
+                            enabled = isRecordJsonValid,
                             onClick = { onAppendRecord(schema, newRecordJson) },
                             shape = RoundedCornerShape(50),
                             modifier = Modifier.testTag("add_record_${schema.id}")
                         ) {
-                            Text("+ سجل")
+                            Text("+ سجل فعلي")
                         }
                         Button(
                             onClick = { onGenerateBackendDao(schema) },
@@ -405,12 +495,11 @@ private fun VersionControlSection(
     onComputeDiff: (VersionSnapshot) -> List<DiffLine>
 ) {
     var commitMessage by remember { mutableStateOf("") }
-    var versionTag by remember { mutableStateOf("v1.${snapshots.size + 1}.0") }
+    var versionTag by remember(snapshots.size) { mutableStateOf("v1.${snapshots.size + 1}.0") }
     var selectedDiffSnapshot by remember { mutableStateOf<VersionSnapshot?>(snapshots.firstOrNull()) }
 
-    val diffLines = remember(selectedDiffSnapshot) {
-        selectedDiffSnapshot?.let { onComputeDiff(it) }.orEmpty()
-    }
+    // Recompute against the current editor buffers on each screen recomposition.
+    val diffLines = selectedDiffSnapshot?.let { onComputeDiff(it) }.orEmpty()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -430,7 +519,7 @@ private fun VersionControlSection(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "إدارة الفروع البرمجية وحفظ اللقطات السحابية",
+                        text = "وسوم مساحة العمل وحفظ لقطات الإصدارات السحابية",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberTextPrimary,
                         fontWeight = FontWeight.Bold
@@ -440,7 +529,7 @@ private fun VersionControlSection(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "الفرع:",
+                            text = "وسم مساحة العمل:",
                             style = MaterialTheme.typography.labelMedium,
                             color = CyberTextSecondary
                         )
@@ -454,6 +543,11 @@ private fun VersionControlSection(
                             )
                         }
                     }
+                    Text(
+                        text = "هذه وسوم محلية لتنظيم مساحة العمل فقط؛ لا يتم تنفيذ أوامر Git أو إنشاء فروع فعلية.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CyberTextSecondary
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -471,7 +565,7 @@ private fun VersionControlSection(
                         OutlinedTextField(
                             value = commitMessage,
                             onValueChange = { commitMessage = it },
-                            label = { Text("رسالة التوثيق (Commit Message)") },
+                            label = { Text("رسالة الإصدار") },
                             placeholder = { Text("إضافة واجهة التفاعل وتحديث قاعدة البيانات...") },
                             singleLine = true,
                             shape = RoundedCornerShape(16.dp),
@@ -486,8 +580,6 @@ private fun VersionControlSection(
                                 commitMessage.ifBlank { "تحديث الكود والمخططات السحابية" },
                                 versionTag
                             )
-                            commitMessage = ""
-                            versionTag = "v1.${snapshots.size + 2}.0"
                         },
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
@@ -497,7 +589,7 @@ private fun VersionControlSection(
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, tint = CyberBackground)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("التزام وحفظ الإصدار في السحابة (Commit Snapshot)", color = CyberBackground, fontWeight = FontWeight.Bold)
+                        Text("حفظ لقطة الإصدار في Firestore", color = CyberBackground, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -577,7 +669,7 @@ private fun VersionControlSection(
         // Snapshot History List
         item {
             Text(
-                text = "سجل الإصدارات السحابية (Commit History)",
+                text = "سجل لقطات الإصدارات السحابية",
                 style = MaterialTheme.typography.titleMedium,
                 color = CyberTextPrimary,
                 fontWeight = FontWeight.Bold

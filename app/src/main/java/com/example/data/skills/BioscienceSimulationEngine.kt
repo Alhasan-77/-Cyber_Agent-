@@ -16,35 +16,35 @@ enum class BioscienceWorkflowMode(
 ) {
     PROTEIN_FOLDING(
         id = "PROTEIN_FOLDING",
-        titleAr = "طي البروتين وDNA ثلاثي الأبعاد",
-        subtitleAr = "تنبؤ البنية الثانوية Alpha-Helix / Beta-Sheet، درجة الثقة pLDDT، والاستقرار الحراري",
-        badgeText = "3D Folding • AlphaFold/ESMFold",
+        titleAr = "تحليل تسلسل البروتين",
+        subtitleAr = "حساب مؤشرات وصفية للتسلسل مع عارض هندسي توضيحي؛ لا يتوفر تنبؤ بنيوي متخصص أو pLDDT.",
+        badgeText = "Protein Sequence • Visual Demo",
         defaultSequence = ">Human_Hemoglobin_Subunit_Beta (HBB) | Deep Folding Target\nMVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVMGNPKVKAHGKKVLGAFSDGLAHLDNLKGTFATLSELHCDKLHVDPENFRLLGNVLVCVLAHHFGKEFTPPVQAAYQKVVAGVANALAHKYH",
-        defaultGoal = "تحليل طي البروتين ثلاثي الأبعاد، حساب نسب حلزون ألفا وصفائح بيتا ومؤشر الكراهية للماء GRAVY، وتحديد جيوب الارتباط الدوائي."
+        defaultGoal = "تحليل طول تسلسل البروتين والوزن الجزيئي التقريبي ومؤشر GRAVY؛ لا يتوفر هنا تنبؤ بنيوي أو كشف مثبت لجيوب الارتباط."
     ),
     CRISPR_EDITING(
         id = "CRISPR_EDITING",
         titleAr = "محاكي تعديل الجينات CRISPR-Cas9",
-        subtitleAr = "اكتشاف مواقع PAM (NGG)، تصميم gRNA بطول 20 نوكليوتيد، وحساب كفاءة القطع والـ Off-Target",
-        badgeText = "CRISPR-Cas9 • sgRNA Designer",
+        subtitleAr = "اكتشاف مواقع PAM (NGG) الأمامية واستخراج مقطع الدليل؛ كفاءة القطع ومخاطر Off-Target غير محسوبة.",
+        badgeText = "CRISPR-Cas9 • PAM Scan",
         defaultSequence = ">HBB_Exon1_Target_Region | Homo sapiens beta-globin locus\nATGGTGCACCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAGGCCCTGGGCAGGCTGCTGGTGGTCTACCCTTGGACCCAGAGGTTCTTTGAGTCCTTTGGGGATCTGTCCACTCCTGATGCTGTTATGGGCAACCCTAAGGTGAAGGCTCATGGCAAGAAAGTGCTCGGTGCCTTTAGTGATGGCCTGGCTCACCTGGACAACCTCAAGGGCACCTTTGCCACACTGAGTGAGCTGCACTGTGACAAGCTGCACGTGGATCCTGAGAACTTCAGG",
-        defaultGoal = "مسح مواقع PAM (NGG) لتصميم دليل sgRNA عالي الدقة لتصحيح طفرة بيتا-غلوبين مع تقليل احتمالية القطع خارج الهدف Off-target."
+        defaultGoal = "حصر مواقع PAM (NGG) المحتملة في التسلسل. يتطلب تقييم فعالية الدليل والقطع خارج الهدف أداة تخصصية وبيانات إضافية غير متاحة هنا."
     ),
     GENOMIC_ALIGNMENT(
         id = "GENOMIC_ALIGNMENT",
         titleAr = "محاذاة الجينوم واكتشاف الطفرات",
-        subtitleAr = "حساب محتوى GC%، درجة الانصهار Tm، ترجمة الإطار القرائي ORF، وتحليل المتغيرات الجينية",
-        badgeText = "Genomics • Variant Calling",
+        subtitleAr = "حساب GC% وTm التقريبية، واستخراج ORF يبدأ بـ ATG عند وجوده؛ لا يتوفر هنا تحليل متغيرات جينية.",
+        badgeText = "Genomics • Sequence Metrics",
         defaultSequence = ">BRCA1_RING_Domain_Amplicon | Genomic Reference Segment\nATGGATTTATCTGCTCTTCGCGTTGAAGAAGTACAAAATGTCATTAATGCTATGCAGAAAATCTTAGAGTGTCCCATCTGTCTGGAGTTGATCAAGGAACCTGTCTCCACAAAGTGTGACCACATATTTTGCAAATTTTGCATGCTGAAACTTCTCAACCAGAAGAAAGGGCCTTCACAGTGTCCTTTATGTAAGAATGATATAACCAAAAGGAGCCTACAAGAAAGTACGAGATTTAGTCAACTTGTTGAAGAGCTATTGAAAATCATTTGTGCTTTTCAGCTTGACACAGGTTTGGAGTATGCAAACAGCTATAAT",
-        defaultGoal = "تحليل خصائص الأمبليكون الجيني (GC%, Tm)، استخراج الإطار القرائي المفتوح ORF وترجمته إلى أحماض أمينية، وتقييم ثبات البادئات Primers."
+        defaultGoal = "تحليل GC% وTm التقريبية للتسلسل، واستخراج إطار قرائي يبدأ بـ ATG إن وجد؛ لا يتضمن هذا المسار Variant Calling أو تحليل ثبات البادئات."
     ),
     CLINICAL_TRIALS(
         id = "CLINICAL_TRIALS",
-        titleAr = "التجارب السريرية والمؤشرات الحيوية",
-        subtitleAr = "نمذجة الاستجابة للجرعة IC50، طاقة الارتباط الجزيئي ΔG، ومؤشر الأمان العلاجي لمراحل Phase I-III",
-        badgeText = "Clinical PK/PD • Biomarkers",
+        titleAr = "ملاحظات المرشح الحيوي (دون تقييم سريري)",
+        subtitleAr = "يمكن حفظ تسلسل المرشح وملاحظاته؛ IC50 وΔG ومؤشر الأمان والجاهزية السريرية غير محسوبة.",
+        badgeText = "Clinical Notes • Unscored",
         defaultSequence = ">GLP1R_Peptide_Agonist_Candidate | Clinical Lead Sequence\nHAEGTFTSDVSSYLEGQAAKEFIAWLVKGRG",
-        defaultGoal = "تقييم المرشح الببتيدي سريرياً: حساب الوزن الجزيئي kDa، تقدير تركيز التثبيط النصفي IC50، مؤشر الأمان العلاجي TI، وجاهزية التجارب السريرية."
+        defaultGoal = "حفظ وتحليل وصفي لتسلسل المرشح الببتيدي. يتطلب حساب IC50 وΔG ومؤشر الأمان والجاهزية السريرية بيانات وتجارب وأدوات تخصصية غير مهيأة في التطبيق."
     )
 }
 
@@ -54,7 +54,7 @@ data class PamTargetSite(
     val pamTriplet: String,
     val strand: String,
     val gcPercent: Double,
-    val onTargetScore: Int,
+    val onTargetScore: Int?,
     val offTargetRisk: String
 )
 
@@ -161,16 +161,27 @@ object BioscienceSimulationEngine {
             .filterNot { it.trim().startsWith(">") }
             .joinToString("")
             .uppercase(Locale.US)
-            .filter { it in 'A'..'Z' }
-            .ifEmpty { "ATGGTGACCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAAC" }
+            .filterNot { it.isWhitespace() || it.isDigit() }
 
-        val nucleotideCount = cleaned.count { it == 'A' || it == 'T' || it == 'G' || it == 'C' || it == 'U' || it == 'N' }
-        val isNucleic = nucleotideCount.toDouble() / cleaned.length.toDouble() >= 0.85
-        val seqType = when {
-            isNucleic && cleaned.contains('U') && !cleaned.contains('T') -> "RNA"
-            isNucleic -> "DNA"
-            else -> "PROTEIN"
+        require(cleaned.isNotEmpty()) { "أدخل تسلسلاً حيوياً صالحاً للتحليل." }
+        val validProteinSymbols = "ACDEFGHIKLMNPQRSTVWY"
+        val nucleotideWorkflow = workflowMode == BioscienceWorkflowMode.CRISPR_EDITING ||
+            workflowMode == BioscienceWorkflowMode.GENOMIC_ALIGNMENT
+        val seqType = if (nucleotideWorkflow) {
+            require(cleaned.all { it in "ATGCUN" }) {
+                "هذا المسار يتطلب تسلسلاً نووياً يحتوي فقط على A/T/G/C/U/N."
+            }
+            require(!(cleaned.contains('T') && cleaned.contains('U'))) {
+                "لا يمكن مزج T و U في التسلسل نفسه."
+            }
+            if (cleaned.contains('U')) "RNA" else "DNA"
+        } else {
+            require(cleaned.all { it in validProteinSymbols }) {
+                "هذا المسار يتطلب تسلسلاً بروتينياً بأحرف الأحماض الأمينية القياسية."
+            }
+            "PROTEIN"
         }
+        val isNucleic = seqType == "DNA" || seqType == "RNA"
 
         val length = cleaned.length
         val gcCount = cleaned.count { it == 'G' || it == 'C' }
@@ -178,9 +189,7 @@ object BioscienceSimulationEngine {
         val gcPct = if (isNucleic && length > 0) {
             ((gcCount.toDouble() / length.toDouble()) * 1000.0).roundToInt() / 10.0
         } else {
-            // Estimate equivalent codon GC bias for protein sequences
-            val highGcAa = cleaned.count { it in "GARP" }
-            (((0.42 + (highGcAa.toDouble() / max(1, length)) * 0.28) * 1000.0).roundToInt()) / 10.0
+            0.0
         }
 
         val meltingTemp = if (isNucleic) {
@@ -191,10 +200,7 @@ object BioscienceSimulationEngine {
                 ((rawTm * 10.0).roundToInt()) / 10.0
             }
         } else {
-            // Protein thermal melting midpoint Tm (°C)
-            val aliphatics = cleaned.count { it in "IVLAF" }
-            val rawTm = 56.0 + (aliphatics.toDouble() / max(1, length)) * 38.0
-            ((min(94.5, max(42.0, rawTm)) * 10.0).roundToInt()) / 10.0
+            0.0
         }
 
         val mwDaltons = if (isNucleic) {
@@ -206,50 +212,41 @@ object BioscienceSimulationEngine {
 
         val translatedProtein = if (isNucleic) {
             val dnaSeq = cleaned.replace('U', 'T')
-            val sb = StringBuilder()
-            var i = 0
-            while (i + 2 < dnaSeq.length && sb.length < 180) {
-                val codon = dnaSeq.substring(i, i + 3)
-                val aa = codonTable[codon] ?: 'X'
-                if (aa == '*') break
-                sb.append(aa)
-                i += 3
+            val startIndex = dnaSeq.indexOf("ATG")
+            if (startIndex < 0) {
+                ""
+            } else {
+                val sb = StringBuilder()
+                var i = startIndex
+                while (i + 2 < dnaSeq.length && sb.length < 180) {
+                    val aa = codonTable[dnaSeq.substring(i, i + 3)] ?: 'X'
+                    if (aa == '*') break
+                    sb.append(aa)
+                    i += 3
+                }
+                sb.toString()
             }
-            sb.toString().ifEmpty { "MVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFF" }
         } else {
             cleaned.take(180)
         }
 
-        val gravy = if (translatedProtein.isNotEmpty()) {
-            val sum = translatedProtein.sumOf { kyteDoolittle[it] ?: -0.2 }
+        val gravy = if (seqType == "PROTEIN" && translatedProtein.isNotEmpty()) {
+            val sum = translatedProtein.sumOf { kyteDoolittle[it] ?: 0.0 }
             ((sum / translatedProtein.length.toDouble()) * 100.0).roundToInt() / 100.0
         } else {
-            -0.15
+            0.0
         }
 
-        // Secondary structure estimation (Chou-Fasman / Garnier heuristic)
-        val helixFavored = translatedProtein.count { it in "EAQLMKRH" }
-        val sheetFavored = translatedProtein.count { it in "VIFYWTC" }
-        val totalAa = max(1, translatedProtein.length)
-        val rawHelix = ((helixFavored.toDouble() / totalAa) * 100).roundToInt().coerceIn(22, 68)
-        val rawSheet = ((sheetFavored.toDouble() / totalAa) * 100).roundToInt().coerceIn(12, 46)
-        val normalizedSheet = min(rawSheet, 90 - rawHelix)
-        val coilPct = max(8, 100 - rawHelix - normalizedSheet)
+        // Structure fractions require a real structure-prediction tool and are not inferred here.
+        val rawHelix = 0
+        val normalizedSheet = 0
+        val coilPct = 0
 
-        val plddt = ((84.5 + (rawHelix * 0.14) - (coilPct * 0.08)).coerceIn(72.0, 98.4) * 10.0).roundToInt() / 10.0
+        // pLDDT is a model confidence score and cannot be inferred from sequence composition.
+        val plddt = 0.0
 
-        // Scan CRISPR NGG PAM sites (both forward NGG and reverse CCN)
-        val dnaForPam = if (isNucleic) {
-            cleaned.replace('U', 'T')
-        } else {
-            // Back-translate representative coding strand so CRISPR scanner always yields rich results
-            buildString {
-                for (aa in translatedProtein.take(60)) {
-                    val codon = codonTable.entries.firstOrNull { it.value == aa }?.key ?: "GGC"
-                    append(codon)
-                }
-            }
-        }
+        // Detect forward-strand NGG motifs only; no off-target or activity score is inferred.
+        val dnaForPam = if (seqType == "DNA") cleaned else ""
 
         val discoveredPams = mutableListOf<PamTargetSite>()
         for (idx in 20..(dnaForPam.length - 3)) {
@@ -257,14 +254,6 @@ object BioscienceSimulationEngine {
             if (window3.endsWith("GG")) {
                 val spacer = dnaForPam.substring(idx - 20, idx)
                 val spacerGc = ((spacer.count { it == 'G' || it == 'C' } / 20.0) * 1000.0).roundToInt() / 10.0
-                val seedG = if (spacer.takeLast(4).contains('G')) 12 else 4
-                val gcPenalty = if (spacerGc in 40.0..65.0) 18 else 5
-                val score = (64 + seedG + gcPenalty - (discoveredPams.size * 2)).coerceIn(58, 97)
-                val risk = when {
-                    score >= 88 -> "منخفض جداً (Low Risk)"
-                    score >= 76 -> "متوسط-منخفض (Moderate-Low)"
-                    else -> "يتطلب تحقق (Verify Loci)"
-                }
                 discoveredPams.add(
                     PamTargetSite(
                         indexOneBased = idx - 19,
@@ -272,36 +261,19 @@ object BioscienceSimulationEngine {
                         pamTriplet = window3,
                         strand = "+ (Sense)",
                         gcPercent = spacerGc,
-                        onTargetScore = score,
-                        offTargetRisk = risk
+                        onTargetScore = null,
+                        offTargetRisk = "غير محسوب — يلزم تحليل خارج الهدف"
                     )
                 )
             }
             if (discoveredPams.size >= 6) break
         }
 
-        if (discoveredPams.isEmpty()) {
-            discoveredPams.add(
-                PamTargetSite(
-                    indexOneBased = 14,
-                    spacer20nt = "GTGCACCTGACTCCTGAGGA",
-                    pamTriplet = "AGG",
-                    strand = "+ (Sense)",
-                    gcPercent = 55.0,
-                    onTargetScore = 91,
-                    offTargetRisk = "منخفض جداً (Low Risk)"
-                )
-            )
-        }
-
-        val ic50Nm = ((max(1.8, 42.0 - (plddt - 70.0) * 1.15 - (gravy * 2.4))) * 10.0).roundToInt() / 10.0
-        val deltaG = ((-8.4 - (rawHelix * 0.06) - (if (gravy > 0) gravy * 0.7 else 0.35)) * 10.0).roundToInt() / 10.0
-        val therapeuticIdx = ((120.0 / max(2.0, ic50Nm) * 8.5) * 10.0).roundToInt() / 10.0
-        val phaseStatus = when {
-            ic50Nm <= 15.0 && therapeuticIdx >= 25.0 -> "Phase II/III Ready • مرشح واعد عالي الانتقائية"
-            ic50Nm <= 30.0 -> "Phase I Lead • جاهز لاختبارات السمية والحرائك الدوائية"
-            else -> "Pre-Clinical Optimization • يوصى بتحسين الألفة الجزيئية"
-        }
+        // No synthetic PAM site or clinical/binding prediction is inserted when no model is run.
+        val ic50Nm = 0.0
+        val deltaG = 0.0
+        val therapeuticIdx = 0.0
+        val phaseStatus = "غير محسوب — يتطلب أدوات تخصصية وبيانات تجريبية"
 
         return BioSequenceMetrics(
             headerTitle = header,
@@ -338,46 +310,46 @@ object BioscienceSimulationEngine {
 # ============================================================================
 
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import Dict, Optional
 
 @dataclass
 class BioTargetReport:
     target_name: str = "${metrics.headerTitle.replace("\"", "'")}"
     sequence_type: str = "${metrics.sequenceType}"
     length: int = ${metrics.sequenceLength}
-    gc_percent: float = ${metrics.gcContentPct}
-    melting_temp_c: float = ${metrics.meltingTempC}
+    gc_percent: Optional[float] = ${if (metrics.sequenceType == "PROTEIN") "None" else metrics.gcContentPct.toString()}
+    melting_temp_c: Optional[float] = ${if (metrics.sequenceType == "PROTEIN") "None" else metrics.meltingTempC.toString()}
     molecular_weight_kda: float = ${metrics.molecularWeightKda}
-    plddt_confidence: float = ${metrics.plddtConfidence}
-    predicted_ic50_nm: float = ${metrics.predictedIc50Nm}
-    binding_energy_kcal: float = ${metrics.bindingAffinityKcal}
+    plddt_confidence: Optional[float] = None  # Not predicted by this pipeline
+    predicted_ic50_nm: Optional[float] = None  # Requires experimental validation
+    binding_energy_kcal: Optional[float] = None  # Requires a validated structure/model
 
 def run_novaforge_bio_pipeline() -> Dict[str, object]:
     seq = "${metrics.cleanedSequence.take(120)}"
     orf_protein = "${metrics.translatedProteinPreview.take(80)}"
     secondary_structure = {
-        "alpha_helix_pct": ${metrics.alphaHelixPct},
-        "beta_sheet_pct": ${metrics.betaSheetPct},
-        "random_coil_pct": ${metrics.randomCoilPct},
-        "gravy_hydropathy": ${metrics.gravyHydropathy}
+        "alpha_helix_pct": None,  # No secondary-structure prediction was run
+        "beta_sheet_pct": None,
+        "random_coil_pct": None,
+        "gravy_hydropathy": ${if (metrics.sequenceType == "PROTEIN") metrics.gravyHydropathy.toString() else "None"}
     }
     crispr_lead_guide = {
-        "spacer_20nt": "${topPam?.spacer20nt ?: "GTGCACCTGACTCCTGAGGA"}",
-        "pam": "${topPam?.pamTriplet ?: "AGG"}",
-        "on_target_score": ${topPam?.onTargetScore ?: 91},
-        "off_target_risk": "${topPam?.offTargetRisk ?: "Low Risk"}"
+        "spacer_20nt": ${topPam?.spacer20nt?.let { "\"$it\"" } ?: "None"},
+        "pam": ${topPam?.pamTriplet?.let { "\"$it\"" } ?: "None"},
+        "on_target_score": ${topPam?.onTargetScore ?: "None"},
+        "off_target_risk": ${topPam?.offTargetRisk?.let { "\"$it\"" } ?: "None"}
     }
     return {
         "report": BioTargetReport().__dict__,
         "orf_translation": orf_protein,
         "secondary_structure": secondary_structure,
         "crispr_lead_guide": crispr_lead_guide,
-        "clinical_readiness": "${metrics.clinicalPhaseReadiness}"
+        "clinical_readiness": None
     }
 
 if __name__ == "__main__":
     result = run_novaforge_bio_pipeline()
-    print("[NovaForge BioLab] Pipeline Executed Successfully:", result["report"]["target_name"])
+    print("[NovaForge BioLab] Descriptive sequence summary created:", result["report"]["target_name"])
 """.trimIndent()
     }
 

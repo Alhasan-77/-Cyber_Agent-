@@ -7,6 +7,7 @@ import com.example.R
 import com.example.data.model.BioExperimentRecord
 import com.example.data.model.BuildExecutionLog
 import com.example.data.model.DbCollectionSchema
+import com.example.data.model.DbCollectionRecord
 import com.example.data.model.FirestoreCollectionInfo
 import com.example.data.model.FirestoreConnectionStatus
 import com.example.data.model.FirestoreDocumentItem
@@ -17,7 +18,10 @@ import com.example.data.repository.StudioRepository
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +41,16 @@ class DataViewModel(
     val currentUserId: String
 ) : ViewModel() {
 
+    private suspend fun <T> runCatchingCancellable(block: suspend () -> T): Result<T> {
+        return try {
+            Result.success(block())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
     /**
      * Secondary constructor that directly initializes FirebaseFirestore using the mandatory
      * named database ID (`R.string.firestore_database_id`) and resolves the signed-in Google user UID.
@@ -52,10 +66,10 @@ class DataViewModel(
             ?: throw IllegalStateException("User must be signed in with Google before initializing DataViewModel.")
     )
 
-    private val _connectionStatus = MutableStateFlow(FirestoreConnectionStatus.CONNECTED)
+    private val _connectionStatus = MutableStateFlow(FirestoreConnectionStatus.SYNCING)
     val connectionStatus: StateFlow<FirestoreConnectionStatus> = _connectionStatus.asStateFlow()
 
-    private val _connectionLatencyMs = MutableStateFlow(18L)
+    private val _connectionLatencyMs = MutableStateFlow(0L)
     val connectionLatencyMs: StateFlow<Long> = _connectionLatencyMs.asStateFlow()
 
     private val _selectedCollectionId = MutableStateFlow(COLLECTION_SCHEMAS)
@@ -63,6 +77,9 @@ class DataViewModel(
 
     private val _selectedDocumentId = MutableStateFlow<String?>(null)
     val selectedDocumentId: StateFlow<String?> = _selectedDocumentId.asStateFlow()
+
+    private val _selectedDataProjectId = MutableStateFlow<String?>(null)
+    val selectedDataProjectId: StateFlow<String?> = _selectedDataProjectId.asStateFlow()
 
     private val _isCreatingNewDocument = MutableStateFlow(false)
     val isCreatingNewDocument: StateFlow<Boolean> = _isCreatingNewDocument.asStateFlow()
@@ -95,6 +112,12 @@ class DataViewModel(
     private val _mutationState =
         MutableStateFlow<UiState<String>>(UiState.Success("Ready"))
     val mutationState: StateFlow<UiState<String>> = _mutationState.asStateFlow()
+
+    private val _collectionRecordsState =
+        MutableStateFlow<Map<String, UiState<List<DbCollectionRecord>>>>(emptyMap())
+    val collectionRecordsState: StateFlow<Map<String, UiState<List<DbCollectionRecord>>>> =
+        _collectionRecordsState.asStateFlow()
+    private val collectionRecordJobs = mutableMapOf<String, Job>()
 
     // Two-Tier Kotlin Flow Error Handling for all Firestore collections
     val schemasState: StateFlow<UiState<List<DbCollectionSchema>>> = repository.observeCollections()
@@ -218,7 +241,7 @@ class DataViewModel(
         _selectedDocumentId
     ) { docs, selectedId ->
         if (selectedId != null) {
-            docs.find { it.id == selectedId } ?: docs.firstOrNull()
+            docs.find { it.id == selectedId }
         } else {
             docs.firstOrNull()
         }
@@ -278,7 +301,7 @@ class DataViewModel(
         viewModelScope.launch {
             _connectionStatus.value = FirestoreConnectionStatus.SYNCING
             _fetchedCollectionsState.value = UiState.Loading
-            runCatching {
+            runCatchingCancellable {
                 val schemas = repository.getCollectionSchemas().getOrThrow()
                 val projects = repository.getUserProjects().getOrThrow()
                 val snapshots = repository.getSnapshots().getOrThrow()
@@ -314,7 +337,7 @@ class DataViewModel(
         viewModelScope.launch {
             _connectionStatus.value = FirestoreConnectionStatus.SYNCING
             _fetchedDocumentsState.value = UiState.Loading
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 when (collectionId) {
                     COLLECTION_SCHEMAS -> repository.getCollectionSchemas().getOrThrow()
                         .map { mapSchemaToDocumentItem(it) }
@@ -326,7 +349,7 @@ class DataViewModel(
                         .map { mapSnapshotToDocumentItem(it) }
                     COLLECTION_LOGS -> repository.getBuildLogs().getOrThrow()
                         .map { mapLogToDocumentItem(it) }
-                    else -> emptyList()
+                    else -> throw IllegalArgumentException("Unknown Firestore collection: $collectionId")
                 }
             }
             result.onSuccess { docs ->
@@ -355,7 +378,7 @@ class DataViewModel(
         viewModelScope.launch {
             _connectionStatus.value = FirestoreConnectionStatus.SYNCING
             _fetchedDocumentState.value = UiState.Loading
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 when (collectionId) {
                     COLLECTION_SCHEMAS -> repository.getCollectionSchemaById(documentId).getOrThrow()
                         ?.let { mapSchemaToDocumentItem(it) }
@@ -367,7 +390,7 @@ class DataViewModel(
                         ?.let { mapSnapshotToDocumentItem(it) }
                     COLLECTION_LOGS -> repository.getBuildLogById(documentId).getOrThrow()
                         ?.let { mapLogToDocumentItem(it) }
-                    else -> null
+                    else -> throw IllegalArgumentException("Unknown Firestore collection: $collectionId")
                 }
             }
             result.onSuccess { item ->
@@ -402,42 +425,33 @@ class DataViewModel(
         viewModelScope.launch {
             _connectionStatus.value = FirestoreConnectionStatus.SYNCING
             _mutationState.value = UiState.Loading
-            val existing = (schemasState.value as? UiState.Success)?.data?.find { it.id == schemaId }
-                ?: repository.getCollectionSchemaById(schemaId).getOrNull()
-
-            if (existing == null) {
-                val msg = "تعذر العثور على مخطط المجموعة $schemaId لتحديثه"
-                _mutationState.value = UiState.Error(msg)
-                _dataStatusMessage.value = msg
-                return@launch
+            try {
+                val existing = (schemasState.value as? UiState.Success)?.data?.find { it.id == schemaId }
+                    ?: repository.getCollectionSchemaById(schemaId).getOrThrow()
+                    ?: throw IllegalStateException("تعذر العثور على مخطط المجموعة $schemaId لتحديثه.")
+                val updated = existing.copy(
+                    collectionName = collectionName.ifBlank { existing.collectionName },
+                    fieldsSpec = fieldsSpec.ifBlank { existing.fieldsSpec },
+                    indexConfig = indexConfig.ifBlank { existing.indexConfig },
+                    sampleRecordsJson = sampleRecordsJson.ifBlank { existing.sampleRecordsJson }
+                )
+                repository.updateCollectionSchema(updated).getOrThrow()
+                val message = "تم تحديث مخطط المجموعة ${updated.collectionName} ($schemaId) في Firestore."
+                _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
+                _mutationState.value = UiState.Success(message)
+                _dataStatusMessage.value = message
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _connectionStatus.value = FirestoreConnectionStatus.ERROR
+                val message = "فشل تحديث مخطط المجموعة: ${error.localizedMessage ?: error.message ?: "خطأ غير معروف"}"
+                _mutationState.value = UiState.Error(message)
+                _dataStatusMessage.value = message
             }
-
-            val updated = existing.copy(
-                collectionName = collectionName.ifBlank { existing.collectionName },
-                fieldsSpec = fieldsSpec.ifBlank { existing.fieldsSpec },
-                indexConfig = indexConfig.ifBlank { existing.indexConfig },
-                sampleRecordsJson = sampleRecordsJson.ifBlank { existing.sampleRecordsJson }
-            )
-            repository.updateCollectionSchema(updated)
-                .onSuccess {
-                    _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
-                    val msg = "تم تحديث مخطط المجموعة ${updated.collectionName} ($schemaId) في Firestore"
-                    _mutationState.value = UiState.Success(msg)
-                    _dataStatusMessage.value = msg
-                }
-                .onFailure { e ->
-                    _connectionStatus.value = FirestoreConnectionStatus.ERROR
-                    val msg = "فشل تحديث مخطط المجموعة: ${e.localizedMessage}"
-                    _mutationState.value = UiState.Error(msg)
-                    _dataStatusMessage.value = msg
-                }
         }
         return mutationState
     }
 
-    /**
-     * Updates a document's structured fields map in Firestore and emits status to [mutationState].
-     */
     fun updateDocument(
         collectionId: String,
         documentId: String,
@@ -471,8 +485,58 @@ class DataViewModel(
         _isCreatingNewDocument.value = false
     }
 
+    fun observeCollectionRecords(schema: DbCollectionSchema) {
+        if (schema.userId != currentUserId || schema.id.isBlank()) {
+            _collectionRecordsState.value = _collectionRecordsState.value +
+                (schema.id to UiState.Error("مخطط المجموعة لا يخص المستخدم الحالي أو معرّفه غير صالح."))
+            return
+        }
+        if (collectionRecordJobs[schema.id]?.isActive == true) return
+
+        _collectionRecordsState.value = _collectionRecordsState.value + (schema.id to UiState.Loading)
+        collectionRecordJobs[schema.id] = viewModelScope.launch {
+            try {
+                repository.observeCollectionRecords(
+                    projectId = schema.projectId,
+                    schemaId = schema.id,
+                    collectionName = schema.collectionName
+                ).collect { records ->
+                    _collectionRecordsState.value =
+                        _collectionRecordsState.value + (schema.id to UiState.Success(records))
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _collectionRecordsState.value = _collectionRecordsState.value +
+                    (schema.id to UiState.Error(error.localizedMessage ?: "تعذر تحميل سجلات المجموعة."))
+            }
+        }
+    }
+
+    fun deleteCollectionRecord(schema: DbCollectionSchema, recordId: String) {
+        viewModelScope.launch {
+            _mutationState.value = UiState.Loading
+            repository.deleteCollectionRecord(
+                projectId = schema.projectId,
+                schemaId = schema.id,
+                collectionName = schema.collectionName,
+                recordId = recordId
+            ).onSuccess {
+                _mutationState.value = UiState.Success("تم حذف السجل $recordId.")
+                _dataStatusMessage.value = "تم حذف السجل من مجموعة ${schema.collectionName}."
+            }.onFailure { error ->
+                _mutationState.value = UiState.Error(error.localizedMessage ?: "تعذر حذف السجل.")
+                _dataStatusMessage.value = "تعذر حذف السجل: ${error.localizedMessage ?: "خطأ غير معروف"}"
+            }
+        }
+    }
+
     fun selectDocument(documentId: String?) {
         _selectedDocumentId.value = documentId
+        if (_selectedCollectionId.value == COLLECTION_PROJECTS && documentId != null) {
+            _selectedDataProjectId.value = documentId
+            _dataStatusMessage.value = "تم اختيار المشروع $documentId. ستُربط به لقطات الإصدارات والمخططات وسجلات العمليات الجديدة."
+        }
         _isCreatingNewDocument.value = false
     }
 
@@ -518,145 +582,113 @@ class DataViewModel(
         jsonOrSummaryField: String
     ) {
         val activeCol = _selectedCollectionId.value
-        val defaultProjId = (projectsState.value as? UiState.Success)?.data?.firstOrNull()?.id ?: "proj_default"
-
         viewModelScope.launch {
             _connectionStatus.value = FirestoreConnectionStatus.SYNCING
             _mutationState.value = UiState.Loading
-            when (activeCol) {
-                COLLECTION_SCHEMAS -> {
-                    val colName = primaryField.ifBlank { "custom_entities" }
-                    val fieldsSpec = secondaryField.ifBlank { "id:UUID, name:String, status:String, createdAt:Timestamp" }
-                    val recordsJson = jsonOrSummaryField.ifBlank {
-                        """[{"id":"doc_1","name":"سجل أولي في $colName","status":"ACTIVE"}]"""
+            try {
+                val message = when (activeCol) {
+                    COLLECTION_SCHEMAS -> {
+                        val project = resolveProjectForDataOperation()
+                        require(primaryField.isNotBlank()) { "أدخل اسم المجموعة." }
+                        require(secondaryField.isNotBlank()) { "أدخل تعريف الحقول وأنواعها." }
+                        val sampleJson = jsonOrSummaryField.ifBlank { "[]" }
+                        val id = repository.createCollectionSchema(
+                            projectId = project.id,
+                            collectionName = primaryField.trim(),
+                            fieldsSpec = secondaryField.trim(),
+                            sampleRecordsJson = sampleJson,
+                            indexConfig = ""
+                        ).getOrThrow()
+                        "تم إنشاء مخطط المجموعة $id وربطه بالمشروع ${project.name}. لم تتم إضافة سجلات إلى مجموعة تطبيق منفصلة."
                     }
-                    repository.createCollectionSchema(
-                        projectId = defaultProjId,
-                        collectionName = colName,
-                        fieldsSpec = fieldsSpec,
-                        sampleRecordsJson = recordsJson,
-                        indexConfig = "Composite Index: (status ASC, createdAt DESC)"
-                    ).onSuccess { newId ->
-                        _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
-                        _selectedDocumentId.value = newId
-                        _isCreatingNewDocument.value = false
-                        val msg = "تم إنشاء مستند مجموعة جديد ($newId) في /users/$currentUserId/collections"
-                        _mutationState.value = UiState.Success(msg)
-                        _dataStatusMessage.value = msg
-                    }.onFailure { e ->
-                        _connectionStatus.value = FirestoreConnectionStatus.ERROR
-                        val msg = "فشل إنشاء مستند المجموعة: ${e.localizedMessage}"
-                        _mutationState.value = UiState.Error(msg)
-                        _dataStatusMessage.value = msg
+
+                    COLLECTION_PROJECTS -> {
+                        require(primaryField.isNotBlank()) { "أدخل اسم المشروع." }
+                        require(secondaryField.isNotBlank()) { "أدخل وصف المشروع." }
+                        require(jsonOrSummaryField.isNotBlank()) { "أدخل لغة أو تقنية المشروع." }
+                        val id = repository.createProject(
+                            name = primaryField.trim(),
+                            description = secondaryField.trim(),
+                            language = jsonOrSummaryField.trim(),
+                            htmlCode = "",
+                            cssCode = "",
+                            jsCode = "",
+                            backendCode = ""
+                        ).getOrThrow()
+                        "تم إنشاء المشروع $id بملفات مصدر فارغة. يمكنك فتحه وإضافة الشيفرة من محرر IDE."
                     }
+
+                    COLLECTION_SNAPSHOTS -> {
+                        val project = resolveProjectForDataOperation()
+                        val existingSnapshots = repository.getSnapshots().getOrThrow()
+                            .filter { it.projectId == project.id }
+                            .sortedByDescending { it.createdAt?.seconds ?: 0L }
+                        val tag = primaryField.trim().ifBlank { "v1.${existingSnapshots.size + 1}.0" }
+                        val commitMessage = secondaryField.trim().ifBlank {
+                            "Checkpoint created from Firestore data manager"
+                        }
+                        val notes = jsonOrSummaryField.trim()
+                        val previous = existingSnapshots.firstOrNull()
+                        val previousSource = previous?.let {
+                            listOf(it.htmlCode, it.cssCode, it.jsCode, it.backendCode).joinToString("\n")
+                        } ?: listOf(project.htmlCode, project.cssCode, project.jsCode, project.backendCode).joinToString("\n")
+                        val currentSource = listOf(
+                            project.htmlCode, project.cssCode, project.jsCode, project.backendCode
+                        ).joinToString("\n")
+                        val (added, deleted) = countLineChanges(previousSource, currentSource)
+                        val id = repository.createSnapshot(
+                            projectId = project.id,
+                            commitMessage = if (notes.isBlank()) commitMessage else "$commitMessage\n$notes",
+                            versionTag = tag,
+                            htmlCode = project.htmlCode,
+                            cssCode = project.cssCode,
+                            jsCode = project.jsCode,
+                            backendCode = project.backendCode,
+                            addedLines = added,
+                            deletedLines = deleted
+                        ).getOrThrow()
+                        "تم إنشاء لقطة $tag ($id) من ملفات المشروع الفعلية ${project.name}."
+                    }
+
+                    COLLECTION_LOGS -> {
+                        require(primaryField.isNotBlank()) { "أدخل مرحلة العملية التي تريد توثيقها." }
+                        val status = secondaryField.trim().uppercase(Locale.ROOT)
+                        require(status in listOf("SUCCESS", "WARNING", "ERROR", "RUNNING")) {
+                            "اختر حالة صحيحة: SUCCESS أو WARNING أو ERROR أو RUNNING."
+                        }
+                        require(jsonOrSummaryField.isNotBlank()) { "أدخل ملخصاً حقيقياً للعملية." }
+                        val project = resolveProjectForDataOperation()
+                        val id = repository.createBuildLog(
+                            projectId = project.id,
+                            stage = primaryField.trim(),
+                            status = status,
+                            durationMs = 0L,
+                            reportSummary = jsonOrSummaryField.trim() +
+                                "\nمدة التنفيذ غير مقاسة في واجهة مدير البيانات."
+                        ).getOrThrow()
+                        "تم حفظ سجل العملية $id بالحالة $status. لم تقِس هذه الواجهة مدة التنفيذ."
+                    }
+
+                    COLLECTION_BIO_EXPERIMENTS -> {
+                        throw IllegalArgumentException(
+                            "أنشئ سجلات التجارب الحيوية من مختبر العلوم الحيوية بعد إدخال التسلسل الحقيقي وبيانات التحليل؛ لم يتم إنشاء بيانات افتراضية."
+                        )
+                    }
+
+                    else -> throw IllegalArgumentException("مجموعة Firestore غير مدعومة: $activeCol")
                 }
-                COLLECTION_PROJECTS -> {
-                    val projName = primaryField.ifBlank { "New Cloud Microservice" }
-                    val projDesc = secondaryField.ifBlank { "مشروع سحابي تم إنشاؤه من مدير مستندات Firestore" }
-                    val lang = jsonOrSummaryField.ifBlank { "Kotlin + Compose" }
-                    repository.createProject(
-                        name = projName,
-                        description = projDesc,
-                        language = lang,
-                        htmlCode = "<div class='card'><h1>$projName</h1><p>$projDesc</p></div>",
-                        cssCode = "body { background:#060913; color:#F0F6FC; font-family:sans-serif; padding:20px; }",
-                        jsCode = "console.log('Initialized $projName');",
-                        backendCode = "// Firestore Document Driven Service: $projName"
-                    ).onSuccess { newId ->
-                        _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
-                        _selectedDocumentId.value = newId
-                        _isCreatingNewDocument.value = false
-                        val msg = "تم إنشاء مستند مشروع جديد ($newId) في /users/$currentUserId/projects"
-                        _mutationState.value = UiState.Success(msg)
-                        _dataStatusMessage.value = msg
-                    }.onFailure { e ->
-                        _connectionStatus.value = FirestoreConnectionStatus.ERROR
-                        val msg = "فشل إنشاء مستند المشروع: ${e.localizedMessage}"
-                        _mutationState.value = UiState.Error(msg)
-                        _dataStatusMessage.value = msg
-                    }
-                }
-                COLLECTION_SNAPSHOTS -> {
-                    val tag = primaryField.ifBlank { "v1.0.${((snapshotsState.value as? UiState.Success)?.data?.size ?: 0) + 1}" }
-                    val commitMsg = secondaryField.ifBlank { "لقطة أمان سحابية من مدير المستندات" }
-                    repository.createSnapshot(
-                        projectId = defaultProjId,
-                        commitMessage = commitMsg,
-                        versionTag = tag,
-                        htmlCode = "<!-- Snapshot $tag -->",
-                        cssCode = "/* Snapshot CSS */",
-                        jsCode = "// Snapshot JS",
-                        backendCode = "// Snapshot Backend",
-                        addedLines = 12L,
-                        deletedLines = 2L
-                    ).onSuccess { newId ->
-                        _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
-                        _selectedDocumentId.value = newId
-                        _isCreatingNewDocument.value = false
-                        val msg = "تم إنشاء مستند لقطة إصدار ($newId) في /users/$currentUserId/snapshots"
-                        _mutationState.value = UiState.Success(msg)
-                        _dataStatusMessage.value = msg
-                    }.onFailure { e ->
-                        _connectionStatus.value = FirestoreConnectionStatus.ERROR
-                        val msg = "فشل إنشاء لقطة الإصدار: ${e.localizedMessage}"
-                        _mutationState.value = UiState.Error(msg)
-                        _dataStatusMessage.value = msg
-                    }
-                }
-                COLLECTION_LOGS -> {
-                    val stage = primaryField.ifBlank { "FIRESTORE_DATA_AUDIT" }
-                    val status = secondaryField.uppercase().let {
-                        if (it in listOf("SUCCESS", "WARNING", "ERROR", "RUNNING")) it else "SUCCESS"
-                    }
-                    val summary = jsonOrSummaryField.ifBlank { "تم فحص ومزامنة مجموعات البيانات السحابية بنجاح." }
-                    repository.createBuildLog(
-                        projectId = defaultProjId,
-                        stage = stage,
-                        status = status,
-                        durationMs = 45L,
-                        reportSummary = summary
-                    ).onSuccess { newId ->
-                        _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
-                        _selectedDocumentId.value = newId
-                        _isCreatingNewDocument.value = false
-                        val msg = "تم تسجيل مستند مراقبة ($newId) في /users/$currentUserId/logs"
-                        _mutationState.value = UiState.Success(msg)
-                        _dataStatusMessage.value = msg
-                    }.onFailure { e ->
-                        _connectionStatus.value = FirestoreConnectionStatus.ERROR
-                        val msg = "فشل إنشاء سجل المراقبة: ${e.localizedMessage}"
-                        _mutationState.value = UiState.Error(msg)
-                        _dataStatusMessage.value = msg
-                    }
-                }
-                COLLECTION_BIO_EXPERIMENTS -> {
-                    val title = primaryField.ifBlank { "تجربة طي البروتين وتحليل الجينوم" }
-                    val mode = secondaryField.ifBlank { "PROTEIN_FOLDING" }
-                    val summary = jsonOrSummaryField.ifBlank { "تم حفظ معلمات طي البروتين وتقييم pLDDT=92% في قاعدة البيانات السحابية." }
-                    repository.createBioExperiment(
-                        title = title,
-                        workflowMode = mode,
-                        fastaSequence = ">sp|P04637|P53_HUMAN\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP",
-                        researchGoal = "Preset: Custom Firestore Experiment ($mode)",
-                        plddtScore = 92L,
-                        freeEnergyKcal = -11.5,
-                        alphaHelixPct = 54L,
-                        betaSheetPct = 22L,
-                        aiReportSummary = summary
-                    ).onSuccess { newId ->
-                        _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
-                        _selectedDocumentId.value = newId
-                        _isCreatingNewDocument.value = false
-                        val msg = "تم إنشاء مستند تجربة حيوية ($newId) في /users/$currentUserId/bio_experiments"
-                        _mutationState.value = UiState.Success(msg)
-                        _dataStatusMessage.value = msg
-                    }.onFailure { e ->
-                        _connectionStatus.value = FirestoreConnectionStatus.ERROR
-                        val msg = "فشل إنشاء التجربة الحيوية: ${e.localizedMessage}"
-                        _mutationState.value = UiState.Error(msg)
-                        _dataStatusMessage.value = msg
-                    }
-                }
+
+                _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
+                _isCreatingNewDocument.value = false
+                _mutationState.value = UiState.Success(message)
+                _dataStatusMessage.value = message
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _connectionStatus.value = FirestoreConnectionStatus.ERROR
+                val message = "تعذر إنشاء المستند: ${error.localizedMessage ?: error.message ?: "خطأ غير معروف"}"
+                _mutationState.value = UiState.Error(message)
+                _dataStatusMessage.value = message
             }
         }
     }
@@ -671,85 +703,66 @@ class DataViewModel(
         viewModelScope.launch {
             _connectionStatus.value = FirestoreConnectionStatus.SYNCING
             _mutationState.value = UiState.Loading
-            when (collectionId) {
-                COLLECTION_SCHEMAS -> {
-                    val existing = (schemasState.value as? UiState.Success)?.data?.find { it.id == documentId }
-                        ?: repository.getCollectionSchemaById(documentId).getOrNull()
-                    if (existing != null) {
-                        val updatedSchema = existing.copy(
+            try {
+                val message = when (collectionId) {
+                    COLLECTION_SCHEMAS -> {
+                        val existing = (schemasState.value as? UiState.Success)?.data
+                            ?.find { it.id == documentId }
+                            ?: repository.getCollectionSchemaById(documentId).getOrThrow()
+                            ?: throw IllegalStateException("لم يتم العثور على مخطط المجموعة $documentId.")
+                        val updated = existing.copy(
                             collectionName = updatedPrimary.ifBlank { existing.collectionName },
                             fieldsSpec = updatedSecondary.ifBlank { existing.fieldsSpec },
                             sampleRecordsJson = updatedJsonOrThird.ifBlank { existing.sampleRecordsJson }
                         )
-                        repository.updateCollectionSchema(updatedSchema)
-                            .onSuccess {
-                                _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
-                                val msg = "تم تحديث المستند ${existing.id} في مجموعة collections بنجاح"
-                                _mutationState.value = UiState.Success(msg)
-                                _dataStatusMessage.value = msg
-                            }
-                            .onFailure { e ->
-                                _connectionStatus.value = FirestoreConnectionStatus.ERROR
-                                val msg = "فشل تحديث المستند: ${e.localizedMessage}"
-                                _mutationState.value = UiState.Error(msg)
-                                _dataStatusMessage.value = msg
-                            }
+                        repository.updateCollectionSchema(updated).getOrThrow()
+                        "تم تحديث مخطط المجموعة ${existing.collectionName}."
                     }
-                }
-                COLLECTION_PROJECTS -> {
-                    val existing = (projectsState.value as? UiState.Success)?.data?.find { it.id == documentId }
-                        ?: repository.getProjectById(currentUserId, documentId).getOrNull()
-                    if (existing != null) {
-                        val updatedProj = existing.copy(
+
+                    COLLECTION_PROJECTS -> {
+                        val existing = (projectsState.value as? UiState.Success)?.data
+                            ?.find { it.id == documentId }
+                            ?: repository.getProjectById(currentUserId, documentId).getOrThrow()
+                            ?: throw IllegalStateException("لم يتم العثور على المشروع $documentId.")
+                        val updated = existing.copy(
                             name = updatedPrimary.ifBlank { existing.name },
                             description = updatedSecondary.ifBlank { existing.description },
                             language = updatedJsonOrThird.ifBlank { existing.language }
                         )
-                        repository.updateProject(updatedProj)
-                            .onSuccess {
-                                _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
-                                val msg = "تم تحديث مستند المشروع ${existing.id} في Firestore بنجاح"
-                                _mutationState.value = UiState.Success(msg)
-                                _dataStatusMessage.value = msg
-                            }
-                            .onFailure { e ->
-                                _connectionStatus.value = FirestoreConnectionStatus.ERROR
-                                val msg = "فشل تحديث المشروع: ${e.localizedMessage}"
-                                _mutationState.value = UiState.Error(msg)
-                                _dataStatusMessage.value = msg
-                            }
+                        repository.updateProject(updated).getOrThrow()
+                        "تم تحديث المشروع ${updated.name}."
                     }
-                }
-                COLLECTION_BIO_EXPERIMENTS -> {
-                    val existing = (bioExperimentsState.value as? UiState.Success)?.data?.find { it.id == documentId }
-                        ?: repository.getBioExperimentById(documentId).getOrNull()
-                    if (existing != null) {
-                        val updatedExp = existing.copy(
+
+                    COLLECTION_BIO_EXPERIMENTS -> {
+                        val existing = (bioExperimentsState.value as? UiState.Success)?.data
+                            ?.find { it.id == documentId }
+                            ?: repository.getBioExperimentById(documentId).getOrThrow()
+                            ?: throw IllegalStateException("لم يتم العثور على التجربة الحيوية $documentId.")
+                        val updated = existing.copy(
                             title = updatedPrimary.ifBlank { existing.title },
                             workflowMode = updatedSecondary.ifBlank { existing.workflowMode },
                             aiReportSummary = updatedJsonOrThird.ifBlank { existing.aiReportSummary }
                         )
-                        repository.updateBioExperiment(updatedExp)
-                            .onSuccess {
-                                _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
-                                val msg = "تم تحديث مستند التجربة الحيوية ${existing.id} في Firestore بنجاح"
-                                _mutationState.value = UiState.Success(msg)
-                                _dataStatusMessage.value = msg
-                            }
-                            .onFailure { e ->
-                                _connectionStatus.value = FirestoreConnectionStatus.ERROR
-                                val msg = "فشل تحديث التجربة الحيوية: ${e.localizedMessage}"
-                                _mutationState.value = UiState.Error(msg)
-                                _dataStatusMessage.value = msg
-                            }
+                        repository.updateBioExperiment(updated).getOrThrow()
+                        "تم تحديث سجل التجربة الحيوية ${updated.title}."
                     }
+
+                    COLLECTION_SNAPSHOTS, COLLECTION_LOGS ->
+                        throw IllegalArgumentException("هذا السجل غير قابل للتعديل؛ أنشئ إصداراً أو سجلاً جديداً بدلاً من تغيير التاريخ.")
+
+                    else -> throw IllegalArgumentException("مجموعة Firestore غير مدعومة: $collectionId")
                 }
-                else -> {
-                    _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
-                    val msg = "هذه المجموعة محمية بقواعد عدم التعديل (Immutable Audit Records) في Firestore"
-                    _mutationState.value = UiState.Error(msg)
-                    _dataStatusMessage.value = msg
-                }
+
+                _connectionStatus.value = FirestoreConnectionStatus.CONNECTED
+                _mutationState.value = UiState.Success(message)
+                _dataStatusMessage.value = message
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _connectionStatus.value = FirestoreConnectionStatus.ERROR
+                val message = "تعذر تحديث المستند: ${error.localizedMessage ?: error.message ?: "خطأ غير معروف"}"
+                _mutationState.value = UiState.Error(message)
+                _dataStatusMessage.value = message
             }
         }
     }
@@ -771,6 +784,9 @@ class DataViewModel(
                 if (_selectedDocumentId.value == documentId) {
                     _selectedDocumentId.value = null
                 }
+                if (collectionId == COLLECTION_PROJECTS && _selectedDataProjectId.value == documentId) {
+                    _selectedDataProjectId.value = null
+                }
                 val msg = "تم حذف المستند ($documentId) من مجموعة $collectionId"
                 _mutationState.value = UiState.Success(msg)
                 _dataStatusMessage.value = msg
@@ -781,6 +797,42 @@ class DataViewModel(
                 _dataStatusMessage.value = msg
             }
         }
+    }
+
+    private suspend fun resolveProjectForDataOperation(): StudioProject {
+        val projects = (projectsState.value as? UiState.Success)?.data
+            ?: repository.getUserProjects().getOrThrow()
+        val selectedId = _selectedDataProjectId.value
+
+        if (!selectedId.isNullOrBlank()) {
+            return projects.firstOrNull { it.id == selectedId }
+                ?: repository.getProjectById(currentUserId, selectedId).getOrThrow()
+                ?: throw IllegalStateException("المشروع المختار لم يعد موجوداً. اختر مشروعاً آخر.")
+        }
+
+        return when (projects.size) {
+            0 -> throw IllegalStateException("أنشئ مشروعاً أولاً قبل إضافة مخطط أو لقطة أو سجل عملية.")
+            1 -> projects.single()
+            else -> throw IllegalStateException(
+                "لديك أكثر من مشروع. افتح مجموعة projects واختر المشروع المطلوب أولاً؛ لن أربط السجل بمشروع عشوائي."
+            )
+        }
+    }
+
+    private fun countLineChanges(previous: String, current: String): Pair<Long, Long> {
+        fun frequencies(value: String): Map<String, Int> =
+            value.lines().groupingBy { it }.eachCount()
+
+        val oldCounts = frequencies(previous)
+        val newCounts = frequencies(current)
+        val allLines = oldCounts.keys + newCounts.keys
+        val added = allLines.sumOf { line ->
+            ((newCounts[line] ?: 0) - (oldCounts[line] ?: 0)).coerceAtLeast(0)
+        }
+        val deleted = allLines.sumOf { line ->
+            ((oldCounts[line] ?: 0) - (newCounts[line] ?: 0)).coerceAtLeast(0)
+        }
+        return added.toLong() to deleted.toLong()
     }
 
     private fun buildCollectionsSummaryList(

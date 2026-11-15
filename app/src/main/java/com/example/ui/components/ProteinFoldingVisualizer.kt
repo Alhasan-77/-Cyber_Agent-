@@ -1,10 +1,9 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -47,6 +46,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -93,12 +93,11 @@ import kotlin.math.sqrt
 enum class FoldingVisualizationMode(val id: String, val titleAr: String) {
     BACKBONE_3D("BACKBONE_3D", "الهيكل ثلاثي الأبعاد 3D"),
     RAMACHANDRAN("RAMACHANDRAN", "مخطط راماشاندران (φ/ψ)"),
-    CONTACT_ENERGY("CONTACT_ENERGY", "خريطة التماس والطاقة")
+    CONTACT_ENERGY("CONTACT_ENERGY", "خريطة التلامس التوضيحية")
 }
 
 enum class FoldingColorScheme(val id: String, val titleAr: String) {
-    SECONDARY_STRUCTURE("STRUCTURE", "البنية الثانوية"),
-    PLDDT_CONFIDENCE("PLDDT", "ثقة الطي pLDDT"),
+    SECONDARY_STRUCTURE("STRUCTURE", "التركيب التوضيحي"),
     HYDROPATHY("HYDROPATHY", "الكراهية للماء GRAVY")
 }
 
@@ -113,7 +112,6 @@ data class ResidueFoldingNode(
     val oneLetterCode: Char,
     val threeLetterName: String,
     val structureKind: SecondaryStructureKind,
-    val plddtScore: Double,
     val hydropathy: Double,
     val nativePhi: Float,
     val nativePsi: Float,
@@ -136,9 +134,7 @@ data class ResidueContactPair(
 
 data class SimulatedProteinStructure(
     val residues: List<ResidueFoldingNode>,
-    val contacts: List<ResidueContactPair>,
-    val nativeRadiusOfGyration: Float,
-    val unfoldedRadiusOfGyration: Float
+    val contacts: List<ResidueContactPair>
 )
 
 private val aminoAcidThreeLetterMap = mapOf(
@@ -160,8 +156,10 @@ fun buildSimulatedProteinStructure(metrics: BioSequenceMetrics): SimulatedProtei
     val rawProtein = metrics.translatedProteinPreview
         .uppercase(Locale.US)
         .filter { it in 'A'..'Z' }
-        .ifEmpty { "MVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVM" }
         .take(72)
+    require(rawProtein.isNotBlank()) {
+        "لا يوجد تسلسل بروتيني لبناء العرض التوضيحي. أدخل تسلسلاً بروتينياً صالحاً."
+    }
 
     val n = rawProtein.length
     val nodes = ArrayList<ResidueFoldingNode>(n)
@@ -226,16 +224,6 @@ fun buildSimulatedProteinStructure(metrics: BioSequenceMetrics): SimulatedProtei
         val unfoldedY = sin(i * 0.55f) * 3.2f
         val unfoldedZ = cos(i * 0.45f) * 2.6f
 
-        val deterministicWave = sin(i * 0.73 + aa.code * 0.17)
-        val localPlddt = (
-            metrics.plddtConfidence +
-                when (kind) {
-                    SecondaryStructureKind.ALPHA_HELIX -> 4.2
-                    SecondaryStructureKind.BETA_SHEET -> 2.8
-                    SecondaryStructureKind.RANDOM_COIL -> -7.5
-                } + deterministicWave * 3.6
-            ).coerceIn(52.0, 98.9)
-
         val (phi, psi) = when (kind) {
             SecondaryStructureKind.ALPHA_HELIX -> {
                 (-62f + (sin(i * 1.1f) * 9f)) to (-43f + (cos(i * 0.9f) * 8f))
@@ -262,7 +250,6 @@ fun buildSimulatedProteinStructure(metrics: BioSequenceMetrics): SimulatedProtei
                 oneLetterCode = aa,
                 threeLetterName = aminoAcidThreeLetterMap[aa] ?: "Xaa",
                 structureKind = kind,
-                plddtScore = (localPlddt * 10.0).roundToInt() / 10.0,
                 hydropathy = hydro,
                 nativePhi = phi,
                 nativePsi = psi,
@@ -315,18 +302,9 @@ fun buildSimulatedProteinStructure(metrics: BioSequenceMetrics): SimulatedProtei
         }
     }
 
-    val nativeRg = sqrt(
-        centeredNodes.map { it.nativeX * it.nativeX + it.nativeY * it.nativeY + it.nativeZ * it.nativeZ }
-            .average()
-            .toFloat()
-    ).coerceAtLeast(8.5f)
-    val unfoldedRg = (nativeRg * 2.15f)
-
     return SimulatedProteinStructure(
         residues = centeredNodes,
-        contacts = contacts,
-        nativeRadiusOfGyration = (nativeRg * 10f).roundToInt() / 10f,
-        unfoldedRadiusOfGyration = (unfoldedRg * 10f).roundToInt() / 10f
+        contacts = contacts
     )
 }
 
@@ -336,7 +314,7 @@ fun ProteinFoldingVisualizer(
     metrics: BioSequenceMetrics,
     modifier: Modifier = Modifier
 ) {
-    val structure = remember(metrics.translatedProteinPreview, metrics.plddtConfidence) {
+    val structure = remember(metrics.translatedProteinPreview) {
         buildSimulatedProteinStructure(metrics)
     }
 
@@ -346,40 +324,29 @@ fun ProteinFoldingVisualizer(
     var selectedResidueIndex by remember(structure.residues.size) {
         mutableIntStateOf(0)
     }
-    var autoRotate by remember { mutableStateOf(true) }
+    var autoRotate by remember { mutableStateOf(false) }
     var rotationYaw by remember { mutableFloatStateOf(28f) }
     var rotationPitch by remember { mutableFloatStateOf(16f) }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "protein_folding_orbit")
-    val animatedSpinDeg by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 18000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "orbit_spin"
-    )
+    val spinAnimation = remember { Animatable(0f) }
+    LaunchedEffect(autoRotate) {
+        if (autoRotate) {
+            spinAnimation.animateTo(
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 18000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                )
+            )
+        } else {
+            spinAnimation.snapTo(0f)
+        }
+    }
 
-    val effectiveYawDeg = if (autoRotate) (rotationYaw + animatedSpinDeg) % 360f else rotationYaw
+    val effectiveYawDeg = if (autoRotate) (rotationYaw + spinAnimation.value) % 360f else rotationYaw
     val safeSelectedIdx = selectedResidueIndex.coerceIn(0, max(0, structure.residues.lastIndex))
     val selectedNode = structure.residues.getOrNull(safeSelectedIdx)
 
-    // Live folding thermodynamics derived from foldingProgress
-    val currentRmsd = remember(foldingProgress) {
-        (((1f - foldingProgress) * 14.8f + 0.45f) * 100f).roundToInt() / 100f
-    }
-    val currentRg = remember(foldingProgress, structure) {
-        val rg = structure.unfoldedRadiusOfGyration +
-            (structure.nativeRadiusOfGyration - structure.unfoldedRadiusOfGyration) * foldingProgress
-        (rg * 10f).roundToInt() / 10f
-    }
-    val currentDeltaG = remember(foldingProgress, metrics.bindingAffinityKcal) {
-        val unfoldedG = 4.2
-        val nativeG = metrics.bindingAffinityKcal
-        val g = unfoldedG + (nativeG - unfoldedG) * foldingProgress.toDouble()
-        (g * 10.0).roundToInt() / 10.0
-    }
     val activeContactsCount = remember(foldingProgress, structure.contacts.size) {
         (structure.contacts.size * (foldingProgress * foldingProgress)).roundToInt()
     }
@@ -404,13 +371,13 @@ fun ProteinFoldingVisualizer(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "🧊 المحلل التفاعلي لطي البروتين والبنية الفراغية (Protein Folding Lab)",
+                        text = "🧊 عارض توضيحي ثلاثي الأبعاد لتسلسل البروتين",
                         style = MaterialTheme.typography.titleMedium,
                         color = CyberCyan,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "معاينة ثلاثية الأبعاد لسلسلة Cα، مخطط زوايا راماشاندران (φ/ψ)، وخريطة الروابط الهيدروجينية والجيوب الدوائية",
+                        text = "تصور هندسي تعليمي مبني على قواعد مبسطة؛ لا يمثل تنبؤاً بنيوياً أو قياسات طاقة/ارتباط حقيقية.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -554,13 +521,13 @@ fun ProteinFoldingVisualizer(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LegendDot(color = CyberCyan, text = "α-Helix (${metrics.alphaHelixPct}%)")
-                    LegendDot(color = CyberViolet, text = "β-Sheet (${metrics.betaSheetPct}%)")
-                    LegendDot(color = CyberAmber, text = "Coil (${metrics.randomCoilPct}%)")
+                    LegendDot(color = CyberCyan, text = "α-Helix (توضيحي)")
+                    LegendDot(color = CyberViolet, text = "β-Sheet (توضيحي)")
+                    LegendDot(color = CyberAmber, text = "Coil (توضيحي)")
                 }
 
                 Text(
-                    text = "RMSD: ${currentRmsd}Å • Rg: ${currentRg}Å • ΔG: $currentDeltaG kcal/mol",
+                    text = "المسار الهندسي والتلامسات في هذا العرض توضيحية فقط، وليست قياسات فيزيائية.",
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = JetBrainsMonoFontFamily,
                     color = CyberEmerald,
@@ -588,13 +555,13 @@ fun ProteinFoldingVisualizer(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "مسار محاكاة الطي الحراري (Folding Trajectory): ${(foldingProgress * 100).roundToInt()}%",
+                        text = "تقدم الحركة التوضيحية: ${(foldingProgress * 100).roundToInt()}%",
                         style = MaterialTheme.typography.labelMedium,
                         color = CyberCyan,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "الروابط النشطة: $activeContactsCount / ${structure.contacts.size}",
+                        text = "التلامسات المرسومة: $activeContactsCount / ${structure.contacts.size}",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = JetBrainsMonoFontFamily,
                         color = CyberEmerald
@@ -618,12 +585,12 @@ fun ProteinFoldingVisualizer(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "0% سلسلة غير مطوية (Denatured Coil)",
+                        text = "0% الشكل المفكوك في العرض",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "100% البنية الأصلية المستقرة (Native State)",
+                        text = "100% الشكل المرسوم في العرض",
                         style = MaterialTheme.typography.labelSmall,
                         color = CyberEmerald
                     )
@@ -771,39 +738,24 @@ fun ProteinFoldingVisualizer(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "زوايا الالتواء: φ = ${selectedNode.nativePhi.roundToInt()}° , ψ = ${selectedNode.nativePsi.roundToInt()}° • التماس الهيدروجيني: $residueContacts روابط",
+                                text = "زوايا φ/ψ والتلامسات المعروضة اصطناعية لأغراض التوضيح: $residueContacts تلامسات",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "الكراهية للماء: ${selectedNode.hydropathy} • التعرض للمذيب: ${selectedNode.solventAccessibilityPct}% " +
-                                    if (selectedNode.isBindingPocket) "• 🎯 جيب ارتباط دوائي نشط" else "• نطاق هيكلي قياسي",
+                                text = "مؤشر الكراهية للماء: ${selectedNode.hydropathy} • التعرض للمذيب (تقدير توضيحي): ${selectedNode.solventAccessibilityPct}% " +
+                                    if (selectedNode.isBindingPocket) "• موضع مرشح بصري غير مثبت" else "• لا يوجد موضع مرشح بصري",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (selectedNode.isBindingPocket) CyberAmber else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(CyberBackground)
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = "pLDDT",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "${selectedNode.plddtScore}%",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontFamily = JetBrainsMonoFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = CyberEmerald
-                            )
-                        }
+                        Text(
+                            text = "pLDDT غير متاح دون تشغيل نموذج تنبؤ بنيوي متخصص.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -817,12 +769,6 @@ private fun resolveResidueColor(
 ): Color {
     return when (scheme) {
         FoldingColorScheme.SECONDARY_STRUCTURE -> node.structureKind.color
-        FoldingColorScheme.PLDDT_CONFIDENCE -> when {
-            node.plddtScore >= 90.0 -> CyberEmerald
-            node.plddtScore >= 78.0 -> CyberCyan
-            node.plddtScore >= 65.0 -> CyberAmber
-            else -> Color(0xFFEF4444)
-        }
         FoldingColorScheme.HYDROPATHY -> when {
             node.hydropathy >= 1.5 -> CyberAmber
             node.hydropathy >= -0.8 -> CyberEmerald
@@ -1116,15 +1062,14 @@ private fun ContactMapAndEnergyCanvas(
         val h = size.height
         val n = max(1, structure.residues.size)
 
-        // Top half: Per-Residue pLDDT confidence & folding stability profile
+        // Top half: sequence-derived hydropathy trace (Kyte-Doolittle scale)
         val chartHeight = h * 0.45f
         val chartTop = 24f
         val path = Path()
 
         structure.residues.forEachIndexed { idx, node ->
             val x = (idx.toFloat() / max(1, n - 1)) * (w - 32f) + 16f
-            val effectivePlddt = 45.0 + (node.plddtScore - 45.0) * foldingProgress
-            val normalized = ((effectivePlddt - 40.0) / 60.0).toFloat().coerceIn(0f, 1f)
+            val normalized = ((node.hydropathy + 4.5) / 9.0).toFloat().coerceIn(0f, 1f)
             val y = chartTop + chartHeight * (1f - normalized)
             if (idx == 0) path.moveTo(x, y) else path.lineTo(x, y)
 

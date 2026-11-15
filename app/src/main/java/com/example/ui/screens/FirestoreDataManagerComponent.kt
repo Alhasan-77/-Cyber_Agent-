@@ -34,7 +34,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MenuOpen
+import androidx.compose.material.icons.automirrored.filled.MenuOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
@@ -272,7 +272,7 @@ private fun FirestoreWorkspaceTopBar(
                         modifier = Modifier.testTag("toggle_firestore_sidebar_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MenuOpen,
+                            imageVector = Icons.AutoMirrored.Filled.MenuOpen,
                             contentDescription = "إظهار أو إخفاء الشريط الجانبي للمجموعات",
                             tint = if (isSidebarVisible) CyberCyan else MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -296,7 +296,7 @@ private fun FirestoreWorkspaceTopBar(
                         )
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Text(
-                                text = "DB: ${databaseId.take(22)}... | Scope: /users/${userId.take(10)}... | ${latencyMs}ms",
+                                text = "DB: ${databaseId.take(22)}... | Scope: /users/${userId.take(10)}... | ${if (latencyMs > 0L) "${latencyMs}ms" else "—"}",
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontFamily = JetBrainsMonoFontFamily
                                 ),
@@ -1054,14 +1054,14 @@ private fun CentralCreateDocumentView(
             "بيئة/لغة التطوير (language)"
         )
         DataViewModel.COLLECTION_BIO_EXPERIMENTS -> Triple(
-            "عنوان التجربة الحيوية (title)",
-            "نوع الأداة (PROTEIN_FOLDING / CRISPR / GENOMICS)",
-            "ملخص التقرير والنتائج (summaryReport)"
+            "إنشاء التجارب الحيوية من تبويب المختبر فقط",
+            "هذا النموذج غير مخصص لإنشاء سجل تجربة",
+            "استخدم مختبر العلوم الحيوية مع تسلسل حقيقي ونتائج فعلية"
         )
         DataViewModel.COLLECTION_SNAPSHOTS -> Triple(
-            "وسم الإصدار (versionTag مثل v1.4.0)",
-            "رسالة التوثيق (commitMessage)",
-            "ملاحظات الإصدار"
+            "وسم الإصدار (اتركه فارغاً لتوليده)",
+            "رسالة التوثيق (اختياري)",
+            "ملاحظات الإصدار (اختياري)"
         )
         else -> Triple(
             "مرحلة العملية (stage مثل SECURITY_SCAN)",
@@ -1127,6 +1127,14 @@ private fun CentralCreateDocumentView(
             }
         }
 
+        if (collectionId == DataViewModel.COLLECTION_BIO_EXPERIMENTS) {
+            Text(
+                text = "إنشاء سجلات التجارب الحيوية متاح من تبويب مختبر العلوم الحيوية فقط، بعد إدخال تسلسل حقيقي وتشغيل التحليل. مدير المستندات لا ينشئ نتائج أو درجات افتراضية.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = CyberAmber
+            )
+        }
+
         OutlinedTextField(
             value = primaryInput,
             onValueChange = { primaryInput = it },
@@ -1169,11 +1177,10 @@ private fun CentralCreateDocumentView(
                 Text("إلغاء", color = MaterialTheme.colorScheme.onSurface)
             }
             Button(
+                enabled = collectionId != DataViewModel.COLLECTION_BIO_EXPERIMENTS,
                 onClick = {
+                    // Keep entered values until the ViewModel confirms success and closes the form.
                     onCreateDocument(primaryInput, secondaryInput, thirdInput)
-                    primaryInput = ""
-                    secondaryInput = ""
-                    thirdInput = ""
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
                 modifier = Modifier
@@ -1182,7 +1189,12 @@ private fun CentralCreateDocumentView(
             ) {
                 Icon(Icons.Default.Save, contentDescription = null, tint = CyberBackground)
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("حفظ المستند في Cloud Firestore", color = CyberBackground, fontWeight = FontWeight.Bold)
+                Text(
+                    if (collectionId == DataViewModel.COLLECTION_BIO_EXPERIMENTS) "استخدم مختبر العلوم الحيوية"
+                    else "حفظ المستند في Cloud Firestore",
+                    color = CyberBackground,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

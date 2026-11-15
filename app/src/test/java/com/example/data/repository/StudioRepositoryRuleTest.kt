@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.tasks.await
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -12,7 +13,7 @@ import org.junit.Assert.fail
 import org.junit.Test
 import org.robolectric.annotation.Config
 
-@Config(sdk = [36])
+@Config(sdk = [35])
 class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
 
     @Test
@@ -191,6 +192,283 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
             repository.observeBioExperiments().first { list -> list.any { it.id == expId } }
         }
         assertTrue(emittedExperiments.any { it.id == expId })
+    }
+
+    @Test
+    fun createUpdateAndDeleteCollection_authenticatedOwner_succeeds() = runBlocking {
+        signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+        val projectId = repository.createProject(
+            name = "Schema owner project",
+            description = "Parent record for the test collection",
+            language = "Kotlin",
+            htmlCode = "",
+            cssCode = "",
+            jsCode = "",
+            backendCode = ""
+        ).getOrThrow()
+
+        val collectionId = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.createCollectionSchema(
+                projectId = projectId,
+                collectionName = "agent_records",
+                fieldsSpec = "name:string, enabled:boolean",
+                sampleRecordsJson = """[{"name":"first","enabled":true}]""",
+                indexConfig = "name_ascending"
+            ).getOrThrow()
+        }
+
+        val created = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeCollections().first { list -> list.any { it.id == collectionId } }
+                .first { it.id == collectionId }
+        }
+        assertNotNull(created.createdAt)
+
+        val updateResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.updateCollectionSchema(
+                created.copy(sampleRecordsJson = """[{"name":"second","enabled":false}]""")
+            )
+        }
+        assertTrue(updateResult.isSuccess)
+
+        val updated = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeCollections().first { list ->
+                list.any { it.id == collectionId && it.sampleRecordsJson.contains("second") }
+            }.first { it.id == collectionId }
+        }
+        assertTrue(updated.sampleRecordsJson.contains("second"))
+
+        val deleteResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.deleteCollectionSchema(collectionId)
+        }
+        assertTrue(deleteResult.isSuccess)
+
+        val remaining = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeCollections().first { list -> list.none { it.id == collectionId } }
+        }
+        assertTrue(remaining.none { it.id == collectionId })
+    }
+
+    @Test
+    fun deleteProject_cascadesOnlyItsDependentRecords() = runBlocking {
+        val aliceUid = signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+
+        val projectToDelete = repository.createProject(
+            name = "Delete cascade test",
+            description = "Project whose linked records should be deleted",
+            language = "Kotlin",
+            htmlCode = "<h1>Delete me</h1>",
+            cssCode = "",
+            jsCode = "",
+            backendCode = ""
+        ).getOrThrow()
+        val projectToKeep = repository.createProject(
+            name = "Keep cascade test",
+            description = "Unrelated project should remain",
+            language = "Kotlin",
+            htmlCode = "<h1>Keep me</h1>",
+            cssCode = "",
+            jsCode = "",
+            backendCode = ""
+        ).getOrThrow()
+
+        repository.createSnapshot(
+            projectId = projectToDelete,
+            commitMessage = "Delete with parent",
+            versionTag = "v1.0.0",
+            htmlCode = "<h1>Delete me</h1>",
+            cssCode = "",
+            jsCode = "",
+            backendCode = "",
+            addedLines = 1L,
+            deletedLines = 0L
+        ).getOrThrow()
+        val schemaId = repository.createCollectionSchema(
+            projectId = projectToDelete,
+            collectionName = "delete_records",
+            fieldsSpec = "id:string",
+            sampleRecordsJson = "[]",
+            indexConfig = ""
+        ).getOrThrow()
+        val recordId = repository.createCollectionRecord(
+            projectId = projectToDelete,
+            schemaId = schemaId,
+            collectionName = "delete_records",
+            recordJson = """{"id":"record-to-delete"}"""
+        ).getOrThrow()
+        val deletedRecordRef = firestore.collection("users").document(aliceUid)
+            .collection("projects").document(projectToDelete)
+            .collection("data").document("delete_records")
+            .collection("records").document(recordId)
+        repository.createBuildLog(
+            projectId = projectToDelete,
+            stage = "TEST",
+            status = "WARNING",
+            durationMs = 0L,
+            reportSummary = "Deletion cascade test."
+        ).getOrThrow()
+        repository.createSnapshot(
+            projectId = projectToKeep,
+            commitMessage = "Keep with parent",
+            versionTag = "v1.0.0",
+            htmlCode = "<h1>Keep me</h1>",
+            cssCode = "",
+            jsCode = "",
+            backendCode = "",
+            addedLines = 1L,
+            deletedLines = 0L
+        ).getOrThrow()
+
+        val deleteResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.deleteProject(projectToDelete)
+        }
+        assertTrue(deleteResult.isSuccess)
+        assertEquals(null, repository.getProjectById(aliceUid, projectToDelete).getOrThrow())
+        assertTrue(withTimeout(DEFAULT_TIMEOUT_MS) { deletedRecordRef.get().await() }.exists().not())
+
+        val snapshots = repository.getSnapshots().getOrThrow()
+        assertTrue(snapshots.none { it.projectId == projectToDelete })
+        assertTrue(snapshots.any { it.projectId == projectToKeep })
+
+        val schemas = repository.getCollectionSchemas().getOrThrow()
+        assertTrue(schemas.none { it.projectId == projectToDelete })
+
+        val logs = repository.getBuildLogs().getOrThrow()
+        assertTrue(logs.none { it.projectId == projectToDelete })
+    }
+
+    @Test
+    fun dependentRecords_rejectUnknownParentProject() = runBlocking {
+        signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+
+        val snapshot = repository.createSnapshot(
+            projectId = "missing_parent",
+            commitMessage = "Invalid parent",
+            versionTag = "v1.0.0",
+            htmlCode = "",
+            cssCode = "",
+            jsCode = "",
+            backendCode = "",
+            addedLines = 0L,
+            deletedLines = 0L
+        )
+        assertTrue(snapshot.isFailure)
+
+        val schema = repository.createCollectionSchema(
+            projectId = "missing_parent",
+            collectionName = "invalid_records",
+            fieldsSpec = "id:string",
+            sampleRecordsJson = "[]",
+            indexConfig = ""
+        )
+        assertTrue(schema.isFailure)
+
+        val log = repository.createBuildLog(
+            projectId = "missing_parent",
+            stage = "TEST",
+            status = "WARNING",
+            durationMs = 0L,
+            reportSummary = "Invalid parent should be rejected."
+        )
+        assertTrue(log.isFailure)
+    }
+
+    @Test
+    fun createAndDeleteCustomCollectionRecord_requiresOwnedProjectAndSchema() = runBlocking {
+        val userId = signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+
+        val projectId = repository.createProject(
+            name = "Custom records project",
+            description = "Test real collection records",
+            language = "Kotlin",
+            htmlCode = "",
+            cssCode = "",
+            jsCode = "",
+            backendCode = ""
+        ).getOrThrow()
+        val schemaId = repository.createCollectionSchema(
+            projectId = projectId,
+            collectionName = "orders",
+            fieldsSpec = "orderId:string,amount:number",
+            sampleRecordsJson = "[]",
+            indexConfig = ""
+        ).getOrThrow()
+
+        val createRecordResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.createCollectionRecord(
+                projectId = projectId,
+                schemaId = schemaId,
+                collectionName = "orders",
+                recordJson = """{"orderId":"A-100","amount":12}"""
+            )
+        }
+        assertTrue(
+            "createCollectionRecord failed: ${createRecordResult.exceptionOrNull()?.stackTraceToString()}",
+            createRecordResult.isSuccess
+        )
+        val recordId = createRecordResult.getOrThrow()
+        val recordRef = firestore.collection("users").document(userId)
+            .collection("projects").document(projectId)
+            .collection("data").document("orders")
+            .collection("records").document(recordId)
+        val liveRecords = withTimeout(FLOW_TIMEOUT_MS) {
+            repository.observeCollectionRecords(
+                projectId = projectId,
+                schemaId = schemaId,
+                collectionName = "orders"
+            ).first { records -> records.any { it.id == recordId } }
+        }
+        assertTrue(liveRecords.any { it.id == recordId })
+        assertTrue(liveRecords.first { it.id == recordId }.recordJson.contains("A-100"))
+
+        val record = withTimeout(DEFAULT_TIMEOUT_MS) { recordRef.get().await() }
+        assertTrue(record.exists())
+        assertEquals(userId, record.getString("userId"))
+        assertEquals(projectId, record.getString("projectId"))
+        assertEquals(schemaId, record.getString("schemaId"))
+        assertEquals("A-100", record.get("recordData.orderId"))
+
+        val invalidJson = repository.createCollectionRecord(
+            projectId = projectId,
+            schemaId = schemaId,
+            collectionName = "orders",
+            recordJson = """["not","an","object"]"""
+        )
+        assertTrue(invalidJson.isFailure)
+
+        val missingSchema = repository.createCollectionRecord(
+            projectId = projectId,
+            schemaId = "missing_schema",
+            collectionName = "orders",
+            recordJson = """{"orderId":"A-101"}"""
+        )
+        assertTrue(missingSchema.isFailure)
+
+        val deleteResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repository.deleteCollectionRecord(
+                projectId = projectId,
+                schemaId = schemaId,
+                collectionName = "orders",
+                recordId = recordId
+            )
+        }
+        assertTrue(deleteResult.isSuccess)
+        val remainingRecords = withTimeout(DEFAULT_TIMEOUT_MS) {
+            firestore.collection("users").document(userId)
+                .collection("projects").document(projectId)
+                .collection("data").document("orders")
+                .collection("records")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("projectId", projectId)
+                .whereEqualTo("schemaId", schemaId)
+                .whereEqualTo("collectionName", "orders")
+                .get()
+                .await()
+        }
+        assertTrue(remainingRecords.isEmpty)
     }
 
     private companion object {

@@ -4,11 +4,14 @@ import android.content.Context
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -17,10 +20,16 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.skills.BioscienceSimulationEngine
+import com.example.data.model.AiRolePersona
+import com.example.data.model.BioExperimentRecord
+import com.example.data.model.ChatMessage
+import com.example.data.model.GeneratedMediaAsset
+import com.example.data.remote.GeminiAiRepository
 import com.example.data.skills.BioscienceWorkflowMode
 import com.example.ui.components.MainScreenLayout
 import com.example.ui.components.SKILLS_HUB_TAB_INDEX
 import com.example.ui.components.StudioBottomTab
+import com.example.ui.screens.AiAndMediaStudioTabScreen
 import com.example.ui.screens.BioscienceLabTabScreen
 import com.example.ui.theme.MyApplicationTheme
 import org.junit.Assert.assertEquals
@@ -30,13 +39,43 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.runBlocking
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [35])
 class ExampleRobolectricTest {
 
     @get:Rule
     val composeTestRule = createComposeRule()
+
+    @Test
+    fun `media analysis rejects missing or mismatched input before calling Firebase`() = runBlocking {
+        val repository = GeminiAiRepository()
+
+        try {
+            repository.analyzeVisualMediaWithArgon(
+                prompt = "Describe the attachment",
+                mediaBase64 = "",
+                mimeType = "image/png",
+                isVideo = false
+            )
+            throw AssertionError("Missing media must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected: a prompt-only request must not be reported as media analysis.
+        }
+
+        try {
+            repository.analyzeVisualMediaWithArgon(
+                prompt = "Describe the attachment",
+                mediaBase64 = "AQID",
+                mimeType = "video/mp4",
+                isVideo = false
+            )
+            throw AssertionError("Mismatched media type must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected: image requests must provide an image MIME type.
+        }
+    }
 
     @Test
     fun `read string from context`() {
@@ -98,7 +137,7 @@ class ExampleRobolectricTest {
 
     @Test
     fun `main screen layout supports minimalist navigation drawer and bottom centered sparkle prompt input`() {
-        var activeTab = StudioBottomTab.DASHBOARD.index
+        var activeTab by mutableIntStateOf(StudioBottomTab.DASHBOARD.index)
         var submittedPrompt = ""
 
         composeTestRule.setContent {
@@ -133,7 +172,7 @@ class ExampleRobolectricTest {
 
         composeTestRule.onNodeWithTag("gemini_navigation_drawer").assertIsDisplayed()
         composeTestRule.onNodeWithTag("drawer_new_prompt_button").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("drawer_nav_tab_bioscience").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("drawer_nav_tab_bioscience").performScrollTo().assertIsDisplayed().performClick()
         composeTestRule.waitForIdle()
         assertEquals(StudioBottomTab.BIOSCIENCE.index, activeTab)
 
@@ -157,7 +196,67 @@ class ExampleRobolectricTest {
         assertTrue(crisprMetrics.sequenceLength > 100)
         assertTrue(crisprMetrics.gcContentPct in 30.0..80.0)
         assertTrue(crisprMetrics.pamSites.isNotEmpty())
-        assertEquals(100, crisprMetrics.alphaHelixPct + crisprMetrics.betaSheetPct + crisprMetrics.randomCoilPct)
+        assertEquals(0.0, crisprMetrics.plddtConfidence, 0.0)
+        assertEquals(0, crisprMetrics.alphaHelixPct + crisprMetrics.betaSheetPct + crisprMetrics.randomCoilPct)
+
+        val proteinMetrics = BioscienceSimulationEngine.analyzeSequenceMetrics(
+            rawInput = BioscienceWorkflowMode.PROTEIN_FOLDING.defaultSequence,
+            workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING
+        )
+        assertTrue(proteinMetrics.pamSites.isEmpty())
+        assertEquals(0.0, proteinMetrics.plddtConfidence, 0.0)
+        assertEquals(0.0, proteinMetrics.gcContentPct, 0.0)
+        assertEquals(0.0, proteinMetrics.meltingTempC, 0.0)
+
+        val emptyBioRecord = BioExperimentRecord()
+        assertEquals(0L, emptyBioRecord.plddtScore)
+        assertEquals(0.0, emptyBioRecord.freeEnergyKcal, 0.0)
+        assertEquals(0L, emptyBioRecord.alphaHelixPct)
+        assertEquals(0L, emptyBioRecord.betaSheetPct)
+
+        try {
+            BioscienceSimulationEngine.analyzeSequenceMetrics(
+                rawInput = "   ",
+                workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING
+            )
+            throw AssertionError("Blank sequence must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected: do not silently substitute a fabricated sequence.
+        }
+
+        val proteinGcMetrics = BioscienceSimulationEngine.analyzeSequenceMetrics(
+            rawInput = "MVHLTPEEKSAV",
+            workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING
+        )
+        assertEquals("PROTEIN", proteinGcMetrics.sequenceType)
+        assertEquals(0.0, proteinGcMetrics.gcContentPct, 0.0)
+        assertEquals(0.0, proteinGcMetrics.meltingTempC, 0.0)
+        assertEquals(0.0, proteinGcMetrics.plddtConfidence, 0.0)
+
+        val ambiguousDna = BioscienceSimulationEngine.analyzeSequenceMetrics(
+            rawInput = "ATGGTGCACCTGACTCCTGAGGAG",
+            workflowMode = BioscienceWorkflowMode.GENOMIC_ALIGNMENT
+        )
+        assertEquals("DNA", ambiguousDna.sequenceType)
+        assertTrue(ambiguousDna.translatedProteinPreview.startsWith("MVH"))
+
+        val exportedPipeline = BioscienceSimulationEngine.generateExportablePipelineCode(
+            workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING,
+            metrics = proteinGcMetrics
+        )
+        assertTrue(exportedPipeline.contains("plddt_confidence: Optional[float] = None"))
+        assertTrue(exportedPipeline.contains("predicted_ic50_nm: Optional[float] = None"))
+        assertTrue(exportedPipeline.contains("\"clinical_readiness\": None"))
+
+        try {
+            BioscienceSimulationEngine.analyzeSequenceMetrics(
+                rawInput = "MVHLTPEEKS@",
+                workflowMode = BioscienceWorkflowMode.PROTEIN_FOLDING
+            )
+            throw AssertionError("Unsupported symbols must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected: do not silently discard invalid sequence characters.
+        }
 
         val html3d = BioscienceSimulationEngine.buildInteractive3dBioGameHtml("GAME", "DNA_HELIX")
         assertTrue(html3d.contains("bio3d-canvas"))
@@ -228,7 +327,7 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("folding_contact_energy_canvas").assertIsDisplayed()
 
         // Switch coloring mode and step through residues
-        composeTestRule.onNodeWithTag("folding_color_PLDDT").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("folding_color_HYDROPATHY").performScrollTo().performClick()
         composeTestRule.onNodeWithTag("folding_selected_residue_detail").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("folding_next_residue_button").performClick()
         composeTestRule.onNodeWithTag("folding_residue_chip_2").assertIsDisplayed()
@@ -269,5 +368,51 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("ai_dropdown_option_gemini-4-argon").assertIsDisplayed().performClick()
         assertEquals("gemini-4-argon", selectedModel)
     }
+    @Test
+    fun `agent chat sends a real prompt and disables duplicate submission while busy`() {
+        var submittedPrompt = ""
+        composeTestRule.setContent {
+            var isBusy by remember { mutableStateOf(false) }
+            MyApplicationTheme {
+                AiAndMediaStudioTabScreen(
+                    chatMessages = emptyList<ChatMessage>(),
+                    selectedChatModel = GeminiAiRepository.MODEL_FLASH,
+                    selectedPersona = AiRolePersona.FULLSTACK_ARCHITECT,
+                    useSearchGrounding = false,
+                    useHighThinking = false,
+                    generatedAssets = emptyList<GeneratedMediaAsset>(),
+                    mediaAnalysisOutput = null,
+                    liveVoiceHistory = emptyList(),
+                    lastTranscribedText = "",
+                    onSelectChatModel = {},
+                    onSelectPersona = {},
+                    onToggleSearch = {},
+                    onToggleHighThinking = {},
+                    onSendChatMessage = { prompt ->
+                        submittedPrompt = prompt
+                        isBusy = true
+                    },
+                    onGenerateImage = { _, _, _, _, _, _ -> },
+                    onGenerateVideo = { _, _, _, _ -> },
+                    onAnalyzeMedia = { _, _, _, _ -> },
+                    onSynthesizeSpeech = { _, _ -> },
+                    onTranscribeAudio = { _, callback -> callback("transcribed text") },
+                    onSendLiveVoiceTurn = { _, _ -> },
+                    onGenerateMusic = { _, _ -> },
+                    onSpeakText = {},
+                    isBusy = isBusy
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("chatbot_message_input")
+            .performTextReplacement("احفظ المشروع الحالي في Firestore")
+        composeTestRule.onNodeWithTag("chatbot_send_button").performClick()
+
+        assertEquals("احفظ المشروع الحالي في Firestore", submittedPrompt)
+        composeTestRule.onNodeWithTag("chatbot_send_button").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("chatbot_message_input").assertIsNotEnabled()
+    }
+
 }
 

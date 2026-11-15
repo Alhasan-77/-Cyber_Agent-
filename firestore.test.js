@@ -195,8 +195,139 @@ test("Shadow update test: rejects unauthorized ghost fields", async () => {
   );
 });
 
+test("Dependent records require an existing project owned by the signed-in user", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+
+  const snapshot = {
+    userId: ALICE_UID,
+    projectId: "missing_project",
+    commitMessage: "Should be rejected",
+    versionTag: "v0.0.1",
+    htmlCode: "",
+    cssCode: "",
+    jsCode: "",
+    backendCode: "",
+    addedLines: 0,
+    deletedLines: 0,
+    createdAt: new Date(),
+  };
+  await assertFails(
+    aliceDb.collection(`users/${ALICE_UID}/snapshots`).doc("snap_missing").set(snapshot)
+  );
+
+  const schema = {
+    userId: ALICE_UID,
+    projectId: "missing_project",
+    collectionName: "records",
+    fieldsSpec: "name:string",
+    sampleRecordsJson: "[]",
+    indexConfig: "",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  await assertFails(
+    aliceDb.collection(`users/${ALICE_UID}/collections`).doc("col_missing").set(schema)
+  );
+
+  const log = {
+    userId: ALICE_UID,
+    projectId: "missing_project",
+    stage: "TEST",
+    status: "WARNING",
+    durationMs: 0,
+    reportSummary: "No project exists.",
+    createdAt: new Date(),
+  };
+  await assertFails(
+    aliceDb.collection(`users/${ALICE_UID}/logs`).doc("log_missing").set(log)
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().collection(`users/${BOB_UID}/projects`)
+      .doc("bob_project").set(validProjectPayload(BOB_UID));
+  });
+  await assertFails(
+    aliceDb.collection(`users/${ALICE_UID}/snapshots`).doc("snap_foreign").set({
+      ...snapshot,
+      projectId: "bob_project",
+    })
+  );
+});
+
+test("Custom collection records are scoped to their project schema and owner", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  await assertSucceeds(
+    aliceDb.collection(`users/${ALICE_UID}/projects`).doc("proj_records")
+      .set(validProjectPayload(ALICE_UID))
+  );
+  await assertSucceeds(
+    aliceDb.collection(`users/${ALICE_UID}/collections`).doc("schema_orders").set({
+      userId: ALICE_UID,
+      projectId: "proj_records",
+      collectionName: "orders",
+      fieldsSpec: "orderId:string,amount:number",
+      sampleRecordsJson: "[]",
+      indexConfig: "",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+  );
+
+  const records = aliceDb.collection(
+    `users/${ALICE_UID}/projects/proj_records/data/orders/records`
+  );
+  const payload = {
+    userId: ALICE_UID,
+    projectId: "proj_records",
+    schemaId: "schema_orders",
+    collectionName: "orders",
+    recordData: { orderId: "A-100", amount: 12 },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  await assertSucceeds(records.doc("rec_1").set(payload));
+  await assertSucceeds(records.doc("rec_1").get());
+  await assertSucceeds(
+    records.where("userId", "==", ALICE_UID)
+      .where("projectId", "==", "proj_records")
+      .where("schemaId", "==", "schema_orders")
+      .where("collectionName", "==", "orders")
+      .get()
+  );
+
+  await assertFails(records.doc("rec_1").update({ recordData: { amount: 999 } }));
+  await assertSucceeds(records.doc("rec_1").delete());
+  // Owners can verify that a deleted record is absent; no document data is exposed.
+  await assertSucceeds(records.doc("rec_1").get());
+
+  await assertFails(records.doc("rec_wrong_schema").set({
+    ...payload,
+    schemaId: "missing_schema",
+  }));
+  await assertFails(records.doc("rec_wrong_name").set({
+    ...payload,
+    collectionName: "other_collection",
+  }));
+  await assertFails(
+    aliceDb.collection(`users/${ALICE_UID}/projects/proj_records/data/invalid-name/records`)
+      .doc("rec_invalid").set(payload)
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().collection(`users/${BOB_UID}/projects`)
+      .doc("bob_records").set(validProjectPayload(BOB_UID));
+  });
+  await assertFails(
+    aliceDb.collection(`users/${BOB_UID}/projects/bob_records/data/orders/records`)
+      .doc("bob_record").get()
+  );
+});
+
 test("Immutable snapshot test: allows create by owner, rejects update", async () => {
   const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  await assertSucceeds(
+    aliceDb.collection(`users/${ALICE_UID}/projects`).doc("proj_1").set(validProjectPayload(ALICE_UID))
+  );
   const snapPayload = {
     userId: ALICE_UID,
     projectId: "proj_1",

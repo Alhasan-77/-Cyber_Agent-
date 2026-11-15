@@ -87,6 +87,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
+private fun getGoogleWebClientId(context: Context): String? {
+    val resourceId = context.resources.getIdentifier(
+        "default_web_client_id",
+        "string",
+        context.packageName
+    )
+    if (resourceId == 0) return null
+    return context.getString(resourceId).takeIf { it.isNotBlank() }
+}
+
 fun attemptAutoSignIn(
     context: Context,
     credentialManager: CredentialManager,
@@ -108,15 +118,9 @@ fun attemptAutoSignIn(
         onAuthSuccess()
         return
     }
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (e: Exception) {
-        GlobalExceptionHandler.reportError(
-            phase = "AutoSignIn WebClientId Lookup",
-            throwable = e,
-            isFatal = false
-        )
-        onUnauthenticated("إعداد Google Sign-In غير مكتمل: المورد default_web_client_id غير موجود.")
+    val clientId = getGoogleWebClientId(context)
+    if (clientId.isNullOrBlank()) {
+        onUnauthenticated("إعداد Google Sign-In غير مكتمل: تحقق من ملف google-services.json.")
         return
     }
 
@@ -166,15 +170,9 @@ fun onGoogleSignInClicked(
     scope: CoroutineScope,
     onAuthCancelled: () -> Unit = {}
 ) {
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (e: Exception) {
-        GlobalExceptionHandler.reportError(
-            phase = "GoogleSignIn WebClientId Lookup",
-            throwable = e,
-            isFatal = false
-        )
-        onAuthError("إعداد Google Sign-In غير مكتمل: default_web_client_id غير موجود")
+    val clientId = getGoogleWebClientId(context)
+    if (clientId.isNullOrBlank()) {
+        onAuthError("إعداد Google Sign-In غير مكتمل: تحقق من ملف google-services.json.")
         return
     }
 

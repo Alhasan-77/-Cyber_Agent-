@@ -20,6 +20,45 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function ownsProject(userId, projectId) {
+      return request.auth != null &&
+             request.auth.uid == userId &&
+             isValidId(projectId) &&
+             exists(/databases/$(database)/documents/users/$(userId)/projects/$(projectId)) &&
+             get(/databases/$(database)/documents/users/$(userId)/projects/$(projectId)).data.userId == request.auth.uid;
+    }
+
+    function isValidCollectionName(name) {
+      return name is string && name.matches('^[A-Za-z][A-Za-z0-9_]{0,63}$');
+    }
+
+    function ownsCollectionSchema(userId, projectId, schemaId, collectionName) {
+      return isSignedIn() &&
+             request.auth.uid == userId &&
+             ownsProject(userId, projectId) &&
+             isValidId(schemaId) &&
+             isValidCollectionName(collectionName) &&
+             exists(/databases/$(database)/documents/users/$(userId)/collections/$(schemaId)) &&
+             get(/databases/$(database)/documents/users/$(userId)/collections/$(schemaId)).data.userId == userId &&
+             get(/databases/$(database)/documents/users/$(userId)/collections/$(schemaId)).data.projectId == projectId &&
+             get(/databases/$(database)/documents/users/$(userId)/collections/$(schemaId)).data.collectionName == collectionName;
+    }
+
+    function isOwnedCustomCollectionRecord(data, userId, projectId, collectionName) {
+      return data.userId is string && data.userId == userId &&
+             data.projectId is string && data.projectId == projectId &&
+             data.collectionName is string && data.collectionName == collectionName &&
+             data.schemaId is string &&
+             ownsCollectionSchema(userId, projectId, data.schemaId, collectionName);
+    }
+
+    function isValidCustomCollectionRecord(data, userId, projectId, collectionName) {
+      return isOwnedCustomCollectionRecord(data, userId, projectId, collectionName) &&
+             data.recordData is map &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
     // Entity 0: UserProfile validation helper
     function isValidUserProfile(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
@@ -51,7 +90,7 @@ service cloud.firestore {
     // Entity 2: VersionSnapshot validation helper
     function isValidVersionSnapshot(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
-             data.projectId is string && isValidId(data.projectId) &&
+             data.projectId is string && ownsProject(data.userId, data.projectId) &&
              data.commitMessage is string && data.commitMessage.size() >= 1 && data.commitMessage.size() <= 300 &&
              data.versionTag is string && data.versionTag.size() >= 1 && data.versionTag.size() <= 40 &&
              data.htmlCode is string && data.htmlCode.size() <= 50000 &&
@@ -66,8 +105,8 @@ service cloud.firestore {
     // Entity 3: DbCollectionSchema validation helper
     function isValidDbCollectionSchema(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
-             data.projectId is string && isValidId(data.projectId) &&
-             data.collectionName is string && data.collectionName.size() >= 1 && data.collectionName.size() <= 80 &&
+             data.projectId is string && ownsProject(data.userId, data.projectId) &&
+             isValidCollectionName(data.collectionName) &&
              data.fieldsSpec is string && data.fieldsSpec.size() >= 1 && data.fieldsSpec.size() <= 5000 &&
              data.sampleRecordsJson is string && data.sampleRecordsJson.size() <= 20000 &&
              data.indexConfig is string && data.indexConfig.size() <= 500 &&
@@ -78,7 +117,7 @@ service cloud.firestore {
     // Entity 4: BuildExecutionLog validation helper
     function isValidBuildExecutionLog(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() >= 1 && data.userId.size() <= 128 &&
-             data.projectId is string && isValidId(data.projectId) &&
+             data.projectId is string && ownsProject(data.userId, data.projectId) &&
              data.stage is string && data.stage.size() >= 1 && data.stage.size() <= 60 &&
              data.status is string && (data.status in ['SUCCESS', 'WARNING', 'ERROR', 'RUNNING']) &&
              data.durationMs is int && data.durationMs >= 0 && data.durationMs <= 3600000 &&
@@ -126,7 +165,7 @@ service cloud.firestore {
     }
 
     match /users/{userId}/projects/{projectId} {
-      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(projectId) && existing().userId == request.auth.uid;
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(projectId) && (resource == null || existing().userId == request.auth.uid);
       allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
 
       allow create: if isSignedIn() &&
@@ -148,6 +187,45 @@ service cloud.firestore {
                        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'language', 'htmlCode', 'cssCode', 'jsCode', 'backendCode', 'updatedAt']);
 
       allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(projectId) && existing().userId == request.auth.uid;
+    }
+
+    match /users/{userId}/projects/{projectId}/data/{collectionName}/records/{recordId} {
+      allow get: if isSignedIn() &&
+                    request.auth.uid == userId &&
+                    isValidId(userId) &&
+                    isValidId(projectId) &&
+                    isValidId(recordId) &&
+                    (resource == null || isOwnedCustomCollectionRecord(existing(), userId, projectId, collectionName));
+
+      // Query predicates bind userId, projectId, schemaId, and collectionName.
+      // Avoid requiring non-queryable payload/timestamp fields in list authorization.
+      allow list: if isSignedIn() &&
+                     request.auth.uid == userId &&
+                     isValidId(userId) &&
+                     isValidId(projectId) &&
+                     resource.data.userId == userId &&
+                     resource.data.projectId == projectId &&
+                     resource.data.collectionName == collectionName &&
+                     ownsCollectionSchema(userId, projectId, resource.data.schemaId, collectionName);
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(projectId) &&
+                       isValidId(recordId) &&
+                       incoming().keys().hasAll(['userId', 'projectId', 'schemaId', 'collectionName', 'recordData', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'projectId', 'schemaId', 'collectionName', 'recordData', 'createdAt', 'updatedAt']) &&
+                       isValidCustomCollectionRecord(incoming(), userId, projectId, collectionName);
+
+      // Custom collection records are immutable; delete and recreate to change a record.
+      allow update: if false;
+
+      allow delete: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       isValidId(projectId) &&
+                       isValidId(recordId) &&
+                       isOwnedCustomCollectionRecord(existing(), userId, projectId, collectionName);
     }
 
     match /users/{userId}/snapshots/{snapshotId} {
