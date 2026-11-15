@@ -100,7 +100,7 @@ class GeminiAiRepository(
 
     private suspend fun forceRefreshAppCheckToken() {
         try {
-            suspendCancellableCoroutine { cont ->
+            suspendCancellableCoroutine<Unit> { cont ->
                 FirebaseAppCheck.getInstance().getAppCheckToken(true)
                     .addOnCompleteListener { task ->
                         if (!cont.isActive) return@addOnCompleteListener
