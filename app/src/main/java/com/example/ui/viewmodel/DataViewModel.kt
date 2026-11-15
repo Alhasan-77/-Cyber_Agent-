@@ -229,7 +229,7 @@ class DataViewModel(
         _selectedDocumentId
     ) { docs, selectedId ->
         if (selectedId != null) {
-            docs.find { it.id == selectedId } ?: docs.firstOrNull()
+            docs.find { it.id == selectedId }
         } else {
             docs.firstOrNull()
         }
@@ -337,7 +337,7 @@ class DataViewModel(
                         .map { mapSnapshotToDocumentItem(it) }
                     COLLECTION_LOGS -> repository.getBuildLogs().getOrThrow()
                         .map { mapLogToDocumentItem(it) }
-                    else -> emptyList()
+                    else -> throw IllegalArgumentException("Unknown Firestore collection: $collectionId")
                 }
             }
             result.onSuccess { docs ->
@@ -378,7 +378,7 @@ class DataViewModel(
                         ?.let { mapSnapshotToDocumentItem(it) }
                     COLLECTION_LOGS -> repository.getBuildLogById(documentId).getOrThrow()
                         ?.let { mapLogToDocumentItem(it) }
-                    else -> null
+                    else -> throw IllegalArgumentException("Unknown Firestore collection: $collectionId")
                 }
             }
             result.onSuccess { item ->
