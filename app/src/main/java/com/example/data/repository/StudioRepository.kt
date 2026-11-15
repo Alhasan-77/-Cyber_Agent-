@@ -295,6 +295,7 @@ class StudioRepository(private val db: FirebaseFirestore) {
                 recordsRef.whereEqualTo("userId", uid)
                     .whereEqualTo("projectId", projectId)
                     .whereEqualTo("schemaId", schema.id)
+                    .whereEqualTo("collectionName", collectionName)
                     .get()
                     .await()
                     .documents
@@ -611,6 +612,7 @@ class StudioRepository(private val db: FirebaseFirestore) {
             recordsRef.whereEqualTo("userId", uid)
                 .whereEqualTo("projectId", projectId)
                 .whereEqualTo("schemaId", collectionId)
+                .whereEqualTo("collectionName", collectionName)
                 .get()
                 .await()
                 .documents
