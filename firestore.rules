@@ -225,7 +225,7 @@ service cloud.firestore {
                        isValidId(userId) &&
                        isValidId(projectId) &&
                        isValidId(recordId) &&
-                       isValidCustomCollectionRecord(existing(), userId, projectId, collectionName);
+                       isOwnedCustomCollectionRecord(existing(), userId, projectId, collectionName);
     }
 
     match /users/{userId}/snapshots/{snapshotId} {
