@@ -12,6 +12,7 @@ import android.net.Uri
 import android.speech.tts.TextToSpeech
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -67,8 +68,9 @@ object AudioAndMediaHelper {
         val minBuf = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat).coerceAtLeast(4096)
 
         val pcmOutput = ByteArrayOutputStream()
+        var recorder: AudioRecord? = null
         try {
-            val recorder = AudioRecord(
+            recorder = AudioRecord(
                 MediaRecorder.AudioSource.MIC,
                 sampleRate,
                 channelConfig,
@@ -85,10 +87,15 @@ object AudioAndMediaHelper {
                         pcmOutput.write(buffer, 0, read)
                     }
                 }
-                recorder.stop()
-                recorder.release()
             }
         } catch (_: Exception) {
+        } finally {
+            runCatching {
+                if (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    recorder.stop()
+                }
+            }
+            runCatching { recorder?.release() }
         }
 
         val pcmBytes = pcmOutput.toByteArray()
@@ -109,8 +116,9 @@ object AudioAndMediaHelper {
             synthesizeAmbientMelodyPcm(sampleRate, if (isMusic) 3.0 else 1.2)
         }
 
+        var track: AudioTrack? = null
         try {
-            val track = AudioTrack.Builder()
+            track = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -130,7 +138,16 @@ object AudioAndMediaHelper {
 
             track.write(pcmBytes, 0, pcmBytes.size)
             track.play()
+            val durationMs = ((pcmBytes.size / (sampleRate * 2.0)) * 1000.0).toLong().coerceIn(200L, 5000L)
+            delay(durationMs + 120L)
         } catch (_: Exception) {
+        } finally {
+            runCatching {
+                if (track?.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    track.stop()
+                }
+            }
+            runCatching { track?.release() }
         }
     }
 

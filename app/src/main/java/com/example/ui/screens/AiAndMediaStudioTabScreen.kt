@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,6 +62,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -128,6 +130,10 @@ fun AiAndMediaStudioTabScreen(
 ) {
     // 0 = Multi-Turn Chatbot, 1 = Image & Video Studio, 2 = Voice, Audio & Music Lab
     var subTab by remember { mutableIntStateOf(0) }
+
+    BackHandler(enabled = subTab != 0) {
+        subTab = 0
+    }
 
     Column(
         modifier = Modifier
@@ -570,7 +576,9 @@ private fun MultiTurnChatbotSection(
                                     )
                                     IconButton(
                                         onClick = { onSpeakText(msg.text) },
-                                        modifier = Modifier.size(34.dp)
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .minimumInteractiveComponentSize()
                                     ) {
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.VolumeUp,

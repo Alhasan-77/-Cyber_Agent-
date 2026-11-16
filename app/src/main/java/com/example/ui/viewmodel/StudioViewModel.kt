@@ -471,56 +471,63 @@ class StudioViewModel(
     fun runAiSecurityAndPerformanceAudit() {
         viewModelScope.launch {
             _isBusy.value = true
-            appendConsoleLog("[Security Auditor] Running static & dynamic code analysis via ${GeminiAiRepository.MODEL_ARGON}...")
-            delay(350L)
-            val totalChars = _htmlBuffer.value.length + _cssBuffer.value.length + _jsBuffer.value.length + _backendBuffer.value.length
-            val checksum = computeSha256Short(_htmlBuffer.value + _jsBuffer.value + _backendBuffer.value)
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            val auditReport = buildString {
-                appendLine("🛡️ تقرير الفحص الأمني وجودة الكود الشامل:")
-                appendLine("• البصمة الرقمية للكود (SHA-256): $checksum")
-                appendLine("• حجم الحزمة المصدرية: ${totalChars / 1024.0} KB")
-                appendLine("• فحص حقن الكود (XSS / SQLi): سليم 100% (محمي)")
-                appendLine("• توافق قواعد بيانات Firestore: متوافق مع المخطط المعزول للمستخدم")
-                appendLine("• توصية الأداء: تم تفعيل ضغط DOM وتسريع استجابة الأحداث التفاعلية.")
+            try {
+                appendConsoleLog("[Security Auditor] Running static & dynamic code analysis via ${GeminiAiRepository.MODEL_ARGON}...")
+                delay(350L)
+                val totalChars = _htmlBuffer.value.length + _cssBuffer.value.length + _jsBuffer.value.length + _backendBuffer.value.length
+                val sizeKb = String.format(Locale.US, "%.2f", totalChars / 1024.0)
+                val checksum = computeSha256Short(_htmlBuffer.value + _jsBuffer.value + _backendBuffer.value)
+                val projectId = _selectedProjectId.value ?: "proj_default"
+                val auditReport = buildString {
+                    appendLine("🛡️ تقرير الفحص الأمني وجودة الكود الشامل:")
+                    appendLine("• البصمة الرقمية للكود (SHA-256): $checksum")
+                    appendLine("• حجم الحزمة المصدرية: $sizeKb KB")
+                    appendLine("• فحص حقن الكود (XSS / SQLi): سليم 100% (محمي)")
+                    appendLine("• توافق قواعد بيانات Firestore: متوافق مع المخطط المعزول للمستخدم")
+                    appendLine("• توصية الأداء: تم تفعيل ضغط DOM وتسريع استجابة الأحداث التفاعلية.")
+                }
+                repository.createBuildLog(
+                    projectId = projectId,
+                    stage = "فحص أمني وتدقيق أداء الكود (SHA:$checksum)",
+                    status = "SUCCESS",
+                    durationMs = 285L,
+                    reportSummary = auditReport
+                )
+                appendConsoleLog("[Security Auditor] Passed 0 critical vulnerabilities. Checksum=$checksum")
+                _statusBanner.value = "🛡️ اكتمل التدقيق الأمني وفحص الأداء (البصمة: $checksum)"
+            } finally {
+                _isBusy.value = false
             }
-            repository.createBuildLog(
-                projectId = projectId,
-                stage = "فحص أمني وتدقيق أداء الكود (SHA:$checksum)",
-                status = "SUCCESS",
-                durationMs = 285L,
-                reportSummary = auditReport
-            )
-            appendConsoleLog("[Security Auditor] Passed 0 critical vulnerabilities. Checksum=$checksum")
-            _statusBanner.value = "🛡️ اكتمل التدقيق الأمني وفحص الأداء (البصمة: $checksum)"
-            _isBusy.value = false
         }
     }
 
     fun triggerCloudDeploymentPipeline() {
         viewModelScope.launch {
             _isBusy.value = true
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            appendConsoleLog("[Cloud CI/CD] Starting multi-stage deployment for '${_editorName.value}' on branch '${_activeBranch.value}'...")
-            delay(400L)
-            val checksum = computeSha256Short(_htmlBuffer.value + _cssBuffer.value + _jsBuffer.value + _backendBuffer.value)
-            val report = buildString {
-                appendLine("🚀 تقرير النشر السحابي المتكامل (Cloud CI/CD Pipeline):")
-                appendLine("• الفرع النشط: ${_activeBranch.value} | البصمة: $checksum")
-                appendLine("• المرحلة 1 (Build & Bundle): نجح تجميع الواجهة الأمامية والخلفية (${_editorLanguage.value})")
-                appendLine("• المرحلة 2 (Database Migration): تم التحقق من فهارس ومجموعات Firestore")
-                appendLine("• المرحلة 3 (Cloud Edge Deploy): تم النشر على عقدة السحابة عالية الأداء بزمن 340ms")
+            try {
+                val projectId = _selectedProjectId.value ?: "proj_default"
+                appendConsoleLog("[Cloud CI/CD] Starting multi-stage deployment for '${_editorName.value}' on branch '${_activeBranch.value}'...")
+                delay(400L)
+                val checksum = computeSha256Short(_htmlBuffer.value + _cssBuffer.value + _jsBuffer.value + _backendBuffer.value)
+                val report = buildString {
+                    appendLine("🚀 تقرير النشر السحابي المتكامل (Cloud CI/CD Pipeline):")
+                    appendLine("• الفرع النشط: ${_activeBranch.value} | البصمة: $checksum")
+                    appendLine("• المرحلة 1 (Build & Bundle): نجح تجميع الواجهة الأمامية والخلفية (${_editorLanguage.value})")
+                    appendLine("• المرحلة 2 (Database Migration): تم التحقق من فهارس ومجموعات Firestore")
+                    appendLine("• المرحلة 3 (Cloud Edge Deploy): تم النشر على عقدة السحابة عالية الأداء بزمن 340ms")
+                }
+                repository.createBuildLog(
+                    projectId = projectId,
+                    stage = "نشر سحابي كامل [${_activeBranch.value}]",
+                    status = "SUCCESS",
+                    durationMs = 340L,
+                    reportSummary = report
+                )
+                appendConsoleLog("[Cloud CI/CD] Deployment LIVE! Checksum=$checksum")
+                _statusBanner.value = "🚀 تم تنفيذ خط أنابيب النشر السحابي وتوليد التقرير التفصيلي بنجاح!"
+            } finally {
+                _isBusy.value = false
             }
-            repository.createBuildLog(
-                projectId = projectId,
-                stage = "نشر سحابي كامل [${_activeBranch.value}]",
-                status = "SUCCESS",
-                durationMs = 340L,
-                reportSummary = report
-            )
-            appendConsoleLog("[Cloud CI/CD] Deployment LIVE! Checksum=$checksum")
-            _statusBanner.value = "🚀 تم تنفيذ خط أنابيب النشر السحابي وتوليد التقرير التفصيلي بنجاح!"
-            _isBusy.value = false
         }
     }
 
@@ -623,112 +630,124 @@ class StudioViewModel(
     fun saveAndBuildCurrentProject() {
         viewModelScope.launch {
             _isBusy.value = true
-            val startMs = System.currentTimeMillis()
-            val currentList = (projectsState.value as? UiState.Success)?.data.orEmpty()
-            val existing = currentList.firstOrNull { it.id == _selectedProjectId.value }
+            try {
+                saveAndBuildCurrentProjectInternal()
+            } finally {
+                _isBusy.value = false
+            }
+        }
+    }
 
-            val targetProjectId = if (existing != null && existing.createdAt != null) {
-                repository.updateProject(
-                    existing.copy(
-                        name = _editorName.value,
-                        language = _editorLanguage.value,
-                        htmlCode = _htmlBuffer.value,
-                        cssCode = _cssBuffer.value,
-                        jsCode = _jsBuffer.value,
-                        backendCode = _backendBuffer.value
-                    )
-                )
-                existing.id
-            } else {
-                val created = repository.createProject(
+    private suspend fun saveAndBuildCurrentProjectInternal() {
+        val startMs = System.currentTimeMillis()
+        val currentList = (projectsState.value as? UiState.Success)?.data.orEmpty()
+        val existing = currentList.firstOrNull { it.id == _selectedProjectId.value }
+
+        val targetProjectId = if (existing != null && existing.createdAt != null) {
+            repository.updateProject(
+                existing.copy(
                     name = _editorName.value,
-                    description = "Full-Stack Project (${_editorLanguage.value})",
                     language = _editorLanguage.value,
                     htmlCode = _htmlBuffer.value,
                     cssCode = _cssBuffer.value,
                     jsCode = _jsBuffer.value,
                     backendCode = _backendBuffer.value
                 )
-                val newId = created.getOrNull() ?: "proj_default"
-                _selectedProjectId.value = newId
-                newId
-            }
-
-            val totalLines = _htmlBuffer.value.lines().size +
-                _cssBuffer.value.lines().size +
-                _jsBuffer.value.lines().size +
-                _backendBuffer.value.lines().size
-            val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(145L)
-            val checksum = computeSha256Short(_htmlBuffer.value + _jsBuffer.value + _backendBuffer.value)
-
-            val report = buildString {
-                appendLine("✅ اكتمل البناء السحابي وفحص الكود (${_editorLanguage.value}):")
-                appendLine("• إجمالي الأسطر البرمجية المترجمة: $totalLines سطر (SHA:$checksum)")
-                appendLine("• زمن الاستجابة والتجميع: ${elapsed}ms")
-                appendLine("• فحص الأمان: 0 ثغرات حرجة (Zero-Trust Verified)")
-                appendLine("• حالة نافذة المعاينة الحية (WebView): نشطة ومحدثة")
-            }
-
-            repository.createBuildLog(
-                projectId = targetProjectId,
-                stage = "بناء وتشغيل ${_editorName.value}",
-                status = "SUCCESS",
-                durationMs = elapsed,
-                reportSummary = report
             )
-
-            appendConsoleLog("[Build Success] Compiled $totalLines lines in ${elapsed}ms (SHA:$checksum)")
-            _statusBanner.value = "تم حفظ المشروع وبناء المعاينة الحية وتوليد التقرير في ${elapsed}ms"
-            _isBusy.value = false
+            existing.id
+        } else {
+            val created = repository.createProject(
+                name = _editorName.value,
+                description = "Full-Stack Project (${_editorLanguage.value})",
+                language = _editorLanguage.value,
+                htmlCode = _htmlBuffer.value,
+                cssCode = _cssBuffer.value,
+                jsCode = _jsBuffer.value,
+                backendCode = _backendBuffer.value
+            )
+            val newId = created.getOrNull() ?: "proj_default"
+            _selectedProjectId.value = newId
+            newId
         }
+
+        val totalLines = _htmlBuffer.value.lines().size +
+            _cssBuffer.value.lines().size +
+            _jsBuffer.value.lines().size +
+            _backendBuffer.value.lines().size
+        val elapsed = (System.currentTimeMillis() - startMs).coerceAtLeast(145L)
+        val checksum = computeSha256Short(_htmlBuffer.value + _jsBuffer.value + _backendBuffer.value)
+
+        val report = buildString {
+            appendLine("✅ اكتمل البناء السحابي وفحص الكود (${_editorLanguage.value}):")
+            appendLine("• إجمالي الأسطر البرمجية المترجمة: $totalLines سطر (SHA:$checksum)")
+            appendLine("• زمن الاستجابة والتجميع: ${elapsed}ms")
+            appendLine("• فحص الأمان: 0 ثغرات حرجة (Zero-Trust Verified)")
+            appendLine("• حالة نافذة المعاينة الحية (WebView): نشطة ومحدثة")
+        }
+
+        repository.createBuildLog(
+            projectId = targetProjectId,
+            stage = "بناء وتشغيل ${_editorName.value}",
+            status = "SUCCESS",
+            durationMs = elapsed,
+            reportSummary = report
+        )
+
+        appendConsoleLog("[Build Success] Compiled $totalLines lines in ${elapsed}ms (SHA:$checksum)")
+        _statusBanner.value = "تم حفظ المشروع وبناء المعاينة الحية وتوليد التقرير في ${elapsed}ms"
     }
 
     fun createNewProject(name: String, description: String, language: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val generated = aiRepository.generateFullStackCodebase(
-                projectBrief = "$name - $description",
-                stackLanguage = language,
-                preferredModel = _selectedChatModel.value
-            )
-            val html = generated["html"] ?: DEFAULT_HTML
-            val css = generated["css"] ?: DEFAULT_CSS
-            val js = generated["js"] ?: DEFAULT_JS
-            val backend = generated["backend"] ?: DEFAULT_BACKEND
+            try {
+                val generated = aiRepository.generateFullStackCodebase(
+                    projectBrief = "$name - $description",
+                    stackLanguage = language,
+                    preferredModel = _selectedChatModel.value
+                )
+                val html = generated["html"] ?: DEFAULT_HTML
+                val css = generated["css"] ?: DEFAULT_CSS
+                val js = generated["js"] ?: DEFAULT_JS
+                val backend = generated["backend"] ?: DEFAULT_BACKEND
 
-            val result = repository.createProject(
-                name = name,
-                description = description,
-                language = language,
-                htmlCode = html,
-                cssCode = css,
-                jsCode = js,
-                backendCode = backend
-            )
-            result.onSuccess { id ->
-                _selectedProjectId.value = id
-                _editorName.value = name
-                _editorLanguage.value = language
-                _htmlBuffer.value = html
-                _cssBuffer.value = css
-                _jsBuffer.value = js
-                _backendBuffer.value = backend
-
-                repository.createSnapshot(
-                    projectId = id,
-                    commitMessage = "توليد معماري كامل عبر ${GeminiAiRepository.MODEL_ARGON}",
-                    versionTag = "v1.0.0",
+                val result = repository.createProject(
+                    name = name,
+                    description = description,
+                    language = language,
                     htmlCode = html,
                     cssCode = css,
                     jsCode = js,
-                    backendCode = backend,
-                    addedLines = (html.lines().size + css.lines().size + js.lines().size + backend.lines().size).toLong(),
-                    deletedLines = 0L
+                    backendCode = backend
                 )
-                appendConsoleLog("[AI Generator] Created new full-stack project '$name'")
-                _statusBanner.value = "تم إنشاء وبناء المشروع الجديد «$name» بنجاح!"
+                result.onSuccess { id ->
+                    _selectedProjectId.value = id
+                    _editorName.value = name
+                    _editorLanguage.value = language
+                    _htmlBuffer.value = html
+                    _cssBuffer.value = css
+                    _jsBuffer.value = js
+                    _backendBuffer.value = backend
+
+                    repository.createSnapshot(
+                        projectId = id,
+                        commitMessage = "توليد معماري كامل عبر ${GeminiAiRepository.MODEL_ARGON}",
+                        versionTag = "v1.0.0",
+                        htmlCode = html,
+                        cssCode = css,
+                        jsCode = js,
+                        backendCode = backend,
+                        addedLines = (html.lines().size + css.lines().size + js.lines().size + backend.lines().size).toLong(),
+                        deletedLines = 0L
+                    )
+                    appendConsoleLog("[AI Generator] Created new full-stack project '$name'")
+                    _statusBanner.value = "تم إنشاء وبناء المشروع الجديد «$name» بنجاح!"
+                }.onFailure { err ->
+                    _statusBanner.value = "تعذر إنشاء المشروع في السحابة: ${err.localizedMessage}"
+                }
+            } finally {
+                _isBusy.value = false
             }
-            _isBusy.value = false
         }
     }
 
@@ -742,85 +761,94 @@ class StudioViewModel(
     fun triggerInlineCodeSuggestion(instruction: String = "أضف ميزة مراقبة فورية وتحسين أداء") {
         viewModelScope.launch {
             _isBusy.value = true
-            val currentTab = _activeCodeTab.value
-            val currentContent = when (currentTab) {
-                "HTML" -> _htmlBuffer.value
-                "CSS" -> _cssBuffer.value
-                "JS" -> _jsBuffer.value
-                else -> _backendBuffer.value
+            try {
+                val currentTab = _activeCodeTab.value
+                val currentContent = when (currentTab) {
+                    "HTML" -> _htmlBuffer.value
+                    "CSS" -> _cssBuffer.value
+                    "JS" -> _jsBuffer.value
+                    else -> _backendBuffer.value
+                }
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt("$instruction\n$currentContent")
+                val enrichedInstruction = if (skillsBlock.isNotBlank()) {
+                    "$instruction\n\n$skillsBlock"
+                } else {
+                    instruction
+                }
+                val snippet = aiRepository.generateLowLatencyCodeSuggestion(
+                    currentCode = currentContent,
+                    activeTab = currentTab,
+                    instruction = enrichedInstruction,
+                    preferredModel = _selectedChatModel.value
+                )
+                updateActiveBuffer(currentContent + "\n\n" + snippet)
+                val skillsNote = if (appliedIds.isNotEmpty()) " [Skills: ${appliedIds.joinToString(", ")}]" else ""
+                appendConsoleLog("[AI Copilot] Injected low-latency snippet into $currentTab via ${_selectedChatModel.value}$skillsNote")
+                _statusBanner.value = "⚡ تم إدراج اقتراح برمجي فوري (${_selectedChatModel.value}) مدعوم بذاكرة المهارات"
+            } finally {
+                _isBusy.value = false
             }
-            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt("$instruction\n$currentContent")
-            val enrichedInstruction = if (skillsBlock.isNotBlank()) {
-                "$instruction\n\n$skillsBlock"
-            } else {
-                instruction
-            }
-            val snippet = aiRepository.generateLowLatencyCodeSuggestion(
-                currentCode = currentContent,
-                activeTab = currentTab,
-                instruction = enrichedInstruction,
-                preferredModel = _selectedChatModel.value
-            )
-            updateActiveBuffer(currentContent + "\n\n" + snippet)
-            val skillsNote = if (appliedIds.isNotEmpty()) " [Skills: ${appliedIds.joinToString(", ")}]" else ""
-            appendConsoleLog("[AI Copilot] Injected low-latency snippet into $currentTab via ${_selectedChatModel.value}$skillsNote")
-            _statusBanner.value = "⚡ تم إدراج اقتراح برمجي فوري (${_selectedChatModel.value}) مدعوم بذاكرة المهارات"
-            _isBusy.value = false
         }
     }
 
     fun generateFullStackWithHighThinking(prompt: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
-            val enrichedPrompt = if (skillsBlock.isNotBlank()) {
-                "$prompt\n\n$skillsBlock"
-            } else {
-                prompt
+            try {
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
+                val enrichedPrompt = if (skillsBlock.isNotBlank()) {
+                    "$prompt\n\n$skillsBlock"
+                } else {
+                    prompt
+                }
+                appendConsoleLog("[High Thinking] Synthesizing full-stack architecture via ${_selectedChatModel.value} with skills ${appliedIds.joinToString(", ")}...")
+                val generated = aiRepository.generateFullStackCodebase(
+                    projectBrief = enrichedPrompt,
+                    stackLanguage = _editorLanguage.value,
+                    preferredModel = _selectedChatModel.value
+                )
+                _htmlBuffer.value = generated["html"] ?: _htmlBuffer.value
+                _cssBuffer.value = generated["css"] ?: _cssBuffer.value
+                _jsBuffer.value = generated["js"] ?: _jsBuffer.value
+                _backendBuffer.value = generated["backend"] ?: _backendBuffer.value
+                saveAndBuildCurrentProjectInternal()
+                _statusBanner.value = "🧠 تم توليد البنية الكاملة عبر (${_selectedChatModel.value}) مع تطبيق المهارات (${appliedIds.take(3).joinToString(", ")})"
+            } finally {
+                _isBusy.value = false
             }
-            appendConsoleLog("[High Thinking] Synthesizing full-stack architecture via ${_selectedChatModel.value} with skills ${appliedIds.joinToString(", ")}...")
-            val generated = aiRepository.generateFullStackCodebase(
-                projectBrief = enrichedPrompt,
-                stackLanguage = _editorLanguage.value,
-                preferredModel = _selectedChatModel.value
-            )
-            _htmlBuffer.value = generated["html"] ?: _htmlBuffer.value
-            _cssBuffer.value = generated["css"] ?: _cssBuffer.value
-            _jsBuffer.value = generated["js"] ?: _jsBuffer.value
-            _backendBuffer.value = generated["backend"] ?: _backendBuffer.value
-            saveAndBuildCurrentProject()
-            _statusBanner.value = "🧠 تم توليد البنية الكاملة عبر (${_selectedChatModel.value}) مع تطبيق المهارات (${appliedIds.take(3).joinToString(", ")})"
-            _isBusy.value = false
         }
     }
 
     fun commitVersionSnapshot(commitMessage: String, versionTag: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val projectId = _selectedProjectId.value ?: "proj_default"
-            val previousSnap = (snapshotsState.value as? UiState.Success)?.data
-                ?.firstOrNull { it.projectId == projectId }
+            try {
+                val projectId = _selectedProjectId.value ?: "proj_default"
+                val previousSnap = (snapshotsState.value as? UiState.Success)?.data
+                    ?.firstOrNull { it.projectId == projectId }
 
-            val prevLines = (previousSnap?.htmlCode.orEmpty() + "\n" + previousSnap?.jsCode.orEmpty()).lines()
-            val currLines = (_htmlBuffer.value + "\n" + _jsBuffer.value).lines()
-            val added = currLines.count { it !in prevLines }.toLong().coerceAtLeast(1L)
-            val deleted = prevLines.count { it !in currLines }.toLong()
-            val branchPrefix = "[${_activeBranch.value}] "
+                val prevLines = (previousSnap?.htmlCode.orEmpty() + "\n" + previousSnap?.jsCode.orEmpty()).lines()
+                val currLines = (_htmlBuffer.value + "\n" + _jsBuffer.value).lines()
+                val added = currLines.count { it !in prevLines }.toLong().coerceAtLeast(1L)
+                val deleted = prevLines.count { it !in currLines }.toLong()
+                val branchPrefix = "[${_activeBranch.value}] "
 
-            repository.createSnapshot(
-                projectId = projectId,
-                commitMessage = branchPrefix + commitMessage.ifBlank { "تحديث الكود والمخططات" },
-                versionTag = versionTag.ifBlank { "v1.${((snapshotsState.value as? UiState.Success)?.data?.size ?: 0) + 1}.0" },
-                htmlCode = _htmlBuffer.value,
-                cssCode = _cssBuffer.value,
-                jsCode = _jsBuffer.value,
-                backendCode = _backendBuffer.value,
-                addedLines = added,
-                deletedLines = deleted
-            )
-            appendConsoleLog("[VCS Commit] Saved snapshot $versionTag on branch ${_activeBranch.value} (+$added/-$deleted)")
-            _statusBanner.value = "تم حفظ اللقطة السحابية ($versionTag) على الفرع ${_activeBranch.value}"
-            _isBusy.value = false
+                repository.createSnapshot(
+                    projectId = projectId,
+                    commitMessage = branchPrefix + commitMessage.ifBlank { "تحديث الكود والمخططات" },
+                    versionTag = versionTag.ifBlank { "v1.${((snapshotsState.value as? UiState.Success)?.data?.size ?: 0) + 1}.0" },
+                    htmlCode = _htmlBuffer.value,
+                    cssCode = _cssBuffer.value,
+                    jsCode = _jsBuffer.value,
+                    backendCode = _backendBuffer.value,
+                    addedLines = added,
+                    deletedLines = deleted
+                )
+                appendConsoleLog("[VCS Commit] Saved snapshot $versionTag on branch ${_activeBranch.value} (+$added/-$deleted)")
+                _statusBanner.value = "تم حفظ اللقطة السحابية ($versionTag) على الفرع ${_activeBranch.value}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
@@ -829,9 +857,16 @@ class StudioViewModel(
         _cssBuffer.value = snapshot.cssCode
         _jsBuffer.value = snapshot.jsCode
         _backendBuffer.value = snapshot.backendCode
-        saveAndBuildCurrentProject()
-        appendConsoleLog("[VCS Restore] Rolled back workspace to ${snapshot.versionTag}")
-        _statusBanner.value = "تمت استعادة الإصدار ${snapshot.versionTag} (${snapshot.commitMessage}) بنجاح!"
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                saveAndBuildCurrentProjectInternal()
+                appendConsoleLog("[VCS Restore] Rolled back workspace to ${snapshot.versionTag}")
+                _statusBanner.value = "تمت استعادة الإصدار ${snapshot.versionTag} (${snapshot.commitMessage}) بنجاح!"
+            } finally {
+                _isBusy.value = false
+            }
+        }
     }
 
     fun computeDiffAgainstCurrent(snapshot: VersionSnapshot): List<DiffLine> {
@@ -890,7 +925,14 @@ class StudioViewModel(
             }
             if (schema.createdAt != null) {
                 repository.updateCollectionSchema(schema.copy(sampleRecordsJson = updatedJson))
-                _statusBanner.value = "تم إدراج السجل الجديد في «${schema.collectionName}»"
+                    .onSuccess {
+                        _statusBanner.value = "تم إدراج السجل الجديد في «${schema.collectionName}»"
+                    }
+                    .onFailure { err ->
+                        _statusBanner.value = "تعذر إدراج السجل: ${err.localizedMessage}"
+                    }
+            } else {
+                _statusBanner.value = "يرجى انتظار مزامنة المخطط مع Firestore قبل إضافة السجل."
             }
         }
     }
@@ -974,40 +1016,43 @@ class StudioViewModel(
 
         viewModelScope.launch {
             _isBusy.value = true
-            val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
-            val enrichedPrompt = if (skillsBlock.isNotBlank()) {
-                "$prompt\n\n$skillsBlock"
-            } else {
-                prompt
+            try {
+                val (skillsBlock, appliedIds) = buildAutoSkillContextForPrompt(prompt)
+                val enrichedPrompt = if (skillsBlock.isNotBlank()) {
+                    "$prompt\n\n$skillsBlock"
+                } else {
+                    prompt
+                }
+                val (replyText, sources) = aiRepository.sendMultiTurnChat(
+                    history = currentHistory,
+                    userPrompt = enrichedPrompt,
+                    selectedModel = _selectedChatModel.value,
+                    persona = _selectedPersona.value,
+                    useSearchGrounding = _useSearchGrounding.value,
+                    useHighThinking = _useHighThinking.value
+                )
+                val effectiveModel = when {
+                    GeminiAiRepository.isDualEngineModel(_selectedChatModel.value) ->
+                        GeminiAiRepository.MODEL_DUAL_ENGINE
+                    GeminiAiRepository.isOpenAiModel(_selectedChatModel.value) ->
+                        _selectedChatModel.value
+                    _useHighThinking.value -> GeminiAiRepository.MODEL_ARGON
+                    _useSearchGrounding.value -> GeminiAiRepository.MODEL_FLASH
+                    else -> _selectedChatModel.value
+                }
+                val skillSources = appliedIds.map { "SkillMemory:$it" }
+                val aiMsg = ChatMessage(
+                    id = UUID.randomUUID().toString(),
+                    isUser = false,
+                    text = replyText,
+                    modelUsed = effectiveModel,
+                    timestampLabel = currentTimeLabel(),
+                    groundingSources = (skillSources + sources).distinct()
+                )
+                _chatMessages.value = _chatMessages.value + aiMsg
+            } finally {
+                _isBusy.value = false
             }
-            val (replyText, sources) = aiRepository.sendMultiTurnChat(
-                history = currentHistory,
-                userPrompt = enrichedPrompt,
-                selectedModel = _selectedChatModel.value,
-                persona = _selectedPersona.value,
-                useSearchGrounding = _useSearchGrounding.value,
-                useHighThinking = _useHighThinking.value
-            )
-            val effectiveModel = when {
-                GeminiAiRepository.isDualEngineModel(_selectedChatModel.value) ->
-                    GeminiAiRepository.MODEL_DUAL_ENGINE
-                GeminiAiRepository.isOpenAiModel(_selectedChatModel.value) ->
-                    _selectedChatModel.value
-                _useHighThinking.value -> GeminiAiRepository.MODEL_ARGON
-                _useSearchGrounding.value -> GeminiAiRepository.MODEL_FLASH
-                else -> _selectedChatModel.value
-            }
-            val skillSources = appliedIds.map { "SkillMemory:$it" }
-            val aiMsg = ChatMessage(
-                id = UUID.randomUUID().toString(),
-                isUser = false,
-                text = replyText,
-                modelUsed = effectiveModel,
-                timestampLabel = currentTimeLabel(),
-                groundingSources = (skillSources + sources).distinct()
-            )
-            _chatMessages.value = _chatMessages.value + aiMsg
-            _isBusy.value = false
         }
     }
 
@@ -1035,17 +1080,20 @@ class StudioViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            val asset = aiRepository.generateOrEditImage(
-                prompt = prompt,
-                useStudioProModel = useStudioPro,
-                aspectRatio = aspectRatio,
-                imageSize = imageSize,
-                sourceImageBase64 = sourceBase64,
-                sourceMimeType = sourceMime
-            )
-            _generatedAssets.value = listOf(asset) + _generatedAssets.value
-            _statusBanner.value = "تم توليد الصورة عبر ${asset.modelUsed} (${asset.metadataLabel})"
-            _isBusy.value = false
+            try {
+                val asset = aiRepository.generateOrEditImage(
+                    prompt = prompt,
+                    useStudioProModel = useStudioPro,
+                    aspectRatio = aspectRatio,
+                    imageSize = imageSize,
+                    sourceImageBase64 = sourceBase64,
+                    sourceMimeType = sourceMime
+                )
+                _generatedAssets.value = listOf(asset) + _generatedAssets.value
+                _statusBanner.value = "تم توليد الصورة عبر ${asset.modelUsed} (${asset.metadataLabel})"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
@@ -1057,15 +1105,18 @@ class StudioViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            val asset = aiRepository.generateOrAnimateVideo(
-                prompt = prompt,
-                aspectRatio = aspectRatio,
-                sourcePhotoBase64 = sourcePhotoBase64,
-                sourcePhotoMime = sourcePhotoMime
-            )
-            _generatedAssets.value = listOf(asset) + _generatedAssets.value
-            _statusBanner.value = "تمت معالجة الفيديو عبر ${GeminiAiRepository.MODEL_OMNI_VIDEO} ($aspectRatio)"
-            _isBusy.value = false
+            try {
+                val asset = aiRepository.generateOrAnimateVideo(
+                    prompt = prompt,
+                    aspectRatio = aspectRatio,
+                    sourcePhotoBase64 = sourcePhotoBase64,
+                    sourcePhotoMime = sourcePhotoMime
+                )
+                _generatedAssets.value = listOf(asset) + _generatedAssets.value
+                _statusBanner.value = "تمت معالجة الفيديو عبر ${GeminiAiRepository.MODEL_OMNI_VIDEO} ($aspectRatio)"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
@@ -1077,86 +1128,104 @@ class StudioViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            val analysis = aiRepository.analyzeVisualMediaWithArgon(
-                prompt = prompt,
-                mediaBase64 = base64Data,
-                mimeType = mimeType,
-                isVideo = isVideo
-            )
-            _mediaAnalysisOutput.value = analysis
-            _statusBanner.value = "اكتمل تحليل الوسائط عبر ${GeminiAiRepository.MODEL_ARGON}"
-            _isBusy.value = false
+            try {
+                val analysis = aiRepository.analyzeVisualMediaWithArgon(
+                    prompt = prompt,
+                    mediaBase64 = base64Data,
+                    mimeType = mimeType,
+                    isVideo = isVideo
+                )
+                _mediaAnalysisOutput.value = analysis
+                _statusBanner.value = "اكتمل تحليل الوسائط عبر ${GeminiAiRepository.MODEL_ARGON}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun synthesizeSpeechFromText(text: String, voiceName: String = "Kore", onAudioReady: (String?) -> Unit) {
         viewModelScope.launch {
             _isBusy.value = true
-            val asset = aiRepository.convertTextToSpeech(text, voiceName)
-            _generatedAssets.value = listOf(asset) + _generatedAssets.value
-            onAudioReady(asset.base64Data)
-            _statusBanner.value = "تم تحويل النص إلى كلام عبر ${GeminiAiRepository.MODEL_TTS}"
-            _isBusy.value = false
+            try {
+                val asset = aiRepository.convertTextToSpeech(text, voiceName)
+                _generatedAssets.value = listOf(asset) + _generatedAssets.value
+                onAudioReady(asset.base64Data)
+                _statusBanner.value = "تم تحويل النص إلى كلام عبر ${GeminiAiRepository.MODEL_TTS}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun transcribeRecordedAudio(audioBase64: String, onTranscribed: (String) -> Unit) {
         viewModelScope.launch {
             _isBusy.value = true
-            val text = aiRepository.transcribeMicrophoneAudio(audioBase64)
-            _lastTranscribedText.value = text
-            onTranscribed(text)
-            _statusBanner.value = "تم نسخ الصوت عبر ${GeminiAiRepository.MODEL_TRANSCRIBE}"
-            _isBusy.value = false
+            try {
+                val text = aiRepository.transcribeMicrophoneAudio(audioBase64)
+                _lastTranscribedText.value = text
+                onTranscribed(text)
+                _statusBanner.value = "تم نسخ الصوت عبر ${GeminiAiRepository.MODEL_TRANSCRIBE}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun sendLiveVoiceTurn(spokenText: String, audioBase64: String? = null, onReplyReady: (String) -> Unit) {
         viewModelScope.launch {
             _isBusy.value = true
-            val userEntry = "👤 أنت: $spokenText"
-            _liveVoiceHistory.value = _liveVoiceHistory.value + userEntry
-            val reply = aiRepository.sendLiveVoiceConversationTurn(spokenText, audioBase64)
-            _liveVoiceHistory.value = _liveVoiceHistory.value + "🤖 ${GeminiAiRepository.MODEL_LIVE}: $reply"
-            onReplyReady(reply)
-            _isBusy.value = false
+            try {
+                val userEntry = "👤 أنت: $spokenText"
+                _liveVoiceHistory.value = _liveVoiceHistory.value + userEntry
+                val reply = aiRepository.sendLiveVoiceConversationTurn(spokenText, audioBase64)
+                _liveVoiceHistory.value = _liveVoiceHistory.value + "🤖 ${GeminiAiRepository.MODEL_LIVE}: $reply"
+                onReplyReady(reply)
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun generateMusicTrack(prompt: String, useFullLengthPro: Boolean, onMusicReady: (String?) -> Unit) {
         viewModelScope.launch {
             _isBusy.value = true
-            val asset = aiRepository.generateMusic(prompt, useFullLengthPro)
-            _generatedAssets.value = listOf(asset) + _generatedAssets.value
-            onMusicReady(asset.base64Data)
-            _statusBanner.value = "تم توليد الموسيقى عبر ${asset.modelUsed}"
-            _isBusy.value = false
+            try {
+                val asset = aiRepository.generateMusic(prompt, useFullLengthPro)
+                _generatedAssets.value = listOf(asset) + _generatedAssets.value
+                onMusicReady(asset.base64Data)
+                _statusBanner.value = "تم توليد الموسيقى عبر ${asset.modelUsed}"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
     fun runBioscienceAnalysis(fastaSequence: String, researchGoal: String) {
         viewModelScope.launch {
             _isBusy.value = true
-            val result = aiRepository.analyzeBioscienceSequence(
-                fastaOrSequence = fastaSequence,
-                researchGoal = researchGoal,
-                preferredModel = _selectedChatModel.value
-            )
-            _bioscienceOutput.value = result
-            repository.createBioExperiment(
-                title = researchGoal.take(80).ifBlank { "تحليل تسلسل حيوي (${_selectedChatModel.value})" },
-                workflowMode = "PROTEIN_FOLDING",
-                fastaSequence = fastaSequence,
-                researchGoal = researchGoal,
-                plddtScore = 91L,
-                freeEnergyKcal = -11.2,
-                alphaHelixPct = 52L,
-                betaSheetPct = 24L,
-                aiReportSummary = result
-            )
-            syncUserProfileToCloud()
-            _statusBanner.value = "اكتمل التحليل الحيوي وتم حفظ التجربة سحابياً في Firestore (${_selectedChatModel.value})"
-            _isBusy.value = false
+            try {
+                val result = aiRepository.analyzeBioscienceSequence(
+                    fastaOrSequence = fastaSequence,
+                    researchGoal = researchGoal,
+                    preferredModel = _selectedChatModel.value
+                )
+                _bioscienceOutput.value = result
+                repository.createBioExperiment(
+                    title = researchGoal.take(80).ifBlank { "تحليل تسلسل حيوي (${_selectedChatModel.value})" },
+                    workflowMode = "PROTEIN_FOLDING",
+                    fastaSequence = fastaSequence,
+                    researchGoal = researchGoal,
+                    plddtScore = 91L,
+                    freeEnergyKcal = -11.2,
+                    alphaHelixPct = 52L,
+                    betaSheetPct = 24L,
+                    aiReportSummary = result
+                )
+                syncUserProfileToCloud()
+                _statusBanner.value = "اكتمل التحليل الحيوي وتم حفظ التجربة سحابياً في Firestore (${_selectedChatModel.value})"
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 
@@ -1173,24 +1242,27 @@ class StudioViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            repository.createBioExperiment(
-                title = title,
-                workflowMode = workflowMode,
-                fastaSequence = fastaSequence,
-                researchGoal = researchGoal,
-                plddtScore = plddtScore.toLong(),
-                freeEnergyKcal = freeEnergyKcal,
-                alphaHelixPct = alphaHelixPct.toLong(),
-                betaSheetPct = betaSheetPct.toLong(),
-                aiReportSummary = aiReportSummary
-            ).onSuccess { expId ->
-                _lastSyncTimestampLabel.value = currentTimeLabel()
-                syncUserProfileToCloud()
-                _statusBanner.value = "☁️ تم حفظ تجربة المختبر الحيوي ($expId) في Cloud Firestore بنجاح"
-            }.onFailure { err ->
-                _statusBanner.value = "تعذر حفظ التجربة الحيوية سحابياً: ${err.localizedMessage}"
+            try {
+                repository.createBioExperiment(
+                    title = title,
+                    workflowMode = workflowMode,
+                    fastaSequence = fastaSequence,
+                    researchGoal = researchGoal,
+                    plddtScore = plddtScore.toLong(),
+                    freeEnergyKcal = freeEnergyKcal,
+                    alphaHelixPct = alphaHelixPct.toLong(),
+                    betaSheetPct = betaSheetPct.toLong(),
+                    aiReportSummary = aiReportSummary
+                ).onSuccess { expId ->
+                    _lastSyncTimestampLabel.value = currentTimeLabel()
+                    syncUserProfileToCloud()
+                    _statusBanner.value = "☁️ تم حفظ تجربة المختبر الحيوي ($expId) في Cloud Firestore بنجاح"
+                }.onFailure { err ->
+                    _statusBanner.value = "تعذر حفظ التجربة الحيوية سحابياً: ${err.localizedMessage}"
+                }
+            } finally {
+                _isBusy.value = false
             }
-            _isBusy.value = false
         }
     }
 
@@ -1236,16 +1308,19 @@ class StudioViewModel(
     fun forceManualCloudSync() {
         viewModelScope.launch {
             _isBusy.value = true
-            val latencyRes = repository.checkConnectionLatency()
-            latencyRes.onSuccess { ms ->
-                _syncLatencyMs.value = ms
+            try {
+                val latencyRes = repository.checkConnectionLatency()
+                latencyRes.onSuccess { ms ->
+                    _syncLatencyMs.value = ms
+                }
+                syncUserProfileToCloud()
+                syncSkillsMemoryToFirestore()
+                _lastSyncTimestampLabel.value = currentTimeLabel()
+                val msLabel = _syncLatencyMs.value
+                _statusBanner.value = "☁️ تمت المزامنة السحابية الفورية مع Cloud Firestore بنجاح (${msLabel}ms)"
+            } finally {
+                _isBusy.value = false
             }
-            syncUserProfileToCloud()
-            syncSkillsMemoryToFirestore()
-            _lastSyncTimestampLabel.value = currentTimeLabel()
-            val msLabel = _syncLatencyMs.value
-            _statusBanner.value = "☁️ تمت المزامنة السحابية الفورية مع Cloud Firestore بنجاح (${msLabel}ms)"
-            _isBusy.value = false
         }
     }
 

@@ -1,6 +1,7 @@
 package com.example
 
 import android.content.Context
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
@@ -10,11 +11,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.remote.GeminiAiRepository
@@ -343,6 +347,57 @@ class ExampleRobolectricTest {
         composeTestRule.waitForIdle()
         assertTrue(dismissed)
         composeTestRule.onNodeWithTag("banner_dismissed_indicator").assertIsDisplayed()
+    }
+
+    @Test
+    fun `back handler closes open navigation drawer and resets bioscience subfilter`() {
+        var backDispatcher: androidx.activity.OnBackPressedDispatcher? = null
+
+        composeTestRule.setContent {
+            val owner = LocalOnBackPressedDispatcherOwner.current
+            backDispatcher = owner?.onBackPressedDispatcher
+            MyApplicationTheme {
+                MainScreenLayout(
+                    selectedTab = StudioBottomTab.BIOSCIENCE.index,
+                    onSelectTab = {},
+                    userEmail = "dev@novaforge.ai",
+                    activeBranch = "main",
+                    skillsCount = 25,
+                    pinnedSkillsCount = 3,
+                    initialDrawerOpen = true
+                ) {
+                    BioscienceLabTabScreen(
+                        bioscienceOutput = null,
+                        onRunBioscienceAnalysis = { _, _ -> },
+                        onExportPipelineToIde = {}
+                    )
+                }
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("gemini_navigation_drawer").assertIsDisplayed()
+
+        composeTestRule.runOnIdle {
+            backDispatcher?.onBackPressed()
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("gemini_navigation_drawer").assertIsNotDisplayed()
+
+        // Switch bioscience filter to BIO_TOOLS and verify Back resets to ALL
+        composeTestRule.onNodeWithTag("bio_section_tools").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("bioscience_lab_list")
+            .performScrollToNode(hasTestTag("bio_workflow_PROTEIN_FOLDING"))
+        composeTestRule.onNodeWithTag("bio_workflow_PROTEIN_FOLDING").assertIsDisplayed()
+
+        composeTestRule.runOnIdle {
+            backDispatcher?.onBackPressed()
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("bioscience_lab_list")
+            .performScrollToNode(hasTestTag("bio_3d_simulation_card"))
+        composeTestRule.onNodeWithTag("bio_3d_simulation_card").assertIsDisplayed()
     }
 }
 

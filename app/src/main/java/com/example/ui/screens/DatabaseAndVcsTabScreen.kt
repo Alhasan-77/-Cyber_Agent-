@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -94,6 +95,10 @@ fun DatabaseAndVcsTabScreen(
     // 1 = Schema Designer & DAO Code Generator
     // 2 = Version Control & Diff Engine
     var activeSubTab by remember { mutableIntStateOf(0) }
+
+    BackHandler(enabled = activeSubTab != 0) {
+        activeSubTab = 0
+    }
 
     Column(
         modifier = Modifier

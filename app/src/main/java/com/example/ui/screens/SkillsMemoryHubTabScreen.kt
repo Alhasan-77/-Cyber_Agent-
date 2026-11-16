@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -65,6 +66,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -114,6 +116,10 @@ fun SkillsMemoryHubTabScreen(
 ) {
     val context = LocalContext.current
     var activeSectionTab by rememberSaveable { mutableIntStateOf(0) }
+
+    BackHandler(enabled = activeSectionTab != 0) {
+        activeSectionTab = 0
+    }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedCategory by rememberSaveable { mutableStateOf("ALL") }
     var showPinnedOnly by rememberSaveable { mutableStateOf(false) }
@@ -575,7 +581,9 @@ private fun SkillsInteractiveExplorerSection(
                                     )
                                     IconButton(
                                         onClick = { onTogglePinSkill(skill.id) },
-                                        modifier = Modifier.size(26.dp)
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .minimumInteractiveComponentSize()
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.PushPin,

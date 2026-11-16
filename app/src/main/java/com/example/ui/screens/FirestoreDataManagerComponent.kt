@@ -53,6 +53,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -473,7 +474,8 @@ private fun FirestoreCollectionsSidebar(
                     IconButton(
                         onClick = onRefreshCollection,
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(48.dp)
+                            .minimumInteractiveComponentSize()
                             .testTag("fetch_collection_docs_button")
                     ) {
                         Icon(
@@ -486,7 +488,8 @@ private fun FirestoreCollectionsSidebar(
                     IconButton(
                         onClick = onStartCreateNewDocument,
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(48.dp)
+                            .minimumInteractiveComponentSize()
                             .testTag("toggle_new_doc_form_button")
                     ) {
                         Icon(

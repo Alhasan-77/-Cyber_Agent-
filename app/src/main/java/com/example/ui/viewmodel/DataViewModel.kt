@@ -406,6 +406,7 @@ class DataViewModel(
                 ?: repository.getCollectionSchemaById(schemaId).getOrNull()
 
             if (existing == null) {
+                _connectionStatus.value = FirestoreConnectionStatus.ERROR
                 val msg = "تعذر العثور على مخطط المجموعة $schemaId لتحديثه"
                 _mutationState.value = UiState.Error(msg)
                 _dataStatusMessage.value = msg
@@ -694,6 +695,11 @@ class DataViewModel(
                                 _mutationState.value = UiState.Error(msg)
                                 _dataStatusMessage.value = msg
                             }
+                    } else {
+                        _connectionStatus.value = FirestoreConnectionStatus.ERROR
+                        val msg = "تعذر العثور على المستند $documentId في مجموعة $collectionId"
+                        _mutationState.value = UiState.Error(msg)
+                        _dataStatusMessage.value = msg
                     }
                 }
                 COLLECTION_PROJECTS -> {
@@ -718,6 +724,11 @@ class DataViewModel(
                                 _mutationState.value = UiState.Error(msg)
                                 _dataStatusMessage.value = msg
                             }
+                    } else {
+                        _connectionStatus.value = FirestoreConnectionStatus.ERROR
+                        val msg = "تعذر العثور على مستند المشروع $documentId في مجموعة $collectionId"
+                        _mutationState.value = UiState.Error(msg)
+                        _dataStatusMessage.value = msg
                     }
                 }
                 COLLECTION_BIO_EXPERIMENTS -> {
@@ -742,6 +753,11 @@ class DataViewModel(
                                 _mutationState.value = UiState.Error(msg)
                                 _dataStatusMessage.value = msg
                             }
+                    } else {
+                        _connectionStatus.value = FirestoreConnectionStatus.ERROR
+                        val msg = "تعذر العثور على التجربة الحيوية $documentId في مجموعة $collectionId"
+                        _mutationState.value = UiState.Error(msg)
+                        _dataStatusMessage.value = msg
                     }
                 }
                 else -> {

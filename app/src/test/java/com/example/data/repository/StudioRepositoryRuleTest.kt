@@ -1,6 +1,9 @@
 package com.example.data.repository
 
 import com.example.base.FirestoreEmulatorTestBase
+import com.example.data.model.FirestoreConnectionStatus
+import com.example.data.model.UiState
+import com.example.ui.viewmodel.DataViewModel
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -191,6 +194,31 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
             repository.observeBioExperiments().first { list -> list.any { it.id == expId } }
         }
         assertTrue(emittedExperiments.any { it.id == expId })
+    }
+
+    @Test
+    fun dataViewModel_updateMissingDocument_transitionsToErrorInsteadOfHanging() = runBlocking {
+        val aliceUid = signInTestUser(ALICE_EMAIL)
+        val repository = StudioRepository(firestore)
+        val dataViewModel = DataViewModel(
+            repository = repository,
+            databaseId = firestore.app.options.projectId ?: "test-db",
+            currentUserId = aliceUid
+        )
+
+        dataViewModel.updateDocumentInFirestore(
+            collectionId = DataViewModel.COLLECTION_PROJECTS,
+            documentId = "non_existent_doc_123",
+            updatedPrimary = "Test",
+            updatedSecondary = "Desc",
+            updatedJsonOrThird = "Kotlin"
+        )
+
+        val terminalState = withTimeout(DEFAULT_TIMEOUT_MS) {
+            dataViewModel.mutationState.first { it is UiState.Error }
+        }
+        assertTrue(terminalState is UiState.Error)
+        assertEquals(FirestoreConnectionStatus.ERROR, dataViewModel.connectionStatus.value)
     }
 
     private companion object {

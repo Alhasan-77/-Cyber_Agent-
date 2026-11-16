@@ -1,6 +1,5 @@
 package com.example.data.remote
 
-import com.example.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext

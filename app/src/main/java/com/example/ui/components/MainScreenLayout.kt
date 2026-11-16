@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -197,6 +198,10 @@ fun MainScreenLayout(
         initialValue = if (initialDrawerOpen) DrawerValue.Open else DrawerValue.Closed
     )
     val coroutineScope = rememberCoroutineScope()
+
+    BackHandler(enabled = drawerState.isOpen) {
+        coroutineScope.launch { drawerState.close() }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -1343,6 +1348,11 @@ private fun CloudProfileAndSyncDialog(
                         }
                         Column {
                             Text(
+                                text = stringResource(R.string.cloud_profile_title),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CyberTextSecondary
+                            )
+                            Text(
                                 text = userDisplayName,
                                 style = MaterialTheme.typography.titleMedium,
                                 color = CyberTextPrimary,
@@ -1359,7 +1369,10 @@ private fun CloudProfileAndSyncDialog(
 
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.testTag("close_profile_dialog_button")
+                        modifier = Modifier
+                            .size(48.dp)
+                            .minimumInteractiveComponentSize()
+                            .testTag("close_profile_dialog_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,

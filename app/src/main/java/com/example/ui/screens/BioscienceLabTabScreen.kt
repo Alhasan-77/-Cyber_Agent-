@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -104,6 +105,11 @@ fun BioscienceLabTabScreen(
     onDeleteBioExperiment: (String) -> Unit = {}
 ) {
     var selectedSectionFilter by rememberSaveable { mutableStateOf("ALL") } // ALL, GAME_3D, BIO_TOOLS
+
+    BackHandler(enabled = selectedSectionFilter != "ALL") {
+        selectedSectionFilter = "ALL"
+    }
+
     var selected3dViewMode by rememberSaveable { mutableStateOf("GAME") } // GAME, INSPECTOR
     var selectedMoleculeId by rememberSaveable { mutableStateOf("DNA_HELIX") }
     var webViewReloadTick by rememberSaveable { mutableIntStateOf(0) }

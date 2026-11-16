@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
+import androidx.core.content.edit
 import com.example.BuildConfig
 import com.example.data.model.AiRolePersona
 import com.example.data.model.ChatMessage
@@ -107,7 +108,9 @@ class GeminiAiRepository(
             appContext.getSharedPreferences(
                 "com.google.firebase.appcheck.store.$persistenceKey",
                 Context.MODE_PRIVATE
-            ).edit().clear().commit()
+            ).edit {
+                clear()
+            }
 
             if (BuildConfig.DEBUG) {
                 FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
@@ -624,13 +627,28 @@ class GeminiAiRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Stream ($selectedModel)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
-            accumulated.toString()
+            if (!isAppCheckTokenError(e)) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Stream ($selectedModel)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
+            }
+            if (accumulated.isBlank()) {
+                val (fallbackReply, _) = fallbackArchitecturalResponse(
+                    prompt = userPrompt,
+                    model = selectedModel,
+                    persona = persona,
+                    useSearch = false,
+                    useThinking = false,
+                    errorDetail = e.localizedMessage
+                )
+                onChunk(fallbackReply)
+                fallbackReply
+            } else {
+                accumulated.toString()
+            }
         }
     }
 
@@ -894,12 +912,14 @@ class GeminiAiRepository(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Image generation failed ($modelName)", e)
-            GlobalExceptionHandler.reportError(
-                phase = "Gemini Image Generation ($modelName)",
-                throwable = e,
-                isFatal = false,
-                serviceName = "Gemini"
-            )
+            if (!isAppCheckTokenError(e)) {
+                GlobalExceptionHandler.reportError(
+                    phase = "Gemini Image Generation ($modelName)",
+                    throwable = e,
+                    isFatal = false,
+                    serviceName = "Gemini"
+                )
+            }
             return@withContext GeneratedMediaAsset(
                 id = UUID.randomUUID().toString(),
                 type = "IMAGE",

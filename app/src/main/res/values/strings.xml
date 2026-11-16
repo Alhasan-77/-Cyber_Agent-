@@ -27,7 +27,7 @@
     <string name="drawer_new_chat">محادثة وأمر جديد</string>
     <string name="drawer_section_workspaces">مساحات عمل Gemini</string>
     <string name="drawer_section_memory_and_cloud">الذاكرة والسحابة</string>
-    <string name="bottom_prompt_placeholder">اسأل Gemini أو اكتب أمراً برمجياً...</string>
+    <string name="bottom_prompt_placeholder">اسأل Gemini أو اكتب أمراً برمجياً…</string>
     <string name="bottom_prompt_send_content_description">إرسال الأمر إلى النموذج الذكي</string>
     <string name="bottom_prompt_sparkle_content_description">أيقونة بريق Gemini الذكي</string>
 </resources>

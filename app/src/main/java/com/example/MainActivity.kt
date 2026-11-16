@@ -5,8 +5,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.content.edit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -66,7 +68,6 @@ private const val TAG = "AppCheckInit"
 private const val DEBUG_TOKEN_EXTRA = "FIREBASE_APPCHECK_DEBUG_TOKEN"
 private const val DEBUG_STORE_PREFIX = "com.google.firebase.appcheck.debug.store."
 private const val DEBUG_SECRET_KEY = "com.google.firebase.appcheck.debug.DEBUG_SECRET"
-private const val RECAPTCHA_SITE_KEY_RES = "recaptcha_site_key"
 
 fun configureAppCheck(context: Context, intent: Intent?) {
     try {
@@ -82,14 +83,16 @@ fun configureAppCheck(context: Context, intent: Intent?) {
                     "$DEBUG_STORE_PREFIX$persistenceKey",
                     Context.MODE_PRIVATE
                 )
-                prefs.edit()
-                    .putString(DEBUG_SECRET_KEY, debugToken)
-                    .commit()
+                prefs.edit {
+                    putString(DEBUG_SECRET_KEY, debugToken)
+                }
                 // Clear any stale cached App Check JWT token so DebugAppCheckProviderFactory mints a fresh token
                 context.getSharedPreferences(
                     "com.google.firebase.appcheck.store.$persistenceKey",
                     Context.MODE_PRIVATE
-                ).edit().clear().commit()
+                ).edit {
+                    clear()
+                }
                 Log.d(TAG, "App Check debug secret configured successfully.")
             } else {
                 Log.w(TAG, "No debug token found in Intent extra.")
@@ -100,19 +103,14 @@ fun configureAppCheck(context: Context, intent: Intent?) {
             )
             Log.d(TAG, "DebugAppCheckProviderFactory installed.")
         } else {
-            val resId = context.resources.getIdentifier(RECAPTCHA_SITE_KEY_RES, "string", context.packageName)
-            if (resId != 0) {
-                val siteKey = context.getString(resId)
-                if (siteKey.isNotBlank()) {
-                    FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                        RecaptchaAppCheckProviderFactory.getInstance(siteKey)
-                    )
-                    Log.d(TAG, "RecaptchaAppCheckProviderFactory installed.")
-                } else {
-                    Log.e(TAG, "recaptcha_site_key resource string is blank.")
-                }
+            val siteKey = runCatching { context.getString(R.string.recaptcha_site_key) }.getOrNull()
+            if (!siteKey.isNullOrBlank()) {
+                FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                    RecaptchaAppCheckProviderFactory.getInstance(siteKey)
+                )
+                Log.d(TAG, "RecaptchaAppCheckProviderFactory installed.")
             } else {
-                Log.e(TAG, "recaptcha_site_key string resource not found in package.")
+                Log.e(TAG, "recaptcha_site_key string resource is missing or blank.")
             }
         }
     } catch (e: Exception) {
@@ -155,14 +153,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-internal fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
-    val listener = FirebaseAuth.AuthStateListener { auth ->
-        trySend(auth.currentUser)
-    }
-    addAuthStateListener(listener)
-    awaitClose { removeAuthStateListener(listener) }
-}
-
 @Composable
 fun AppNavigation(auth: FirebaseAuth? = null) {
     val resolvedAuthResult = remember(auth) {
@@ -187,8 +177,6 @@ fun AppNavigation(auth: FirebaseAuth? = null) {
         return
     }
 
-    val authFlow = remember(resolvedAuth) { resolvedAuth.authStateFlow() }
-    val flowUser by authFlow.collectAsStateWithLifecycle(initialValue = resolvedAuth.currentUser)
     var currentUser by remember(resolvedAuth) { mutableStateOf(resolvedAuth.currentUser) }
 
     DisposableEffect(resolvedAuth) {
@@ -199,7 +187,7 @@ fun AppNavigation(auth: FirebaseAuth? = null) {
         onDispose { resolvedAuth.removeAuthStateListener(listener) }
     }
 
-    val user = currentUser ?: flowUser
+    val user = currentUser
     if (user == null) {
         AuthScreen(onAuthSuccess = { currentUser = resolvedAuth.currentUser })
     } else {
@@ -334,6 +322,10 @@ fun NovaForgeStudioShell(
     )
 
     var selectedTab by rememberSaveable { mutableIntStateOf(StudioBottomTab.DASHBOARD.index) }
+
+    BackHandler(enabled = selectedTab != StudioBottomTab.DASHBOARD.index) {
+        selectedTab = StudioBottomTab.DASHBOARD.index
+    }
 
     val projectsState by viewModel.projectsState.collectAsStateWithLifecycle()
     val bioExperimentsState by viewModel.bioExperimentsState.collectAsStateWithLifecycle()

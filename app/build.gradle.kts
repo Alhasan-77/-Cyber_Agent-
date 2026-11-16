@@ -7,7 +7,7 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
-  id("org.jetbrains.kotlin.plugin.serialization") version "2.2.10"
+  alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -115,7 +115,7 @@ dependencies {
   // implementation(libs.androidx.navigation.compose)
   // implementation(libs.androidx.room.ktx)
   // implementation(libs.androidx.room.runtime)
-  implementation(libs.coil.compose)
+  // implementation(libs.coil.compose)
   // implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
   // Uncomment to use Firestore:
@@ -131,13 +131,13 @@ dependencies {
   implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
+  // implementation(libs.logging.interceptor)
   // implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
-  implementation("com.squareup.retrofit2:converter-kotlinx-serialization:2.11.0")
-  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+  implementation(libs.retrofit.converter.kotlinx.serialization)
+  implementation(libs.kotlinx.serialization.json)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
