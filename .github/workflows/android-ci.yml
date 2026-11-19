@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - refactor/stability-ui-performance
   pull_request:
     branches:
       - main
