@@ -91,6 +91,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
+private fun getGoogleWebClientId(context: Context): String? {
+    val resourceId = context.resources.getIdentifier(
+        "default_web_client_id",
+        "string",
+        context.packageName
+    )
+    return resourceId.takeIf { it != 0 }
+        ?.let(context::getString)
+        ?.takeIf { it.isNotBlank() }
+}
+
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
@@ -123,15 +134,9 @@ fun attemptAutoSignIn(
         return
     }
 
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (e: Exception) {
-        GlobalExceptionHandler.reportError(
-            phase = "AutoSignIn WebClientId Lookup",
-            throwable = e,
-            isFatal = false
-        )
-        onUnauthenticated("إعداد Google Sign-In غير مكتمل: المورد default_web_client_id غير موجود.")
+    val clientId = getGoogleWebClientId(context)
+    if (clientId == null) {
+        onUnauthenticated("إعداد Google Sign-In غير مكتمل: المورد default_web_client_id غير موجود أو فارغ.")
         return
     }
 
@@ -184,15 +189,9 @@ fun onGoogleSignInClicked(
     scope: CoroutineScope,
     onAuthCancelled: () -> Unit = {}
 ) {
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (e: Exception) {
-        GlobalExceptionHandler.reportError(
-            phase = "GoogleSignIn WebClientId Lookup",
-            throwable = e,
-            isFatal = false
-        )
-        onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
+    val clientId = getGoogleWebClientId(context)
+    if (clientId == null) {
+        onAuthError("Google Sign-In configuration missing: default_web_client_id not found or empty")
         return
     }
 
