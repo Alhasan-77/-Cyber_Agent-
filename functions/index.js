@@ -15,15 +15,19 @@ if (getApps().length === 0) {
 }
 
 const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
+const FIRESTORE_DATABASE_ID = defineString("FIRESTORE_DATABASE_ID", {
+  default: "ai-studio-android-novaforg-6912163c-aa3c-4903-a89e-6df061c893e0",
+});
+const quotaDb = getFirestore(getApps()[0], FIRESTORE_DATABASE_ID.value());
 const DAILY_REQUEST_LIMIT = 50;
 
 async function consumeDailyQuota(uid) {
   const day = new Date().toISOString().slice(0, 10);
   const uidHash = crypto.createHash("sha256").update(uid).digest("hex");
   // Keep one quota document per user instead of creating a new document every day.
-  const usageRef = getFirestore().collection("_openaiUsage").doc(uidHash);
+  const usageRef = quotaDb.collection("_openaiUsage").doc(uidHash);
 
-  await getFirestore().runTransaction(async (transaction) => {
+  await quotaDb.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(usageRef);
     const storedDay = snapshot.exists ? snapshot.get("day") : null;
     const currentCount = storedDay === day
