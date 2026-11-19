@@ -444,7 +444,7 @@ class GeminiAiRepository(
             if (openAiResult.isSuccess) {
                 add("OpenAI Chat Completions API ($openAiModel)")
             } else {
-                add("OpenAI API Status: ${OpenAiNetworkClient.getKeyStatusSummaryAr()}")
+                add("OpenAI API Status: ${OpenAiNetworkClient.getProxyStatusSummaryAr()}")
             }
         }.distinct()
 
