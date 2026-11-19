@@ -39,14 +39,13 @@ class ExampleUnitTest {
   }
 
   @Test
-  fun openAiNetworkClient_returnsNonBlockingKeyStatus() {
-    val status = OpenAiNetworkClient.getKeyStatusSummaryAr()
+  fun openAiNetworkClient_returnsNonBlockingProxyStatus() {
+    val status = OpenAiNetworkClient.getProxyStatusSummaryAr()
     assertTrue(status.isNotBlank())
-    // Ensure calling key check never throws regardless of secret presence
-    val configured = OpenAiNetworkClient.isApiKeyConfigured()
-    if (!configured) {
-      assertTrue(status.contains("OPENAI_API_KEY"))
-    }
+    // FirebaseApp is not initialized in a local JVM test; proxy status must remain non-throwing.
+    assertFalse(OpenAiNetworkClient.isProxyConfigured())
+    assertTrue(status.contains("غير مضبوط"))
+    assertTrue(OpenAiNetworkClient.getConfiguredApiKey().isEmpty())
   }
 
   @Test
