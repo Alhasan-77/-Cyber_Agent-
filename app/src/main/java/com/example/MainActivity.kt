@@ -28,6 +28,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.data.model.UiState
 import com.example.data.remote.GeminiAiRepository
+import com.example.data.remote.GeminiServiceClient
+import com.example.data.repository.DataManager
 import com.example.data.repository.StudioRepository
 import com.example.data.skills.SkillsMemoryEngine
 import com.example.ui.components.ErrorBoundary
@@ -83,14 +85,14 @@ fun configureAppCheck(context: Context, intent: Intent?) {
                     "$DEBUG_STORE_PREFIX$persistenceKey",
                     Context.MODE_PRIVATE
                 )
-                prefs.edit {
+                prefs.edit(commit = true) {
                     putString(DEBUG_SECRET_KEY, debugToken)
                 }
                 // Clear any stale cached App Check JWT token so DebugAppCheckProviderFactory mints a fresh token
                 context.getSharedPreferences(
                     "com.google.firebase.appcheck.store.$persistenceKey",
                     Context.MODE_PRIVATE
-                ).edit {
+                ).edit(commit = true) {
                     clear()
                 }
                 Log.d(TAG, "App Check debug secret configured successfully.")
@@ -261,7 +263,7 @@ fun NovaForgeStudioShell(
                 }
 
                 val aiRepo = runCatching {
-                    GeminiAiRepository()
+                    GeminiAiRepository(geminiServiceClient = GeminiServiceClient())
                 }.onFailure { e ->
                     GlobalExceptionHandler.reportError(
                         phase = "StudioViewModel Gemini Init",
@@ -269,7 +271,7 @@ fun NovaForgeStudioShell(
                         isFatal = false,
                         serviceName = "Gemini"
                     )
-                }.getOrElse { GeminiAiRepository() }
+                }.getOrElse { GeminiAiRepository(geminiServiceClient = GeminiServiceClient()) }
 
                 StudioViewModel(
                     repository = StudioRepository(db),
@@ -315,7 +317,8 @@ fun NovaForgeStudioShell(
                 DataViewModel(
                     repository = StudioRepository(db),
                     databaseId = databaseId,
-                    currentUserId = currentUserId
+                    currentUserId = currentUserId,
+                    dataManager = DataManager(db)
                 )
             }
         }

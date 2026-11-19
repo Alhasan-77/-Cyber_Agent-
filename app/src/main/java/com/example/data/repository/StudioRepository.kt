@@ -26,6 +26,9 @@ import java.util.UUID
 
 class StudioRepository(private val db: FirebaseFirestore) {
 
+    internal val firestore: FirebaseFirestore
+        get() = db
+
     constructor(context: Context) : this(
         FirebaseFirestore.getInstance(
             context.applicationContext.getString(R.string.firestore_database_id)

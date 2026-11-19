@@ -126,7 +126,7 @@ service cloud.firestore {
     }
 
     match /users/{userId}/projects/{projectId} {
-      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(projectId) && existing().userId == request.auth.uid;
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(projectId) && (resource == null || existing().userId == request.auth.uid);
       allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
 
       allow create: if isSignedIn() &&
@@ -151,7 +151,7 @@ service cloud.firestore {
     }
 
     match /users/{userId}/snapshots/{snapshotId} {
-      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(snapshotId) && existing().userId == request.auth.uid;
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(snapshotId) && (resource == null || existing().userId == request.auth.uid);
       allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
 
       allow create: if isSignedIn() &&
@@ -169,7 +169,7 @@ service cloud.firestore {
     }
 
     match /users/{userId}/collections/{collectionId} {
-      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(collectionId) && existing().userId == request.auth.uid;
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(collectionId) && (resource == null || existing().userId == request.auth.uid);
       allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
 
       allow create: if isSignedIn() &&
@@ -195,7 +195,7 @@ service cloud.firestore {
     }
 
     match /users/{userId}/logs/{logId} {
-      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(logId) && existing().userId == request.auth.uid;
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(logId) && (resource == null || existing().userId == request.auth.uid);
       allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
 
       allow create: if isSignedIn() &&
@@ -212,7 +212,7 @@ service cloud.firestore {
     }
 
     match /users/{userId}/bio_experiments/{experimentId} {
-      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(experimentId) && existing().userId == request.auth.uid;
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(experimentId) && (resource == null || existing().userId == request.auth.uid);
       allow list: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
 
       allow create: if isSignedIn() &&

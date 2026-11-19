@@ -37,7 +37,8 @@ import kotlin.coroutines.resume
 class GeminiAiRepository(
     @Suppress("UNUSED_PARAMETER")
     private val apiService: GeminiApiService = GeminiNetworkClient.service,
-    private val openAiService: OpenAiApiService = OpenAiNetworkClient.service
+    private val openAiService: OpenAiApiService = OpenAiNetworkClient.service,
+    val geminiServiceClient: GeminiServiceClient = GeminiServiceClient()
 ) {
     companion object {
         private const val TAG = "GeminiAiRepository"
@@ -108,7 +109,7 @@ class GeminiAiRepository(
             appContext.getSharedPreferences(
                 "com.google.firebase.appcheck.store.$persistenceKey",
                 Context.MODE_PRIVATE
-            ).edit {
+            ).edit(commit = true) {
                 clear()
             }
 
@@ -192,11 +193,12 @@ class GeminiAiRepository(
                         reply
                     }
                     AiEngineProvider.GEMINI -> {
-                        val geminiModel = resolveTextModel(targetModel)
-                        withTimeout(AI_TIMEOUT_MS) {
-                            executeWithAppCheckRetry {
-                                geminiModel.generateContent("$systemInstruction\n\n$userPrompt").text
-                            } ?: "تم إتمام التوليد عبر $targetModel"
+                        executeWithAppCheckRetry {
+                            geminiServiceClient.asTextGenerationClient(targetModel).generateText(
+                                systemInstruction = systemInstruction,
+                                userPrompt = userPrompt,
+                                useHighThinking = useHighThinking
+                            ).getOrThrow()
                         }
                     }
                 }

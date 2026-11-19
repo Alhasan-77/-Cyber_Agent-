@@ -13,6 +13,7 @@ import com.example.data.model.FirestoreDocumentItem
 import com.example.data.model.StudioProject
 import com.example.data.model.UiState
 import com.example.data.model.VersionSnapshot
+import com.example.data.repository.DataManager
 import com.example.data.repository.StudioRepository
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
@@ -34,7 +35,8 @@ import java.util.Locale
 class DataViewModel(
     private val repository: StudioRepository,
     val databaseId: String,
-    val currentUserId: String
+    val currentUserId: String,
+    val dataManager: DataManager = DataManager(repository.firestore)
 ) : ViewModel() {
 
     /**

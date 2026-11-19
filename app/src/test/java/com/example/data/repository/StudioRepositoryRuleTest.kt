@@ -2,14 +2,18 @@ package com.example.data.repository
 
 import com.example.base.FirestoreEmulatorTestBase
 import com.example.data.model.FirestoreConnectionStatus
+import com.example.data.model.StudioProject
 import com.example.data.model.UiState
+import com.example.data.remote.GeminiServiceClient
 import com.example.ui.viewmodel.DataViewModel
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -219,6 +223,99 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
         }
         assertTrue(terminalState is UiState.Error)
         assertEquals(FirestoreConnectionStatus.ERROR, dataViewModel.connectionStatus.value)
+    }
+
+    @Test
+    fun dataManager_fullCrudAndRealtimeObservation_succeedsForAuthenticatedOwner() = runBlocking {
+        signInTestUser(ALICE_EMAIL)
+        val dataManager = DataManager(firestore)
+
+        // 1. Add
+        val addResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            dataManager.addProject(
+                name = "DataManager CRUD App",
+                description = "Initial description",
+                language = "Kotlin + Compose",
+                htmlCode = "<main>Hello</main>"
+            )
+        }
+        assertTrue(addResult.isSuccess)
+        val projectId = addResult.getOrThrow()
+
+        // 2. Read single + Read collection
+        val readDoc = withTimeout(DEFAULT_TIMEOUT_MS) {
+            dataManager.readProject(projectId).getOrThrow()
+        }
+        assertNotNull(readDoc)
+        assertEquals("DataManager CRUD App", readDoc?.name)
+
+        val collectionDocs = withTimeout(DEFAULT_TIMEOUT_MS) {
+            dataManager.readProjects().getOrThrow()
+        }
+        assertTrue(collectionDocs.any { it.id == projectId })
+
+        // 3. Update partial fields
+        val updateResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            dataManager.updateProjectFields(
+                projectId = projectId,
+                name = "DataManager Updated App",
+                description = "Updated description"
+            )
+        }
+        assertTrue(updateResult.isSuccess)
+
+        val observedUpdated = withTimeout(FLOW_TIMEOUT_MS) {
+            dataManager.observeDocument(
+                collectionName = DataManager.COLLECTION_PROJECTS,
+                documentId = projectId,
+                clazz = StudioProject::class.java
+            ).first { it?.name == "DataManager Updated App" }
+        }
+        assertEquals("Updated description", observedUpdated?.description)
+
+        // 4. Delete
+        val deleteResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            dataManager.deleteProject(projectId)
+        }
+        assertTrue(deleteResult.isSuccess)
+
+        val afterDelete = withTimeout(DEFAULT_TIMEOUT_MS) {
+            dataManager.readProject(projectId).getOrThrow()
+        }
+        assertNull(afterDelete)
+    }
+
+    @Test
+    fun dataManager_unauthenticatedWrite_returnsFailureWithoutCrashing() = runBlocking {
+        auth.signOut()
+        val dataManager = DataManager(firestore)
+        val result = withTimeout(DEFAULT_TIMEOUT_MS) {
+            dataManager.addProject(
+                name = "Unauthorized",
+                description = "Should fail fast",
+                language = "Kotlin"
+            )
+        }
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is IllegalStateException)
+    }
+
+    @Test
+    fun geminiServiceClient_buildsAndParsesGenkitEnvelopesCorrectly() {
+        val envelope = GeminiServiceClient.buildGenkitEnvelopeJson(
+            JSONObject().put("prompt", "Summarize architecture")
+        )
+        val parsedEnvelope = JSONObject(envelope)
+        assertEquals("Summarize architecture", parsedEnvelope.getJSONObject("data").getString("prompt"))
+
+        assertEquals(
+            "Generated output text",
+            GeminiServiceClient.parseGenkitResultText("""{"result":"Generated output text"}""")
+        )
+        assertEquals(
+            "Nested output text",
+            GeminiServiceClient.parseGenkitResultText("""{"result":{"text":"Nested output text"}}""")
+        )
     }
 
     private companion object {
