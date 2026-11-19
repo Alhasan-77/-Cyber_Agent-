@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - refactor/stability-ui-performance
+      - firebase/named-firestore-openai
   pull_request:
     branches:
       - main
@@ -70,23 +71,27 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Require and verify Firebase Android configuration
+      - name: Check Firebase Android configuration
+        id: firebase_config
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           set -euo pipefail
           if [ -z "$GOOGLE_SERVICES_JSON" ]; then
-            echo "::error::GOOGLE_SERVICES_JSON repository secret is required; refusing to build an unconfigured APK."
-            exit 1
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GOOGLE_SERVICES_JSON is not configured. Tests will run, but no Firebase-connected APK will be built."
+            exit 0
           fi
           printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
           jq -e --arg project "gen-lang-client-0435606672" --arg package "com.aistudio.novaforge.kxmpzq" '
             .project_info.project_id == $project and
             any(.client[]; .client_info.android_client_info.package_name == $package)
           ' app/google-services.json > /dev/null
+          echo "configured=true" >> "$GITHUB_OUTPUT"
           echo "Verified Firebase project and Android package configuration."
 
       - name: Generate and verify Firebase Android resources
+        if: steps.firebase_config.outputs.configured == 'true'
         run: |
           set -euo pipefail
           gradle --no-daemon :app:processDebugGoogleServices
@@ -96,6 +101,7 @@ jobs:
           echo "Firebase Google Services resources generated and verified."
 
       - name: Generate temporary debug signing keystore
+        if: steps.firebase_config.outputs.configured == 'true'
         run: |
           keytool -genkeypair -noprompt \
             -keystore debug.keystore \
@@ -108,6 +114,7 @@ jobs:
             -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Assemble debug APK
+        if: steps.firebase_config.outputs.configured == 'true'
         run: gradle --no-daemon assembleDebug
 
       - name: Prepare optional release signing
@@ -143,7 +150,7 @@ jobs:
           retention-days: 30
 
       - name: Upload debug APK
-        if: success()
+        if: success() && steps.firebase_config.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: cyber-agent-debug-apk
