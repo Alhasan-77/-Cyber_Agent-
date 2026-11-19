@@ -2,9 +2,6 @@ name: Deploy Firebase backend
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - firebase/named-firestore-openai
 
 permissions:
   contents: read
