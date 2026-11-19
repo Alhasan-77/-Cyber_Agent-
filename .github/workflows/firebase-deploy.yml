@@ -1,0 +1,71 @@
+name: Deploy Firebase backend
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FIRESTORE_DATABASE_ID: ai-studio-android-novaforg-6912163c-aa3c-4903-a89e-6df061c893e0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.4"
+
+      - name: Configure Firebase service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ] || [ -z "$FIREBASE_PROJECT_ID" ]; then
+            echo "::error::Missing FIREBASE_SERVICE_ACCOUNT or FIREBASE_PROJECT_ID repository secret."
+            exit 1
+          fi
+          if [ "$FIREBASE_PROJECT_ID" != "gen-lang-client-0435606672" ]; then
+            echo "::error::Refusing to deploy to an unexpected Firebase project."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
+          jq -e --arg project "$FIREBASE_PROJECT_ID" '
+            .project_id == $project and
+            (.client_email | type == "string" and length > 0) and
+            (.private_key | type == "string" and length > 0)
+          ' "$RUNNER_TEMP/firebase-service-account.json" > /dev/null
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+          echo "FIREBASE_PROJECT_ID=$FIREBASE_PROJECT_ID" >> "$GITHUB_ENV"
+          printf 'FIRESTORE_DATABASE_ID=%s\n' "$FIRESTORE_DATABASE_ID" > functions/.env
+
+      - name: Install Firebase Functions dependencies
+        run: npm --prefix functions install --omit=dev --no-audit --no-fund
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@14
+
+      - name: Verify named Firestore database exists
+        run: firebase firestore:databases:get "$FIRESTORE_DATABASE_ID" --project "$FIREBASE_PROJECT_ID" >/dev/null
+
+      - name: Verify required OpenAI secret exists
+        run: firebase functions:secrets:access OPENAI_API_KEY --project "$FIREBASE_PROJECT_ID" >/dev/null
+
+      - name: Deploy Firestore rules and OpenAI proxy
+        run: firebase deploy --only firestore:rules,functions:openaiChatCompletion --project "$FIREBASE_PROJECT_ID" --non-interactive
+
+      - name: Verify deployed function listing
+        run: |
+          set -euo pipefail
+          firebase functions:list --project "$FIREBASE_PROJECT_ID" > "$RUNNER_TEMP/deployed-functions.txt"
+          grep -q "openaiChatCompletion" "$RUNNER_TEMP/deployed-functions.txt"
