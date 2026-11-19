@@ -1,10 +1,9 @@
 "use strict";
 
-const crypto = require("node:crypto");
 const { initializeApp, getApps } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getAppCheck } = require("firebase-admin/app-check");
-const { Firestore, FieldValue } = require("@google-cloud/firestore");
+const { Firestore } = require("@google-cloud/firestore");
 const { defineSecret, defineString } = require("firebase-functions/params");
 const { onInit } = require("firebase-functions/v2/core");
 const { onRequest } = require("firebase-functions/v2/https");
@@ -33,7 +32,7 @@ onInit(() => {
   consumeDailyQuota = require("./src/quota").createDailyQuotaConsumer(quotaDb, {
     dailyLimit: DAILY_REQUEST_LIMIT,
   });
-}
+});
 
 exports.openaiChatCompletion = onRequest(
   {
