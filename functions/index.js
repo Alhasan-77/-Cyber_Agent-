@@ -4,8 +4,9 @@ const crypto = require("node:crypto");
 const { initializeApp, getApps } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getAppCheck } = require("firebase-admin/app-check");
-const { FieldValue, getFirestore } = require("firebase-admin/firestore");
+const { Firestore, FieldValue } = require("@google-cloud/firestore");
 const { defineSecret, defineString } = require("firebase-functions/params");
+const { onInit } = require("firebase-functions/v2/core");
 const { onRequest } = require("firebase-functions/v2/https");
 const { logger } = require("firebase-functions");
 const { validateOpenAiRequest } = require("./src/validation");
@@ -18,31 +19,19 @@ const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 const FIRESTORE_DATABASE_ID = defineString("FIRESTORE_DATABASE_ID", {
   default: "ai-studio-android-novaforg-6912163c-aa3c-4903-a89e-6df061c893e0",
 });
-const quotaDb = getFirestore(getApps()[0], FIRESTORE_DATABASE_ID.value());
 const DAILY_REQUEST_LIMIT = 50;
+let consumeDailyQuota;
 
-async function consumeDailyQuota(uid) {
-  const day = new Date().toISOString().slice(0, 10);
-  const uidHash = crypto.createHash("sha256").update(uid).digest("hex");
-  // Keep one quota document per user instead of creating a new document every day.
-  const usageRef = quotaDb.collection("_openaiUsage").doc(uidHash);
-
-  await quotaDb.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(usageRef);
-    const storedDay = snapshot.exists ? snapshot.get("day") : null;
-    const currentCount = storedDay === day
-      ? Number(snapshot.get("requestCount") || 0)
-      : 0;
-    if (currentCount >= DAILY_REQUEST_LIMIT) {
-      const error = new Error("Daily ChatGPT request limit reached.");
-      error.statusCode = 429;
-      throw error;
-    }
-    transaction.set(usageRef, {
-      day,
-      requestCount: currentCount + 1,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+// Parameter values are unavailable while Firebase discovers functions at deploy time.
+// Initialize the named database only when the runtime instance starts.
+onInit(() => {
+  const databaseId = FIRESTORE_DATABASE_ID.value();
+  if (!databaseId || databaseId === "(default)") {
+    throw new Error("FIRESTORE_DATABASE_ID must identify the configured named Firestore database.");
+  }
+  const quotaDb = new Firestore({ databaseId });
+  consumeDailyQuota = require("./src/quota").createDailyQuotaConsumer(quotaDb, {
+    dailyLimit: DAILY_REQUEST_LIMIT,
   });
 }
 
@@ -102,6 +91,9 @@ exports.openaiChatCompletion = onRequest(
     }
 
     try {
+      if (typeof consumeDailyQuota !== "function") {
+        throw new Error("OpenAI quota storage is not initialized.");
+      }
       await consumeDailyQuota(decodedToken.uid);
     } catch (error) {
       const status = error && error.statusCode === 429 ? 429 : 503;
