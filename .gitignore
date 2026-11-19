@@ -17,3 +17,7 @@ local.properties
 .env
 debug.keystore
 *-debug.log
+
+# Firebase/Node backend dependencies and local signing files
+node_modules/
+my-upload-key.jks

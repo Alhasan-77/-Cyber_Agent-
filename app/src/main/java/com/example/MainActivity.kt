@@ -56,7 +56,7 @@ import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
-import com.google.firebase.appcheck.recaptcha.RecaptchaAppCheckProviderFactory
+import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
@@ -105,15 +105,10 @@ fun configureAppCheck(context: Context, intent: Intent?) {
             )
             Log.d(TAG, "DebugAppCheckProviderFactory installed.")
         } else {
-            val siteKey = runCatching { context.getString(R.string.recaptcha_site_key) }.getOrNull()
-            if (!siteKey.isNullOrBlank()) {
-                FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                    RecaptchaAppCheckProviderFactory.getInstance(siteKey)
-                )
-                Log.d(TAG, "RecaptchaAppCheckProviderFactory installed.")
-            } else {
-                Log.e(TAG, "recaptcha_site_key string resource is missing or blank.")
-            }
+            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                PlayIntegrityAppCheckProviderFactory.getInstance()
+            )
+            Log.d(TAG, "PlayIntegrityAppCheckProviderFactory installed.")
         }
     } catch (e: Exception) {
         Log.e(TAG, "Failed to initialize Firebase App Check", e)
