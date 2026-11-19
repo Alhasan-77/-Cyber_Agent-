@@ -6,6 +6,7 @@ import com.example.data.model.BioExperimentRecord
 import com.example.data.model.DbCollectionSchema
 import com.example.data.model.StudioProject
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.DocumentSnapshot
@@ -26,21 +27,50 @@ import java.util.UUID
  * Coroutine-based Firestore DataManager providing scoped CRUD operations (add, read, update, delete)
  * and real-time snapshot Flows for user-owned app documents.
  *
- * All operations target the named Firestore database (`R.string.firestore_database_id`), enforce
- * authenticated Google Sign-In ownership under `/users/{uid}/{collection}`, preserve cooperative
- * coroutine cancellation, and log structured diagnostics via [handleFirestoreError].
+ * Explicitly targets the named Firestore database
+ * (`ai-studio-android-novaforg-6912163c-aa3c-4903-a89e-6df061c893e0` / `R.string.firestore_database_id`)
+ * instead of the `(default)` instance, supports Firebase multi-instance [FirebaseApp] routing,
+ * enforces authenticated Google Sign-In ownership under `/users/{uid}/{collection}`, preserves
+ * cooperative coroutine cancellation, and logs structured diagnostics via [handleFirestoreError].
  */
 class DataManager(
     private val db: FirebaseFirestore,
-    private val auth: FirebaseAuth = runCatching { FirebaseAuth.getInstance(db.app) }.getOrElse { Firebase.auth }
+    private val auth: FirebaseAuth = runCatching { FirebaseAuth.getInstance(db.app) }.getOrElse { Firebase.auth },
+    val databaseId: String = NAMED_DATABASE_ID
 ) {
-    constructor(context: Context) : this(
-        db = FirebaseFirestore.getInstance(
-            context.applicationContext.getString(R.string.firestore_database_id)
-        )
+    init {
+        validateDatabaseId(databaseId)
+    }
+
+    /**
+     * Multi-instance constructor binding explicitly to the specified [FirebaseApp] and named
+     * Firestore database ID (never the `(default)` database).
+     */
+    constructor(
+        firebaseApp: FirebaseApp,
+        databaseId: String = NAMED_DATABASE_ID
+    ) : this(
+        db = FirebaseFirestore.getInstance(firebaseApp, validateDatabaseId(databaseId)),
+        auth = FirebaseAuth.getInstance(firebaseApp),
+        databaseId = validateDatabaseId(databaseId)
+    )
+
+    /**
+     * Context-based constructor resolving `R.string.firestore_database_id` (falling back to
+     * [NAMED_DATABASE_ID]) and attaching to the specified [FirebaseApp] instance.
+     */
+    constructor(
+        context: Context,
+        firebaseApp: FirebaseApp = FirebaseApp.getInstance()
+    ) : this(
+        firebaseApp = firebaseApp,
+        databaseId = resolveDatabaseId(context)
     )
 
     companion object {
+        const val NAMED_DATABASE_ID = "ai-studio-android-novaforg-6912163c-aa3c-4903-a89e-6df061c893e0"
+        private const val DEFAULT_DATABASE_ID = "(default)"
+
         const val COLLECTION_PROJECTS = "projects"
         const val COLLECTION_SCHEMAS = "collections"
         const val COLLECTION_BIO_EXPERIMENTS = "bio_experiments"
@@ -48,6 +78,53 @@ class DataManager(
         const val COLLECTION_LOGS = "logs"
 
         private val VALID_ID_REGEX = Regex("^[a-zA-Z0-9_\\-]{1,128}$")
+
+        /**
+         * Validates that [databaseId] is non-blank and does not point to the unprovisioned
+         * `(default)` Firestore database.
+         */
+        fun validateDatabaseId(databaseId: String): String {
+            val trimmed = databaseId.trim()
+            require(trimmed.isNotEmpty()) {
+                "Firestore database ID must not be blank; expected '$NAMED_DATABASE_ID'."
+            }
+            require(!trimmed.equals(DEFAULT_DATABASE_ID, ignoreCase = true)) {
+                "Default Firestore database '(default)' is not permitted; use '$NAMED_DATABASE_ID'."
+            }
+            return trimmed
+        }
+
+        /**
+         * Resolves the named Firestore database ID from `R.string.firestore_database_id`,
+         * defaulting to [NAMED_DATABASE_ID] if the resource is unavailable.
+         */
+        fun resolveDatabaseId(context: Context): String {
+            val fromRes = runCatching {
+                context.applicationContext.getString(R.string.firestore_database_id).trim()
+            }.getOrNull()
+            return validateDatabaseId(
+                fromRes?.takeIf { it.isNotEmpty() && !it.equals(DEFAULT_DATABASE_ID, ignoreCase = true) }
+                    ?: NAMED_DATABASE_ID
+            )
+        }
+
+        /**
+         * Creates a [DataManager] explicitly targeting [databaseId] on the given [FirebaseApp]
+         * instance for Firebase multi-instance support.
+         */
+        fun forDatabase(
+            firebaseApp: FirebaseApp = FirebaseApp.getInstance(),
+            databaseId: String = NAMED_DATABASE_ID
+        ): DataManager = DataManager(firebaseApp = firebaseApp, databaseId = databaseId)
+
+        /**
+         * Creates a [DataManager] from [Context], explicitly targeting `R.string.firestore_database_id`
+         * (`ai-studio-android-novaforg-6912163c-aa3c-4903-a89e-6df061c893e0`).
+         */
+        fun fromContext(
+            context: Context,
+            firebaseApp: FirebaseApp = FirebaseApp.getInstance()
+        ): DataManager = DataManager(context = context, firebaseApp = firebaseApp)
 
         internal fun sanitizeCreatePayload(
             userId: String,

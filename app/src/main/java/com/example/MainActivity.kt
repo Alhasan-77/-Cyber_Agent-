@@ -318,7 +318,7 @@ fun NovaForgeStudioShell(
                     repository = StudioRepository(db),
                     databaseId = databaseId,
                     currentUserId = currentUserId,
-                    dataManager = DataManager(db)
+                    dataManager = DataManager(db = db, databaseId = databaseId)
                 )
             }
         }

@@ -97,4 +97,22 @@ class ExampleUnitTest {
     assertEquals("Updated", updatePayload["name"])
     assertNotNull(updatePayload["updatedAt"])
   }
+
+  @Test
+  fun dataManager_enforcesNamedDatabaseIdAndRejectsDefault() {
+    assertEquals(
+      "ai-studio-android-novaforg-6912163c-aa3c-4903-a89e-6df061c893e0",
+      DataManager.NAMED_DATABASE_ID
+    )
+    assertEquals(
+      DataManager.NAMED_DATABASE_ID,
+      DataManager.validateDatabaseId(DataManager.NAMED_DATABASE_ID)
+    )
+    assertThrows(IllegalArgumentException::class.java) {
+      DataManager.validateDatabaseId("(default)")
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      DataManager.validateDatabaseId("   ")
+    }
+  }
 }

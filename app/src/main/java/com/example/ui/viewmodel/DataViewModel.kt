@@ -36,7 +36,7 @@ class DataViewModel(
     private val repository: StudioRepository,
     val databaseId: String,
     val currentUserId: String,
-    val dataManager: DataManager = DataManager(repository.firestore)
+    val dataManager: DataManager = DataManager(db = repository.firestore, databaseId = databaseId)
 ) : ViewModel() {
 
     /**

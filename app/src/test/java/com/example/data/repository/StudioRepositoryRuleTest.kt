@@ -228,7 +228,8 @@ class StudioRepositoryRuleTest : FirestoreEmulatorTestBase() {
     @Test
     fun dataManager_fullCrudAndRealtimeObservation_succeedsForAuthenticatedOwner() = runBlocking {
         signInTestUser(ALICE_EMAIL)
-        val dataManager = DataManager(firestore)
+        val dataManager = DataManager.forDatabase(firebaseApp = firestore.app)
+        assertEquals(DataManager.NAMED_DATABASE_ID, dataManager.databaseId)
 
         // 1. Add
         val addResult = withTimeout(DEFAULT_TIMEOUT_MS) {
