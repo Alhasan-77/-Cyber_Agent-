@@ -6,10 +6,11 @@
     "node": "22"
   },
   "scripts": {
-    "test": "node --test test/validation.test.js"
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "firebase-admin": "^13.6.0",
-    "firebase-functions": "^6.4.0"
+    "firebase-functions": "^6.4.0",
+    "@google-cloud/firestore": "^9.4.1"
   }
 }
