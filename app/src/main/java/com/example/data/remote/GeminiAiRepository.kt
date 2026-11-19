@@ -6,7 +6,6 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
 import androidx.core.content.edit
-import com.example.BuildConfig
 import com.example.data.model.AiRolePersona
 import com.example.data.model.ChatMessage
 import com.example.data.model.GeneratedMediaAsset
@@ -20,7 +19,9 @@ import com.google.firebase.ai.type.QuotaExceededException
 import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
+import com.google.android.gms.tasks.Task
 import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class GeminiAiRepository(
     @Suppress("UNUSED_PARAMETER")
@@ -261,6 +263,20 @@ class GeminiAiRepository(
         }
     }
 
+    private suspend fun <T> awaitFirebaseTask(task: Task<T>): T =
+        suspendCancellableCoroutine { continuation ->
+            task.addOnCompleteListener { completed ->
+                if (!continuation.isActive) return@addOnCompleteListener
+                if (completed.isSuccessful) {
+                    continuation.resume(completed.result)
+                } else {
+                    continuation.resumeWithException(
+                        completed.exception ?: IllegalStateException("Firebase request failed.")
+                    )
+                }
+            }
+        }
+
     suspend fun callOpenAiChat(
         history: List<ChatMessage> = emptyList(),
         userPrompt: String,
@@ -269,13 +285,19 @@ class GeminiAiRepository(
         useHighThinking: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            val apiKey = OpenAiNetworkClient.getConfiguredApiKey()
-            if (!OpenAiNetworkClient.isApiKeyConfigured()) {
-                throw IllegalStateException(
-                    "مفتاح OPENAI_API_KEY غير مضبوط بعد في لوحة الأسرار (Secrets Panel) في AI Studio. " +
-                        "أضف المفتاح باسم OPENAI_API_KEY في لوحة Secrets ليتم حقنه تلقائياً عبر BuildConfig.OPENAI_API_KEY."
-                )
+            if (!OpenAiNetworkClient.isProxyConfigured()) {
+                throw IllegalStateException("خادم OpenAI الوسيط غير مضبوط.")
             }
+            val firebaseApp = FirebaseApp.getInstance()
+            val signedInUser = FirebaseAuth.getInstance(firebaseApp).currentUser
+                ?: throw IllegalStateException("يجب تسجيل الدخول قبل استخدام ChatGPT.")
+            val firebaseIdToken = awaitFirebaseTask(signedInUser.getIdToken(false)).token
+                ?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("تعذر الحصول على رمز تسجيل الدخول لخادم ChatGPT.")
+            val appCheckToken = awaitFirebaseTask(
+                FirebaseAppCheck.getInstance().getAppCheckToken(false)
+            ).token?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("تعذر الحصول على رمز App Check لخادم ChatGPT.")
 
             val systemContent = buildString {
                 appendLine("[System Role: ${persona.titleAr}]")
@@ -300,7 +322,9 @@ class GeminiAiRepository(
 
             val response = withTimeout(AI_TIMEOUT_MS) {
                 openAiService.createChatCompletion(
-                    authorization = "Bearer $apiKey",
+                    url = OpenAiNetworkClient.getCompletionUrl(),
+                    authorization = "Bearer $firebaseIdToken",
+                    appCheckToken = appCheckToken,
                     request = OpenAiChatCompletionRequest(
                         model = openAiModel,
                         messages = messages,
