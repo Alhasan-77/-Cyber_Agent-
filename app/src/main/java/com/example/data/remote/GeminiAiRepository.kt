@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
 import androidx.core.content.edit
+import com.example.BuildConfig
 import com.example.data.model.AiRolePersona
 import com.example.data.model.ChatMessage
 import com.example.data.model.GeneratedMediaAsset
