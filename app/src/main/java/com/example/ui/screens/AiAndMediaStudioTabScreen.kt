@@ -262,8 +262,8 @@ private fun MultiTurnChatbotSection(
 ) {
     var inputPrompt by remember { mutableStateOf("") }
     var showPersonaSelector by remember { mutableStateOf(false) }
-    val isOpenAiReady = remember { OpenAiNetworkClient.isApiKeyConfigured() }
-    val openAiStatusLabel = remember { OpenAiNetworkClient.getKeyStatusSummaryAr() }
+    val isOpenAiReady = remember { OpenAiNetworkClient.isProxyConfigured() }
+    val openAiStatusLabel = remember { OpenAiNetworkClient.getProxyStatusSummaryAr() }
 
     val quickSuggestions = remember {
         listOf(
